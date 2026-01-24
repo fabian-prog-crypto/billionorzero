@@ -180,10 +180,16 @@ export default function OverviewPage() {
                       <span>Gross (L + S)</span>
                       <span>{formatCurrency(exposureMetrics.grossExposure)}</span>
                     </div>
+                    <div className="text-xs text-[var(--foreground-muted)] pt-2 border-t border-[var(--border)] space-y-1">
+                      <div className="font-medium text-[var(--foreground)]">What counts as exposure:</div>
+                      <div><span className="text-[var(--positive)]">Long:</span> Crypto holdings, stocks, perp longs</div>
+                      <div><span className="text-[var(--negative)]">Short:</span> Borrowed ETH/BTC (Morpho/Aave), perp shorts</div>
+                      <div><span className="text-[var(--foreground-muted)]">Excluded:</span> Stablecoins, borrowed USD (just leverage)</div>
+                    </div>
                   </div>
                 }
                 position="bottom"
-                maxWidth={320}
+                maxWidth={340}
               >
                 <div className="card cursor-help">
                   <div className="flex items-center gap-1">

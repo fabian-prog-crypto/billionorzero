@@ -25,10 +25,10 @@ export default function Tooltip({
   };
 
   const arrowClasses = {
-    top: 'top-full left-1/2 -translate-x-1/2 border-t-[var(--background-tertiary)] border-x-transparent border-b-transparent',
-    bottom: 'bottom-full left-1/2 -translate-x-1/2 border-b-[var(--background-tertiary)] border-x-transparent border-t-transparent',
-    left: 'left-full top-1/2 -translate-y-1/2 border-l-[var(--background-tertiary)] border-y-transparent border-r-transparent',
-    right: 'right-full top-1/2 -translate-y-1/2 border-r-[var(--background-tertiary)] border-y-transparent border-l-transparent',
+    top: 'top-full left-1/2 -translate-x-1/2 border-t-[#1a1a1a] border-x-transparent border-b-transparent',
+    bottom: 'bottom-full left-1/2 -translate-x-1/2 border-b-[#1a1a1a] border-x-transparent border-t-transparent',
+    left: 'left-full top-1/2 -translate-y-1/2 border-l-[#1a1a1a] border-y-transparent border-r-transparent',
+    right: 'right-full top-1/2 -translate-y-1/2 border-r-[#1a1a1a] border-y-transparent border-l-transparent',
   };
 
   return (
@@ -43,7 +43,7 @@ export default function Tooltip({
           className={`absolute z-50 ${positionClasses[position]}`}
           style={{ maxWidth }}
         >
-          <div className="bg-[var(--background-tertiary)] border border-[var(--border)] rounded-lg shadow-lg p-3 text-sm">
+          <div className="bg-[#1a1a1a] border border-[var(--border)] rounded-lg shadow-xl p-3 text-sm" style={{ backgroundColor: '#1a1a1a' }}>
             {content}
           </div>
           <div
