@@ -46,9 +46,10 @@ export type ExposureClassification =
   | 'perp-short'     // Perp short position (notional exposure)
   | 'perp-margin'    // Stablecoin margin on perp exchange
   | 'spot-long'      // Regular long exposure (crypto, stocks, etc.)
-  | 'spot-short'     // Borrowed/debt positions
+  | 'spot-short'     // Borrowed CRYPTO (actual short exposure - you're short the asset)
   | 'cash'           // Cash equivalents (stablecoins, Pendle PTs)
-  | 'perp-spot';     // Spot holdings on perp exchange (not margin, not perp trade)
+  | 'perp-spot'      // Spot holdings on perp exchange (not margin, not perp trade)
+  | 'borrowed-cash'; // Borrowed stablecoins (NOT short exposure - just leverage)
 
 /**
  * Classify an asset for exposure calculation
@@ -85,14 +86,24 @@ export function classifyAssetExposure(
   }
 
   // Not on perp exchange
-  if (isCashEquivalent && !isDebt) {
+  if (isCashEquivalent) {
+    if (isDebt) {
+      // Borrowed stablecoins (e.g., borrowing USDC from Morpho/Aave)
+      // This is NOT short exposure - it's just leverage
+      // You're not betting against the dollar, you're borrowing to invest elsewhere
+      return { classification: 'borrowed-cash', absValue };
+    }
     return { classification: 'cash', absValue };
   }
 
-  return {
-    classification: isDebt ? 'spot-short' : 'spot-long',
-    absValue,
-  };
+  // Non-stablecoin positions
+  if (isDebt) {
+    // Borrowed crypto (e.g., borrowing ETH from Morpho/Aave)
+    // This IS short exposure - if you borrow ETH and it goes up, you owe more
+    return { classification: 'spot-short', absValue };
+  }
+
+  return { classification: 'spot-long', absValue };
 }
 
 /**
@@ -604,6 +615,7 @@ export function calculateExposureData(assets: AssetWithPrice[]): ExposureData {
   const classificationCounts: Record<ExposureClassification, number> = {
     'perp-long': 0, 'perp-short': 0, 'perp-margin': 0,
     'spot-long': 0, 'spot-short': 0, 'cash': 0, 'perp-spot': 0,
+    'borrowed-cash': 0,
   };
 
   assets.forEach((asset) => {
@@ -651,6 +663,12 @@ export function calculateExposureData(assets: AssetWithPrice[]): ExposureData {
       case 'cash':
         spotLongValue += absValue;
         cashEquivalentsForLeverage += absValue;
+        break;
+      case 'borrowed-cash':
+        // Borrowed stablecoins (e.g., borrowing USDC from Morpho/Aave)
+        // This is NOT short exposure - just leverage
+        // The debt still affects net worth but doesn't count as "short" position
+        // Don't add to spotShortValue - it's not a directional bet against USD
         break;
     }
 
