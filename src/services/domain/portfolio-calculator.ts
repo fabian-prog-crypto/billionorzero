@@ -26,8 +26,6 @@ import {
  * - "SOL Long" or "SOL Short"
  */
 export function detectPerpTrade(name: string): { isPerpTrade: boolean; isLong: boolean; isShort: boolean } {
-  const nameLower = name.toLowerCase();
-
   // Check for "Long" or "Short" followed by optional space and opening paren or end of string
   // This matches: "BTC Long (Hyperliquid)", "ETH Short", "SOL Long (Ethereal)"
   const longMatch = / long(\s*\(|$)/i.test(name);
@@ -37,6 +35,63 @@ export function detectPerpTrade(name: string): { isPerpTrade: boolean; isLong: b
     isPerpTrade: longMatch || shortMatch,
     isLong: longMatch,
     isShort: shortMatch,
+  };
+}
+
+/**
+ * Asset exposure classification types
+ */
+export type ExposureClassification =
+  | 'perp-long'      // Perp long position (notional exposure)
+  | 'perp-short'     // Perp short position (notional exposure)
+  | 'perp-margin'    // Stablecoin margin on perp exchange
+  | 'spot-long'      // Regular long exposure (crypto, stocks, etc.)
+  | 'spot-short'     // Borrowed/debt positions
+  | 'cash'           // Cash equivalents (stablecoins, Pendle PTs)
+  | 'perp-spot';     // Spot holdings on perp exchange (not margin, not perp trade)
+
+/**
+ * Classify an asset for exposure calculation
+ * SINGLE SOURCE OF TRUTH for how each position is categorized
+ */
+export function classifyAssetExposure(
+  asset: AssetWithPrice,
+  categoryService: ReturnType<typeof getCategoryService>
+): { classification: ExposureClassification; absValue: number } {
+  const isOnPerpExchange = asset.protocol ? isPerpProtocol(asset.protocol) : false;
+  const isDebt = asset.isDebt || asset.value < 0;
+  const absValue = Math.abs(asset.value);
+  const { isPerpTrade, isShort } = detectPerpTrade(asset.name);
+  const subCat = categoryService.getSubCategory(asset.symbol, asset.type);
+
+  // Check if cash equivalent (stablecoins, Pendle PTs)
+  const symbolLower = asset.symbol.toLowerCase();
+  const isPendlePT = symbolLower.startsWith('pt-') || symbolLower.startsWith('pt_');
+  const isCashEquivalent = subCat === 'stablecoins' || isPendlePT;
+
+  // Handle perp exchange positions
+  if (isOnPerpExchange) {
+    if (isPerpTrade) {
+      return {
+        classification: isShort ? 'perp-short' : 'perp-long',
+        absValue,
+      };
+    }
+    if (subCat === 'stablecoins') {
+      return { classification: 'perp-margin', absValue };
+    }
+    // Spot holdings on perp exchange (e.g., holding ETH on Hyperliquid)
+    return { classification: 'perp-spot', absValue };
+  }
+
+  // Not on perp exchange
+  if (isCashEquivalent && !isDebt) {
+    return { classification: 'cash', absValue };
+  }
+
+  return {
+    classification: isDebt ? 'spot-short' : 'spot-long',
+    absValue,
   };
 }
 
@@ -536,50 +591,70 @@ export function calculateExposureData(assets: AssetWithPrice[]): ExposureData {
   const categoryAssets: Record<string, number> = {};
   const categoryDebts: Record<string, number> = {};
 
-  // Track perps breakdown
+  // === SINGLE PASS: Classify and track all values ===
+  // Exposure metrics (for professional investor view)
   let perpsMargin = 0;
   let perpsLongs = 0;
   let perpsShorts = 0;
+  let spotLongValue = 0;
+  let spotShortValue = 0;
+  let cashEquivalentsForLeverage = 0;
 
-  // SECOND PASS: Categorize all assets
+  // Debug: track classifications for logging
+  const classificationCounts: Record<ExposureClassification, number> = {
+    'perp-long': 0, 'perp-short': 0, 'perp-margin': 0,
+    'spot-long': 0, 'spot-short': 0, 'cash': 0, 'perp-spot': 0,
+  };
+
   assets.forEach((asset) => {
-    const absValue = Math.abs(asset.value);
+    const { classification, absValue } = classifyAssetExposure(asset, categoryService);
     const isDebt = asset.isDebt || asset.value < 0;
     const mainCat = categoryService.getMainCategory(asset.symbol, asset.type);
     let subCat = categoryService.getSubCategory(asset.symbol, asset.type);
 
-    // Handle perp protocol positions
-    if (asset.protocol && isPerpProtocol(asset.protocol)) {
-      const protocolKey = asset.protocol.toLowerCase();
-      const hasActivePositions = perpProtocolsWithPositions.has(protocolKey);
+    // Track exposure metrics based on classification
+    classificationCounts[classification]++;
 
-      // Check if this is an actual perp trade (Long/Short) vs spot holding
-      const { isPerpTrade, isLong, isShort } = detectPerpTrade(asset.name);
-
-      if (subCat === 'stablecoins') {
-        // ALWAYS count stablecoins on perp exchanges as margin for metrics
-        if (!isDebt) perpsMargin += absValue;
-
-        // Only categorize as 'perps' if there are active positions (for portfolio breakdown)
-        if (hasActivePositions) {
+    switch (classification) {
+      case 'perp-long':
+        perpsLongs += absValue;
+        subCat = 'perps'; // Override for category breakdown
+        break;
+      case 'perp-short':
+        perpsShorts += absValue;
+        subCat = 'perps'; // Override for category breakdown
+        break;
+      case 'perp-margin':
+        perpsMargin += absValue;
+        // Only show as 'perps' in category if there are active positions
+        const protocolKey = asset.protocol?.toLowerCase() || '';
+        if (perpProtocolsWithPositions.has(protocolKey)) {
           subCat = 'perps';
         }
-        // else: stays as crypto_stablecoins for categorization but still counted in perpsMargin
-      } else if (isPerpTrade) {
-        // Actual perp trade (Long/Short position)
-        // Use position name to determine long vs short, not value sign
-        // (exchanges may report shorts as positive notional values)
-        subCat = 'perps';
-        if (isShort) {
-          perpsShorts += absValue;
+        // Cash on perp exchange counts towards cash equivalents
+        cashEquivalentsForLeverage += absValue;
+        break;
+      case 'perp-spot':
+        // Spot holdings on perp exchange - count as regular spot exposure
+        if (isDebt) {
+          spotShortValue += absValue;
         } else {
-          perpsLongs += absValue;
+          spotLongValue += absValue;
         }
-      }
-      // else: spot holding on perp exchange - stays in its original category (e.g., crypto_tokens)
+        break;
+      case 'spot-long':
+        spotLongValue += absValue;
+        break;
+      case 'spot-short':
+        spotShortValue += absValue;
+        break;
+      case 'cash':
+        spotLongValue += absValue;
+        cashEquivalentsForLeverage += absValue;
+        break;
     }
 
-    // Build the category key
+    // Build the category key for breakdown
     const catKey = subCat !== 'none' ? `${mainCat}_${subCat}` : mainCat;
 
     if (!categoryAssets[catKey]) categoryAssets[catKey] = 0;
@@ -591,6 +666,9 @@ export function calculateExposureData(assets: AssetWithPrice[]): ExposureData {
       categoryAssets[catKey] += absValue;
     }
   });
+
+  // Log classification summary
+  console.log('[EXPOSURE] Classification summary:', classificationCounts);
 
   // Calculate totals
   const grossAssets = Object.values(categoryAssets).reduce((sum, v) => sum + v, 0);
@@ -701,52 +779,9 @@ export function calculateExposureData(assets: AssetWithPrice[]): ExposureData {
     .sort((a, b) => b.value - a.value);
 
   // === PROFESSIONAL INVESTOR METRICS ===
-
-  // Calculate spot exposure by iterating through assets directly (more accurate)
-  let spotLongValue = 0;
-  let spotShortValue = 0;
-  let cashEquivalentsForLeverage = 0; // Stablecoins, Pendle PTs - don't count towards leverage
-
-  assets.forEach((asset) => {
-    const isOnPerpExchange = asset.protocol && isPerpProtocol(asset.protocol);
-    const subCat = categoryService.getSubCategory(asset.symbol, asset.type);
-    const isDebt = asset.isDebt || asset.value < 0;
-    const absValue = Math.abs(asset.value);
-
-    // Check if this is a perp trade (counted separately in perpsLongs/perpsShorts)
-    const { isPerpTrade } = detectPerpTrade(asset.name);
-
-    // Handle perp exchange assets:
-    // - Stablecoins: skip (margin, counted in perpsMargin)
-    // - Perp trades: skip (counted in perpsLongs/perpsShorts)
-    // - Spot holdings: count as spot exposure (e.g., holding ETH on Hyperliquid)
-    if (isOnPerpExchange) {
-      if (subCat === 'stablecoins' || isPerpTrade) {
-        return; // Skip margin and perp trades
-      }
-      // Spot holdings on perp exchanges - fall through to count as spot
-    }
-
-    // Check if this is a cash equivalent (stablecoins, Pendle PTs)
-    // Pendle PTs are fixed-term deposits that mature to a known value - no market risk
-    // PT symbols start with 'pt-' (e.g., PT-sUSDe-27MAR2025, PT-weETH-26JUN2025)
-    // Note: YT (Yield Tokens) are NOT cash equivalents as they have yield risk
-    const symbolLower = asset.symbol.toLowerCase();
-    const isPendlePT = symbolLower.startsWith('pt-') || symbolLower.startsWith('pt_');
-    const isCashEquivalent = subCat === 'stablecoins' || isPendlePT;
-
-    if (isDebt) {
-      spotShortValue += absValue;
-    } else {
-      spotLongValue += absValue;
-      if (isCashEquivalent) {
-        cashEquivalentsForLeverage += absValue;
-      }
-    }
-  });
+  // (Values already calculated in single pass above)
 
   // Exposure Metrics
-  // Exclude cash equivalents (stablecoins, Pendle PTs) as they don't add market risk
   const spotLong = spotLongValue;
   const spotShort = spotShortValue;
 
