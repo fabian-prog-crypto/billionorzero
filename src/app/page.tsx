@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Plus, TrendingUp, TrendingDown, ArrowUpRight, Wallet, Eye, EyeOff } from 'lucide-react';
+import { Plus, TrendingUp, TrendingDown, ArrowUpRight, Wallet, Eye, EyeOff, Info } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import { calculatePortfolioSummary, calculateAllPositionsWithPrices, calculateExposureData } from '@/services';
 import Header from '@/components/Header';
@@ -18,6 +18,7 @@ import {
   getChangeColor,
 } from '@/lib/utils';
 import Link from 'next/link';
+import Tooltip from '@/components/ui/Tooltip';
 
 export default function OverviewPage() {
   const [showAddPosition, setShowAddPosition] = useState(false);
@@ -133,27 +134,130 @@ export default function OverviewPage() {
             {/* Professional Investor Metrics */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
               {/* Gross Exposure */}
-              <div className="card">
-                <p className="text-xs text-[var(--foreground-muted)] mb-1">Gross Exposure</p>
-                <p className="text-lg font-semibold">
-                  {hideBalances ? '****' : formatCurrency(exposureMetrics.grossExposure)}
-                </p>
-                <div className="flex gap-2 mt-1 text-xs">
-                  <span className="text-[var(--positive)]">L: {hideBalances ? '**' : formatCurrency(exposureMetrics.longExposure)}</span>
-                  <span className="text-[var(--negative)]">S: {hideBalances ? '**' : formatCurrency(exposureMetrics.shortExposure)}</span>
+              <Tooltip
+                content={
+                  <div className="space-y-2">
+                    <div className="font-medium border-b border-[var(--border)] pb-1 mb-2">Gross Exposure Breakdown</div>
+                    <div className="space-y-1.5">
+                      <div className="text-[var(--foreground-muted)]">Long Exposure:</div>
+                      <div className="pl-2 space-y-0.5 text-xs">
+                        <div className="flex justify-between">
+                          <span>Spot Long</span>
+                          <span>{formatCurrency(spotDerivatives.spotLong)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>- Cash Equivalents</span>
+                          <span>-{formatCurrency(exposureMetrics.cashPosition)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>+ Perps Long</span>
+                          <span>{formatCurrency(perpsMetrics.longNotional)}</span>
+                        </div>
+                        <div className="flex justify-between font-medium text-[var(--positive)] pt-0.5 border-t border-[var(--border)]">
+                          <span>= Long</span>
+                          <span>{formatCurrency(exposureMetrics.longExposure)}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <div className="text-[var(--foreground-muted)]">Short Exposure:</div>
+                      <div className="pl-2 space-y-0.5 text-xs">
+                        <div className="flex justify-between">
+                          <span>Borrowed Crypto</span>
+                          <span>{formatCurrency(spotDerivatives.spotShort)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>+ Perps Short</span>
+                          <span>{formatCurrency(perpsMetrics.shortNotional)}</span>
+                        </div>
+                        <div className="flex justify-between font-medium text-[var(--negative)] pt-0.5 border-t border-[var(--border)]">
+                          <span>= Short</span>
+                          <span>{formatCurrency(exposureMetrics.shortExposure)}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex justify-between font-medium pt-2 border-t border-[var(--border)]">
+                      <span>Gross (L + S)</span>
+                      <span>{formatCurrency(exposureMetrics.grossExposure)}</span>
+                    </div>
+                  </div>
+                }
+                position="bottom"
+                maxWidth={320}
+              >
+                <div className="card cursor-help">
+                  <div className="flex items-center gap-1">
+                    <p className="text-xs text-[var(--foreground-muted)] mb-1">Gross Exposure</p>
+                    <Info className="w-3 h-3 text-[var(--foreground-muted)] mb-1" />
+                  </div>
+                  <p className="text-lg font-semibold">
+                    {hideBalances ? '****' : formatCurrency(exposureMetrics.grossExposure)}
+                  </p>
+                  <div className="flex gap-2 mt-1 text-xs">
+                    <span className="text-[var(--positive)]">L: {hideBalances ? '**' : formatCurrency(exposureMetrics.longExposure)}</span>
+                    <span className="text-[var(--negative)]">S: {hideBalances ? '**' : formatCurrency(exposureMetrics.shortExposure)}</span>
+                  </div>
                 </div>
-              </div>
+              </Tooltip>
 
               {/* Leverage */}
-              <div className="card">
-                <p className="text-xs text-[var(--foreground-muted)] mb-1">Leverage</p>
-                <p className={`text-lg font-semibold ${exposureMetrics.leverage > 2 ? 'text-[var(--negative)]' : exposureMetrics.leverage > 1.5 ? 'text-yellow-600' : ''}`}>
-                  {exposureMetrics.leverage.toFixed(2)}x
-                </p>
-                <p className="text-xs text-[var(--foreground-muted)] mt-1">
-                  {exposureMetrics.leverage <= 1 ? 'No leverage' : exposureMetrics.leverage <= 1.5 ? 'Low' : exposureMetrics.leverage <= 2 ? 'Moderate' : 'High'}
-                </p>
-              </div>
+              <Tooltip
+                content={
+                  <div className="space-y-2">
+                    <div className="font-medium border-b border-[var(--border)] pb-1 mb-2">Leverage Calculation</div>
+                    <div className="space-y-1.5 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-[var(--foreground-muted)]">Gross Exposure</span>
+                        <span>{formatCurrency(exposureMetrics.grossExposure)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-[var(--foreground-muted)]">Net Worth</span>
+                        <span>{formatCurrency(exposureMetrics.netWorth)}</span>
+                      </div>
+                      <div className="flex justify-between font-medium pt-1 border-t border-[var(--border)]">
+                        <span>Leverage</span>
+                        <span>{exposureMetrics.leverage.toFixed(2)}x</span>
+                      </div>
+                    </div>
+                    <div className="text-xs text-[var(--foreground-muted)] pt-2 border-t border-[var(--border)]">
+                      <span className="font-medium">Formula:</span> Gross Exposure / Net Worth
+                    </div>
+                    <div className="text-xs pt-1">
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 rounded-full bg-[var(--positive)]" />
+                        <span>&le; 1.0x = No leverage</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 rounded-full bg-[var(--positive)]" />
+                        <span>1.0-1.5x = Low</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 rounded-full bg-yellow-500" />
+                        <span>1.5-2.0x = Moderate</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 rounded-full bg-[var(--negative)]" />
+                        <span>&gt; 2.0x = High</span>
+                      </div>
+                    </div>
+                  </div>
+                }
+                position="bottom"
+                maxWidth={280}
+              >
+                <div className="card cursor-help">
+                  <div className="flex items-center gap-1">
+                    <p className="text-xs text-[var(--foreground-muted)] mb-1">Leverage</p>
+                    <Info className="w-3 h-3 text-[var(--foreground-muted)] mb-1" />
+                  </div>
+                  <p className={`text-lg font-semibold ${exposureMetrics.leverage > 2 ? 'text-[var(--negative)]' : exposureMetrics.leverage > 1.5 ? 'text-yellow-600' : ''}`}>
+                    {exposureMetrics.leverage.toFixed(2)}x
+                  </p>
+                  <p className="text-xs text-[var(--foreground-muted)] mt-1">
+                    {exposureMetrics.leverage <= 1 ? 'No leverage' : exposureMetrics.leverage <= 1.5 ? 'Low' : exposureMetrics.leverage <= 2 ? 'Moderate' : 'High'}
+                  </p>
+                </div>
+              </Tooltip>
 
               {/* Cash Position */}
               <div className="card">
