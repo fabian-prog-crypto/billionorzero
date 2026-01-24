@@ -6,7 +6,6 @@ import { usePortfolioStore } from '@/store/portfolioStore';
 import { calculateAllPositionsWithPrices, aggregatePositionsBySymbol, getCategoryService } from '@/services';
 import Header from '@/components/Header';
 import CustomPriceModal from '@/components/modals/CustomPriceModal';
-import { useRefresh } from '@/components/PortfolioProvider';
 import {
   formatCurrency,
   formatPercent,
@@ -33,7 +32,6 @@ export default function CryptoPositionsPage() {
   }>({ isOpen: false, asset: null });
 
   const { positions, prices, customPrices, removePosition, hideBalances } = usePortfolioStore();
-  const { refresh } = useRefresh();
   const categoryService = getCategoryService();
 
   // Calculate all positions with current prices
@@ -163,7 +161,7 @@ export default function CryptoPositionsPage() {
 
   return (
     <div>
-      <Header title="Crypto Positions" onSync={refresh} />
+      <Header title="Crypto Positions" />
 
       {/* Summary Card */}
       <div className="card mb-6">
