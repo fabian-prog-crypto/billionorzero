@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useAuthStore } from '@/store/authStore';
 import { isPasskeyRegistered } from '@/lib/passkey';
 import LoginScreen from './LoginScreen';
@@ -10,24 +10,28 @@ interface AuthProviderProps {
 }
 
 export default function AuthProvider({ children }: AuthProviderProps) {
-  const [isLoading, setIsLoading] = useState(true);
-  const { isAuthenticated, setAuthenticated, setPasskeyEnabled } = useAuthStore();
+  const {
+    isAuthenticated,
+    _hasHydrated,
+    setAuthenticated,
+    setPasskeyEnabled
+  } = useAuthStore();
 
   useEffect(() => {
+    if (!_hasHydrated) return;
+
     // Check if passkey is registered
     const hasPasskey = isPasskeyRegistered();
     setPasskeyEnabled(hasPasskey);
 
-    // If no passkey is set up, auto-authenticate (first time user)
-    if (!hasPasskey) {
+    // If no passkey is set up and not already authenticated, auto-authenticate (first time user)
+    if (!hasPasskey && !isAuthenticated) {
       setAuthenticated(true);
     }
+  }, [_hasHydrated, isAuthenticated, setAuthenticated, setPasskeyEnabled]);
 
-    setIsLoading(false);
-  }, [setAuthenticated, setPasskeyEnabled]);
-
-  // Show loading state
-  if (isLoading) {
+  // Show loading state while hydrating from localStorage
+  if (!_hasHydrated) {
     return (
       <div className="min-h-screen bg-[var(--background)] flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-[var(--accent-primary)] border-t-transparent rounded-full animate-spin" />

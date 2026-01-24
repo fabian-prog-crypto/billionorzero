@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Wallet, ExternalLink, Copy, Check } from 'lucide-react';
 import { useState } from 'react';
 import { usePortfolioStore } from '@/store/portfolioStore';
-import { calculateAllPositionsWithPrices } from '@/services';
+import { calculateAllPositionsWithPrices, calculatePortfolioSummary } from '@/services';
 import Header from '@/components/Header';
 import { useRefresh } from '@/components/PortfolioProvider';
 import {
@@ -16,6 +16,8 @@ import {
   getChangeColor,
   getChainColor,
 } from '@/lib/utils';
+import { PerpExchange } from '@/types';
+import { getSupportedPerpExchanges } from '@/services';
 
 export default function WalletDetailPage() {
   const params = useParams();
@@ -23,10 +25,20 @@ export default function WalletDetailPage() {
   const walletId = params.id as string;
   const [copiedAddress, setCopiedAddress] = useState(false);
 
-  const { wallets, positions, prices, hideBalances } = usePortfolioStore();
+  const { wallets, positions, prices, hideBalances, updateWallet } = usePortfolioStore();
   const { refresh } = useRefresh();
 
   const wallet = wallets.find((w) => w.id === walletId);
+
+  // Toggle perp exchange for this wallet
+  const togglePerpExchange = (exchange: PerpExchange) => {
+    if (!wallet) return;
+    const currentExchanges = wallet.perpExchanges || [];
+    const newExchanges = currentExchanges.includes(exchange)
+      ? currentExchanges.filter(e => e !== exchange)
+      : [...currentExchanges, exchange];
+    updateWallet(wallet.id, { perpExchanges: newExchanges.length > 0 ? newExchanges : undefined });
+  };
 
   // Get positions for this wallet
   const walletPositions = useMemo(() => {
@@ -39,18 +51,15 @@ export default function WalletDetailPage() {
     return calculateAllPositionsWithPrices(walletPositions, prices);
   }, [walletPositions, prices]);
 
-  // Calculate totals
-  const totalValue = useMemo(() => {
-    return positionsWithPrices.reduce((sum, p) => sum + p.value, 0);
-  }, [positionsWithPrices]);
+  // Get wallet summary from centralized service (single source of truth)
+  const walletSummary = useMemo(() => {
+    return calculatePortfolioSummary(walletPositions, prices);
+  }, [walletPositions, prices]);
 
-  const totalChange24h = useMemo(() => {
-    return positionsWithPrices.reduce((sum, p) => sum + p.change24h, 0);
-  }, [positionsWithPrices]);
-
-  const changePercent24h = totalValue > 0
-    ? (totalChange24h / (totalValue - totalChange24h)) * 100
-    : 0;
+  // Extract values from service - no local calculations
+  const totalValue = walletSummary.totalValue;
+  const totalChange24h = walletSummary.change24h;
+  const changePercent24h = walletSummary.changePercent24h;
 
   // Group by chain
   const positionsByChain = useMemo(() => {
@@ -149,20 +158,50 @@ export default function WalletDetailPage() {
           </div>
         </div>
 
-        {/* Chain badges */}
+        {/* Chain badges - derived from actual positions (auto-detected by DeBank) */}
         <div className="flex gap-2 mt-4 flex-wrap">
-          {wallet.chains.map((chain) => (
-            <span
-              key={chain}
-              className="px-2 py-1 text-xs rounded-full"
-              style={{
-                backgroundColor: `${getChainColor(chain)}20`,
-                color: getChainColor(chain),
-              }}
-            >
-              {chain.toUpperCase()}
-            </span>
-          ))}
+          {Object.keys(positionsByChain).length > 0 ? (
+            Object.keys(positionsByChain).map((chain) => (
+              <span
+                key={chain}
+                className="px-2 py-1 text-xs rounded-full"
+                style={{
+                  backgroundColor: `${getChainColor(chain)}20`,
+                  color: getChainColor(chain),
+                }}
+              >
+                {chain.toUpperCase()}
+              </span>
+            ))
+          ) : (
+            <span className="text-xs text-[var(--foreground-muted)]">No assets detected</span>
+          )}
+        </div>
+
+        {/* Perp Exchange Settings */}
+        <div className="mt-4 pt-4 border-t border-[var(--border)]">
+          <p className="text-sm font-medium mb-2">Perp Exchanges</p>
+          <p className="text-xs text-[var(--foreground-muted)] mb-3">
+            Enable to fetch positions from perpetual futures exchanges
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {getSupportedPerpExchanges().map((exchange) => {
+              const isEnabled = wallet.perpExchanges?.includes(exchange.id) || false;
+              return (
+                <button
+                  key={exchange.id}
+                  onClick={() => togglePerpExchange(exchange.id)}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                    isEnabled
+                      ? 'bg-[var(--accent-primary)] text-white'
+                      : 'bg-[var(--background-secondary)] text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
+                  }`}
+                >
+                  {exchange.name}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 

@@ -70,13 +70,13 @@ export async function registerPasskey(): Promise<{ success: boolean; error?: str
     const userId = crypto.getRandomValues(new Uint8Array(16));
 
     const publicKeyCredentialCreationOptions: PublicKeyCredentialCreationOptions = {
-      challenge,
+      challenge: challenge as BufferSource,
       rp: {
         name: RP_NAME,
         id: RP_ID,
       },
       user: {
-        id: userId,
+        id: userId as BufferSource,
         name: 'user@billionorzero.local',
         displayName: 'Portfolio Owner',
       },
@@ -140,7 +140,7 @@ export async function authenticateWithPasskey(): Promise<{ success: boolean; err
     const challenge = generateChallenge();
 
     const publicKeyCredentialRequestOptions: PublicKeyCredentialRequestOptions = {
-      challenge,
+      challenge: challenge as BufferSource,
       rpId: RP_ID,
       allowCredentials: [
         {

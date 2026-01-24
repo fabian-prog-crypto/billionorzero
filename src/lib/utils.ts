@@ -1,36 +1,46 @@
 export function formatCurrency(value: number, decimals: number = 2): string {
-  if (value >= 1_000_000_000) {
-    return `$${(value / 1_000_000_000).toFixed(2)}B`;
+  // Handle negative values by formatting absolute value and prepending minus
+  const isNegative = value < 0;
+  const absValue = Math.abs(value);
+  const prefix = isNegative ? '-$' : '$';
+
+  if (absValue >= 1_000_000_000) {
+    return `${prefix}${(absValue / 1_000_000_000).toFixed(2)}B`;
   }
-  if (value >= 1_000_000) {
-    return `$${(value / 1_000_000).toFixed(2)}M`;
+  if (absValue >= 1_000_000) {
+    return `${prefix}${(absValue / 1_000_000).toFixed(2)}M`;
   }
-  if (value >= 1_000) {
-    return `$${value.toLocaleString('en-US', {
+  if (absValue >= 1_000) {
+    return `${prefix}${absValue.toLocaleString('en-US', {
       minimumFractionDigits: decimals,
       maximumFractionDigits: decimals,
     })}`;
   }
-  return `$${value.toFixed(decimals)}`;
+  return `${prefix}${absValue.toFixed(decimals)}`;
 }
 
 export function formatNumber(value: number, decimals: number = 2): string {
-  if (value >= 1_000_000_000) {
-    return `${(value / 1_000_000_000).toFixed(2)}B`;
+  // Handle negative values
+  const isNegative = value < 0;
+  const absValue = Math.abs(value);
+  const prefix = isNegative ? '-' : '';
+
+  if (absValue >= 1_000_000_000) {
+    return `${prefix}${(absValue / 1_000_000_000).toFixed(2)}B`;
   }
-  if (value >= 1_000_000) {
-    return `${(value / 1_000_000).toFixed(2)}M`;
+  if (absValue >= 1_000_000) {
+    return `${prefix}${(absValue / 1_000_000).toFixed(2)}M`;
   }
-  if (value >= 1_000) {
-    return value.toLocaleString('en-US', {
+  if (absValue >= 1_000) {
+    return `${prefix}${absValue.toLocaleString('en-US', {
       minimumFractionDigits: decimals,
       maximumFractionDigits: decimals,
-    });
+    })}`;
   }
-  if (value < 0.01 && value > 0) {
-    return value.toFixed(6);
+  if (absValue < 0.01 && absValue > 0) {
+    return `${prefix}${absValue.toFixed(6)}`;
   }
-  return value.toFixed(decimals);
+  return `${prefix}${absValue.toFixed(decimals)}`;
 }
 
 export function formatPercent(value: number, decimals: number = 2): string {

@@ -1,0 +1,358 @@
+'use client';
+
+import { useMemo } from 'react';
+import { usePortfolioStore } from '@/store/portfolioStore';
+import { calculateAllPositionsWithPrices, calculateExposureData, filterPerpPositions } from '@/services';
+import Header from '@/components/Header';
+import { useRefresh } from '@/components/PortfolioProvider';
+import { formatCurrency, formatNumber, formatPercent, getChangeColor } from '@/lib/utils';
+import { getCategoryService } from '@/services';
+import { Wallet } from 'lucide-react';
+
+export default function PerpsPage() {
+  const { positions, prices, hideBalances } = usePortfolioStore();
+  const { refresh } = useRefresh();
+
+  // Calculate all positions with prices
+  const allAssetsWithPrices = useMemo(() => {
+    return calculateAllPositionsWithPrices(positions, prices);
+  }, [positions, prices]);
+
+  // Use centralized exposure calculation
+  const exposureData = useMemo(() => {
+    return calculateExposureData(allAssetsWithPrices);
+  }, [allAssetsWithPrices]);
+
+  const { perpsBreakdown, perpsMetrics } = exposureData;
+
+  // Filter to only perp positions (using shared helper for consistency)
+  const perpPositions = useMemo(() => {
+    return filterPerpPositions(allAssetsWithPrices);
+  }, [allAssetsWithPrices]);
+
+  // Group positions by exchange
+  const positionsByExchange = useMemo(() => {
+    const grouped: Record<string, typeof perpPositions> = {};
+
+    perpPositions.forEach((p) => {
+      const exchange = p.protocol || 'Unknown';
+      if (!grouped[exchange]) {
+        grouped[exchange] = [];
+      }
+      grouped[exchange].push(p);
+    });
+
+    return grouped;
+  }, [perpPositions]);
+
+  // Calculate stats per exchange
+  const exchangeStats = useMemo(() => {
+    return Object.entries(positionsByExchange).map(([exchange, positions]) => {
+      const margin = positions
+        .filter((p) => {
+          const cat = getCategoryService().getSubCategory(p.symbol, p.type);
+          return (cat === 'stablecoins' ) && !p.isDebt;
+        })
+        .reduce((sum, p) => sum + p.value, 0);
+
+      const longs = positions
+        .filter((p) => {
+          const cat = getCategoryService().getSubCategory(p.symbol, p.type);
+          return cat !== 'stablecoins' && !p.isDebt;
+        })
+        .reduce((sum, p) => sum + p.value, 0);
+
+      const shorts = positions
+        .filter((p) => {
+          const cat = getCategoryService().getSubCategory(p.symbol, p.type);
+          return cat !== 'stablecoins' && p.isDebt;
+        })
+        .reduce((sum, p) => sum + Math.abs(p.value), 0);
+
+      const net = margin + longs - shorts;
+
+      return {
+        exchange,
+        margin,
+        longs,
+        shorts,
+        net,
+        positionCount: positions.length,
+      };
+    }).sort((a, b) => b.net - a.net);
+  }, [positionsByExchange]);
+
+  // Separate margin and trading positions for display
+  const marginPositions = perpPositions.filter((p) => {
+    const cat = getCategoryService().getSubCategory(p.symbol, p.type);
+    return cat === 'stablecoins' ;
+  });
+
+  const tradingPositions = perpPositions.filter((p) => {
+    const cat = getCategoryService().getSubCategory(p.symbol, p.type);
+    return cat !== 'stablecoins';
+  });
+
+  const hasPerps = perpsBreakdown.total !== 0 || perpPositions.length > 0;
+
+  return (
+    <div>
+      <Header title="Perps Overview" onSync={refresh} />
+
+      {!hasPerps ? (
+        <div className="card text-center py-12">
+          <p className="text-[var(--foreground-muted)] mb-2">No perpetual positions found</p>
+          <p className="text-sm text-[var(--foreground-muted)]">
+            Connect a wallet with positions on Hyperliquid, Lighter, or Ethereal to see them here.
+          </p>
+        </div>
+      ) : (
+        <>
+          {/* Professional Metrics */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+            <div className="card">
+              <p className="text-sm text-[var(--foreground-muted)] mb-1">Collateral</p>
+              <p className="text-xl font-semibold">
+                {hideBalances ? '****' : formatCurrency(perpsMetrics.collateral)}
+              </p>
+              <p className="text-xs text-[var(--foreground-muted)]">Margin deposited</p>
+            </div>
+            <div className="card">
+              <p className="text-sm text-[var(--foreground-muted)] mb-1">Gross Notional</p>
+              <p className="text-xl font-semibold">
+                {hideBalances ? '****' : formatCurrency(perpsMetrics.grossNotional)}
+              </p>
+              <p className="text-xs text-[var(--foreground-muted)]">|Long| + |Short|</p>
+            </div>
+            <div className="card">
+              <p className="text-sm text-[var(--foreground-muted)] mb-1">Net Notional</p>
+              <p className={`text-xl font-semibold ${perpsMetrics.netNotional >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                {hideBalances ? '****' : formatCurrency(perpsMetrics.netNotional)}
+              </p>
+              <p className="text-xs text-[var(--foreground-muted)]">{perpsMetrics.netNotional >= 0 ? 'Net Long' : 'Net Short'}</p>
+            </div>
+            <div className="card">
+              <p className="text-sm text-[var(--foreground-muted)] mb-1">Utilization</p>
+              <p className={`text-xl font-semibold ${
+                perpsMetrics.utilizationRate > 80 ? 'text-red-500' :
+                perpsMetrics.utilizationRate > 60 ? 'text-yellow-600' : ''
+              }`}>
+                {perpsMetrics.utilizationRate.toFixed(1)}%
+              </p>
+              <p className="text-xs text-[var(--foreground-muted)]">Margin used</p>
+            </div>
+          </div>
+
+          {/* Long/Short Breakdown */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            <div className="card">
+              <p className="text-sm text-[var(--foreground-muted)] mb-1">Long Notional</p>
+              <p className="text-xl font-semibold text-green-500">
+                {hideBalances ? '****' : formatCurrency(perpsMetrics.longNotional)}
+              </p>
+            </div>
+            <div className="card">
+              <p className="text-sm text-[var(--foreground-muted)] mb-1">Short Notional</p>
+              <p className="text-xl font-semibold text-red-500">
+                {hideBalances ? '****' : formatCurrency(perpsMetrics.shortNotional)}
+              </p>
+            </div>
+            <div className="card">
+              <p className="text-sm text-[var(--foreground-muted)] mb-1">Est. Margin Used</p>
+              <p className="text-xl font-semibold">
+                {hideBalances ? '****' : formatCurrency(perpsMetrics.marginUsed)}
+              </p>
+            </div>
+            <div className="card">
+              <p className="text-sm text-[var(--foreground-muted)] mb-1">Margin Available</p>
+              <p className={`text-xl font-semibold ${perpsMetrics.marginAvailable < perpsMetrics.collateral * 0.2 ? 'text-yellow-600' : ''}`}>
+                {hideBalances ? '****' : formatCurrency(perpsMetrics.marginAvailable)}
+              </p>
+            </div>
+          </div>
+
+          {/* Exchange breakdown */}
+          {exchangeStats.length > 0 && (
+            <div className="card mb-6">
+              <h3 className="font-semibold mb-4">By Exchange</h3>
+              <div className="table-scroll">
+              <table className="w-full min-w-[550px]">
+                <thead>
+                  <tr className="border-b border-[var(--border)]">
+                    <th className="table-header text-left pb-3">Exchange</th>
+                    <th className="table-header text-right pb-3">Margin</th>
+                    <th className="table-header text-right pb-3">Longs</th>
+                    <th className="table-header text-right pb-3">Shorts</th>
+                    <th className="table-header text-right pb-3">Net Value</th>
+                    <th className="table-header text-right pb-3">Positions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {exchangeStats.map((stat) => (
+                    <tr key={stat.exchange} className="border-b border-[var(--border)] last:border-0">
+                      <td className="py-3">
+                        <span className="font-medium">{stat.exchange}</span>
+                      </td>
+                      <td className="py-3 text-right">
+                        {hideBalances ? '****' : formatCurrency(stat.margin)}
+                      </td>
+                      <td className="py-3 text-right text-green-500">
+                        {hideBalances ? '****' : formatCurrency(stat.longs)}
+                      </td>
+                      <td className="py-3 text-right text-red-500">
+                        {hideBalances ? '****' : stat.shorts > 0 ? `-${formatCurrency(stat.shorts)}` : '-'}
+                      </td>
+                      <td className={`py-3 text-right font-semibold ${stat.net >= 0 ? '' : 'text-red-500'}`}>
+                        {hideBalances ? '****' : formatCurrency(stat.net)}
+                      </td>
+                      <td className="py-3 text-right text-[var(--foreground-muted)]">
+                        {stat.positionCount}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              </div>
+            </div>
+          )}
+
+          {/* Trading Positions */}
+          {tradingPositions.length > 0 && (
+            <div className="card mb-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold">Trading Positions</h3>
+                <span className="text-sm text-[var(--foreground-muted)]">
+                  {tradingPositions.length} position{tradingPositions.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+              <div className="table-scroll">
+              <table className="w-full min-w-[600px]">
+                <thead>
+                  <tr className="border-b border-[var(--border)]">
+                    <th className="table-header text-left pb-3">Asset</th>
+                    <th className="table-header text-left pb-3">Exchange</th>
+                    <th className="table-header text-left pb-3">Side</th>
+                    <th className="table-header text-right pb-3">Size</th>
+                    <th className="table-header text-right pb-3">Price</th>
+                    <th className="table-header text-right pb-3">Value</th>
+                    <th className="table-header text-right pb-3">24h</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tradingPositions
+                    .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
+                    .map((position) => (
+                      <tr
+                        key={position.id}
+                        className={`border-b border-[var(--border)] last:border-0 hover:bg-[var(--background-secondary)] transition-colors`}
+                      >
+                        <td className="py-3">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold ${
+                              position.isDebt ? 'bg-red-500 text-white' : 'bg-green-500 text-white'
+                            }`}>
+                              {position.symbol.slice(0, 2).toUpperCase()}
+                            </div>
+                            <div>
+                              <p className="font-medium">{position.symbol.toUpperCase()}</p>
+                              <p className="text-xs text-[var(--foreground-muted)]">{position.name}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3">
+                          <div className="flex items-center gap-1.5">
+                            <Wallet className="w-3.5 h-3.5 text-[var(--accent-primary)]" />
+                            <span className="tag text-xs">{position.protocol}</span>
+                          </div>
+                        </td>
+                        <td className="py-3">
+                          <span className={`px-2 py-1 text-xs font-semibold rounded ${
+                            position.isDebt
+                              ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                              : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                          }`}>
+                            {position.isDebt ? 'SHORT' : 'LONG'}
+                          </span>
+                        </td>
+                        <td className="py-3 text-right font-mono text-sm">
+                          {hideBalances ? '***' : formatNumber(position.amount)}
+                        </td>
+                        <td className="py-3 text-right font-mono text-sm">
+                          {position.currentPrice > 0 ? formatCurrency(position.currentPrice) : '-'}
+                        </td>
+                        <td className={`py-3 text-right font-semibold ${position.isDebt ? 'text-red-500' : 'text-green-500'}`}>
+                          {hideBalances ? '****' : formatCurrency(position.value)}
+                        </td>
+                        <td className={`py-3 text-right ${getChangeColor(position.changePercent24h)}`}>
+                          {position.currentPrice > 0 ? formatPercent(position.changePercent24h) : '-'}
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+              </div>
+            </div>
+          )}
+
+          {/* Margin Deposits */}
+          {marginPositions.length > 0 && (
+            <div className="card">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold">Margin Deposits</h3>
+                <span className="text-sm text-[var(--foreground-muted)]">
+                  {marginPositions.length} deposit{marginPositions.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+              <div className="table-scroll">
+              <table className="w-full min-w-[400px]">
+                <thead>
+                  <tr className="border-b border-[var(--border)]">
+                    <th className="table-header text-left pb-3">Asset</th>
+                    <th className="table-header text-left pb-3">Exchange</th>
+                    <th className="table-header text-right pb-3">Amount</th>
+                    <th className="table-header text-right pb-3">Value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {marginPositions
+                    .sort((a, b) => b.value - a.value)
+                    .map((position) => (
+                      <tr
+                        key={position.id}
+                        className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--background-secondary)] transition-colors"
+                      >
+                        <td className="py-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-[var(--tag-bg)] rounded-full flex items-center justify-center text-xs font-semibold">
+                              {position.symbol.slice(0, 2).toUpperCase()}
+                            </div>
+                            <div>
+                              <p className="font-medium">{position.symbol.toUpperCase()}</p>
+                              <p className="text-xs text-[var(--foreground-muted)]">{position.name}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3">
+                          <div className="flex items-center gap-1.5">
+                            <Wallet className="w-3.5 h-3.5 text-[var(--accent-primary)]" />
+                            <span className="tag text-xs">{position.protocol}</span>
+                          </div>
+                        </td>
+                        <td className="py-3 text-right font-mono text-sm">
+                          {hideBalances ? '***' : formatNumber(position.amount)}
+                        </td>
+                        <td className="py-3 text-right font-semibold">
+                          {hideBalances ? '****' : formatCurrency(position.value)}
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}

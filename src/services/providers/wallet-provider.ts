@@ -6,6 +6,7 @@
 import { WalletBalance, DefiPosition, Position, Wallet } from '@/types';
 import { getDebankApiClient, ApiError } from '../api';
 import { generateDemoWalletTokens, generateDemoDefiPositions } from './demo-data';
+import { getPerpExchangeService } from '../domain/perp-exchange-service';
 
 export interface WalletProviderConfig {
   debankApiKey?: string;
@@ -183,6 +184,10 @@ export class WalletProvider {
    * Converts wallet tokens to Position objects for the portfolio
    * Also returns prices from DeBank (more accurate for wallet tokens)
    * Includes DeFi protocol positions (supply + debt)
+   *
+   * IMPORTANT: Protocol positions are processed FIRST to avoid double counting.
+   * Tokens that appear in protocol positions (e.g., PT tokens in Pendle) are
+   * excluded from the regular token list to prevent counting the same asset twice.
    */
   async fetchAllWalletPositions(wallets: Wallet[]): Promise<{
     positions: Position[];
@@ -194,45 +199,25 @@ export class WalletProvider {
     const debankPrices: Record<string, { price: number; symbol: string }> = {};
 
     for (const wallet of wallets) {
-      // Fetch regular wallet tokens
-      const { tokens } = await this.getWalletTokens(wallet.address);
+      // Track tokens that come from protocols to avoid double counting
+      // Key: "symbol-chain" (lowercase)
+      const protocolTokenKeys = new Set<string>();
 
-      const walletPositions = tokens.map((token, index) => {
-        // Store the price from DeBank - use a unique key combining symbol and chain
-        // to avoid conflicts with CoinGecko IDs
-        const priceKey = `debank-${token.symbol.toLowerCase()}-${token.chain}`;
-        debankPrices[priceKey] = {
-          price: token.price,
-          symbol: token.symbol,
-        };
-
-        return {
-          id: `${wallet.id}-${token.symbol}-${index}`,
-          type: 'crypto' as const,
-          symbol: token.symbol,
-          name: token.name,
-          amount: token.amount,
-          walletAddress: wallet.address,
-          chain: token.chain,
-          // Store the DeBank price key so we can look it up later
-          debankPriceKey: priceKey,
-          addedAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-      });
-
-      allPositions.push(...walletPositions);
-
-      // Fetch DeFi protocol positions (including debt)
+      // FIRST: Fetch DeFi protocol positions (including debt)
+      // This must happen before regular tokens to track what's in protocols
       const { positions: protocolPositions } = await this.getWalletProtocols(wallet.address);
 
-      // Track seen position IDs to avoid duplicates (in case of overlapping protocols)
+      // Track seen position IDs to avoid duplicates within protocols
       const seenPositionIds = new Set<string>();
 
       for (const defiPos of protocolPositions) {
         // Add supply tokens (collateral, lending, staking, LP)
         for (const token of defiPos.tokens) {
           if (token.amount <= 0 || token.price <= 0) continue;
+
+          // Track this token as coming from a protocol
+          const tokenKey = `${token.symbol.toLowerCase()}-${defiPos.chain}`;
+          protocolTokenKeys.add(tokenKey);
 
           // Use protocol + type + symbol for unique ID
           const positionId = `${wallet.id}-${defiPos.protocol}-${defiPos.type}-${token.symbol}-supply`;
@@ -269,6 +254,10 @@ export class WalletProvider {
         }
 
         // Add debt tokens (borrowed positions)
+        // NOTE: Debt tokens should NOT be added to protocolTokenKeys because:
+        // - Borrowed tokens are liabilities, not assets you hold
+        // - You might have regular holdings of the same token (e.g., hold USDC + borrow USDC)
+        // - Only supply tokens should prevent duplicate counting from wallet token list
         if (defiPos.debtTokens) {
           for (const token of defiPos.debtTokens) {
             if (token.amount <= 0 || token.price <= 0) continue;
@@ -310,6 +299,52 @@ export class WalletProvider {
         }
       }
 
+      // SECOND: Fetch regular wallet tokens, excluding those already in protocols
+      const { tokens } = await this.getWalletTokens(wallet.address);
+
+      const walletPositions = tokens
+        .filter((token) => {
+          // Skip tokens that are already tracked via protocol positions
+          // This prevents double counting of PT tokens, LP tokens, etc.
+          const tokenKey = `${token.symbol.toLowerCase()}-${token.chain}`;
+          if (protocolTokenKeys.has(tokenKey)) {
+            console.log(`[DEDUP] Skipping ${token.symbol} on ${token.chain} - already in protocol position`);
+            return false;
+          }
+          return true;
+        })
+        .map((token, index) => {
+          // Store the price from DeBank
+          const priceKey = `debank-${token.symbol.toLowerCase()}-${token.chain}`;
+          debankPrices[priceKey] = {
+            price: token.price,
+            symbol: token.symbol,
+          };
+
+          return {
+            id: `${wallet.id}-${token.symbol}-${index}`,
+            type: 'crypto' as const,
+            symbol: token.symbol,
+            name: token.name,
+            amount: token.amount,
+            walletAddress: wallet.address,
+            chain: token.chain,
+            debankPriceKey: priceKey,
+            addedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+        });
+
+      allPositions.push(...walletPositions);
+
+      // THIRD: Fetch perp exchange positions via PerpExchangeService
+      // Only fetches from exchanges explicitly enabled for this wallet
+      const perpService = getPerpExchangeService();
+      if (perpService.hasEnabledExchanges(wallet)) {
+        const perpResult = await perpService.fetchPositions(wallet);
+        allPositions.push(...perpResult.positions);
+        Object.assign(debankPrices, perpResult.prices);
+      }
     }
 
     return { positions: allPositions, prices: debankPrices };

@@ -6,6 +6,7 @@ import {
   getPortfolioService,
   createDailySnapshot,
   shouldTakeSnapshot,
+  fetchAllCexPositions,
 } from '@/services';
 
 const REFRESH_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours (once per day)
@@ -33,14 +34,26 @@ export default function PortfolioProvider({ children }: PortfolioProviderProps) 
     store.setRefreshing(true);
 
     try {
-      // Get only manual positions (non-wallet positions)
-      const manualPositions = store.positions.filter((p) => !p.walletAddress);
+      // Get only manual positions (non-wallet, non-CEX positions)
+      const manualPositions = store.positions.filter(
+        (p) => !p.walletAddress && !p.protocol?.startsWith('cex:')
+      );
 
-      // Use the portfolio service to refresh everything
+      // Use the portfolio service to refresh wallets and prices
       const result = await portfolioService.current.refreshPortfolio(
         manualPositions,
         store.wallets
       );
+
+      // Also fetch CEX account positions
+      let cexPositions: typeof result.walletPositions = [];
+      if (store.accounts.length > 0) {
+        try {
+          cexPositions = await fetchAllCexPositions(store.accounts);
+        } catch (error) {
+          console.error('Error fetching CEX positions:', error);
+        }
+      }
 
       // Get fresh state for updates
       const currentStore = usePortfolioStore.getState();
@@ -53,13 +66,18 @@ export default function PortfolioProvider({ children }: PortfolioProviderProps) 
         currentStore.setWalletPositions(result.walletPositions);
       }
 
+      // Update CEX positions in store
+      if (cexPositions.length > 0) {
+        currentStore.setAccountPositions(cexPositions);
+      }
+
       currentStore.setLastRefresh(new Date().toISOString());
 
       // Take daily snapshot if needed
       const today = new Date().toISOString().split('T')[0];
       const latestStore = usePortfolioStore.getState();
       if (lastSnapshotCheck.current !== today && shouldTakeSnapshot(latestStore.snapshots)) {
-        const allPositions = [...manualPositions, ...result.walletPositions];
+        const allPositions = [...manualPositions, ...result.walletPositions, ...cexPositions];
         const allPrices = { ...latestStore.prices, ...result.prices };
         const snapshot = createDailySnapshot(allPositions, allPrices);
         latestStore.addSnapshot(snapshot);
@@ -76,7 +94,7 @@ export default function PortfolioProvider({ children }: PortfolioProviderProps) 
   // Initial refresh on mount
   useEffect(() => {
     const store = usePortfolioStore.getState();
-    const hasData = store.positions.length > 0 || store.wallets.length > 0;
+    const hasData = store.positions.length > 0 || store.wallets.length > 0 || store.accounts.length > 0;
     if (hasData) {
       doRefresh();
     }
@@ -86,7 +104,7 @@ export default function PortfolioProvider({ children }: PortfolioProviderProps) 
   useEffect(() => {
     const interval = setInterval(() => {
       const store = usePortfolioStore.getState();
-      const hasData = store.positions.length > 0 || store.wallets.length > 0;
+      const hasData = store.positions.length > 0 || store.wallets.length > 0 || store.accounts.length > 0;
       if (hasData) {
         doRefresh();
       }
@@ -114,14 +132,26 @@ export function useRefresh() {
     store.setRefreshing(true);
 
     try {
-      // Get only manual positions
-      const manualPositions = store.positions.filter((p) => !p.walletAddress);
+      // Get only manual positions (non-wallet, non-CEX)
+      const manualPositions = store.positions.filter(
+        (p) => !p.walletAddress && !p.protocol?.startsWith('cex:')
+      );
 
       // Use the portfolio service
       const result = await portfolioService.current.refreshPortfolio(
         manualPositions,
         store.wallets
       );
+
+      // Also fetch CEX account positions
+      let cexPositions: typeof result.walletPositions = [];
+      if (store.accounts.length > 0) {
+        try {
+          cexPositions = await fetchAllCexPositions(store.accounts);
+        } catch (error) {
+          console.error('Error fetching CEX positions:', error);
+        }
+      }
 
       // Get fresh state
       const currentStore = usePortfolioStore.getState();
@@ -133,12 +163,16 @@ export function useRefresh() {
         currentStore.setWalletPositions(result.walletPositions);
       }
 
+      if (cexPositions.length > 0) {
+        currentStore.setAccountPositions(cexPositions);
+      }
+
       currentStore.setLastRefresh(new Date().toISOString());
 
       // Snapshot check
       const latestStore = usePortfolioStore.getState();
       if (shouldTakeSnapshot(latestStore.snapshots)) {
-        const allPositions = [...manualPositions, ...result.walletPositions];
+        const allPositions = [...manualPositions, ...result.walletPositions, ...cexPositions];
         const snapshot = createDailySnapshot(allPositions, {
           ...latestStore.prices,
           ...result.prices,

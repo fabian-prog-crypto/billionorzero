@@ -203,9 +203,14 @@ input::placeholder {
 }
 
 .nav-item.active {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--accent-primary);
+  color: white;
   font-weight: 600;
+}
+
+.nav-item.active:hover {
+  background: #7A634A;
+  color: white;
 }
 
 /* Sync button styling like Lighthouse */
@@ -328,4 +333,74 @@ input::placeholder {
   50% {
     opacity: 0.5;
   }
+}
+
+/* Responsive utilities */
+@media (max-width: 1024px) {
+  .sidebar {
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  .main-content {
+    margin-left: 0 !important;
+    padding: 16px !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .card {
+    padding: 16px;
+  }
+
+  .modal-content {
+    max-width: 95%;
+    padding: 16px;
+    margin: 16px;
+  }
+}
+
+/* Table scroll container */
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Mobile menu button */
+.mobile-menu-btn {
+  display: none;
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  z-index: 50;
+  padding: 10px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+@media (max-width: 1024px) {
+  .mobile-menu-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+/* Overlay for mobile menu */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 35;
+}
+
+.sidebar-overlay.visible {
+  display: block;
 }

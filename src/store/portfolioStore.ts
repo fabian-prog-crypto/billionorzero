@@ -1,12 +1,13 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
-import { Position, Wallet, PriceData, NetWorthSnapshot } from '@/types';
+import { Position, Wallet, PriceData, NetWorthSnapshot, CexAccount } from '@/types';
 
 interface PortfolioState {
   // Data
   positions: Position[];
   wallets: Wallet[];
+  accounts: CexAccount[];
   prices: Record<string, PriceData>;
   snapshots: NetWorthSnapshot[];
   lastRefresh: string | null;
@@ -23,8 +24,16 @@ interface PortfolioState {
   removeWallet: (id: string) => void;
   updateWallet: (id: string, updates: Partial<Wallet>) => void;
 
+  // CEX Account actions
+  addAccount: (account: Omit<CexAccount, 'id' | 'addedAt'>) => void;
+  removeAccount: (id: string) => void;
+  updateAccount: (id: string, updates: Partial<CexAccount>) => void;
+
   // Wallet positions - replaces all positions from wallets
   setWalletPositions: (walletPositions: Position[]) => void;
+
+  // Account positions - replaces all positions from CEX accounts
+  setAccountPositions: (accountPositions: Position[]) => void;
 
   // Price actions
   setPrices: (prices: Record<string, PriceData>) => void;
@@ -49,6 +58,7 @@ export const usePortfolioStore = create<PortfolioState>()(
     (set, get) => ({
       positions: [],
       wallets: [],
+      accounts: [],
       prices: {},
       snapshots: [],
       lastRefresh: null,
@@ -124,14 +134,65 @@ export const usePortfolioStore = create<PortfolioState>()(
         }));
       },
 
-      // Replace all wallet positions (keeps manual positions intact)
+      // Add a CEX account
+      addAccount: (account) => {
+        set((state) => ({
+          accounts: [
+            ...state.accounts,
+            {
+              ...account,
+              id: uuidv4(),
+              addedAt: new Date().toISOString(),
+            },
+          ],
+        }));
+      },
+
+      // Remove a CEX account and its positions
+      removeAccount: (id) => {
+        const account = get().accounts.find((a) => a.id === id);
+        set((state) => ({
+          accounts: state.accounts.filter((a) => a.id !== id),
+          // Also remove all positions from this account
+          positions: account
+            ? state.positions.filter((p) => p.protocol !== `cex:${account.exchange}:${account.id}`)
+            : state.positions,
+        }));
+      },
+
+      // Update CEX account details
+      updateAccount: (id, updates) => {
+        set((state) => ({
+          accounts: state.accounts.map((a) =>
+            a.id === id ? { ...a, ...updates } : a
+          ),
+        }));
+      },
+
+      // Replace all wallet positions (keeps manual and CEX positions intact)
       setWalletPositions: (walletPositions) => {
         set((state) => {
-          // Keep only manual positions (those without walletAddress)
-          const manualPositions = state.positions.filter((p) => !p.walletAddress);
+          // Keep manual positions and CEX positions (those with protocol starting with 'cex:')
+          const manualAndCexPositions = state.positions.filter(
+            (p) => !p.walletAddress || p.protocol?.startsWith('cex:')
+          );
           // Combine with new wallet positions
           return {
-            positions: [...manualPositions, ...walletPositions],
+            positions: [...manualAndCexPositions, ...walletPositions],
+          };
+        });
+      },
+
+      // Replace all CEX account positions (keeps manual and wallet positions intact)
+      setAccountPositions: (accountPositions) => {
+        set((state) => {
+          // Keep positions that are not from CEX accounts
+          const nonCexPositions = state.positions.filter(
+            (p) => !p.protocol?.startsWith('cex:')
+          );
+          // Combine with new account positions
+          return {
+            positions: [...nonCexPositions, ...accountPositions],
           };
         });
       },
@@ -178,6 +239,7 @@ export const usePortfolioStore = create<PortfolioState>()(
         set({
           positions: [],
           wallets: [],
+          accounts: [],
           prices: {},
           snapshots: [],
           lastRefresh: null,

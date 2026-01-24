@@ -1,5 +1,22 @@
 export type AssetType = 'crypto' | 'stock' | 'cash' | 'manual';
 
+// Supported perpetual futures exchanges (type only - use PerpExchangeService for metadata)
+export type PerpExchange = 'hyperliquid' | 'lighter' | 'ethereal';
+
+// Supported centralized exchanges
+export type CexExchange = 'binance' | 'coinbase' | 'kraken' | 'okx';
+
+export interface CexAccount {
+  id: string;
+  exchange: CexExchange;
+  name: string;
+  apiKey: string;
+  apiSecret: string;
+  isActive: boolean;
+  addedAt: string;
+  lastSync?: string;
+}
+
 export interface Position {
   id: string;
   type: AssetType;
@@ -21,6 +38,7 @@ export interface Wallet {
   address: string;
   name: string;
   chains: string[];
+  perpExchanges?: PerpExchange[]; // Which perp exchanges this wallet is connected to
   addedAt: string;
 }
 
@@ -51,13 +69,17 @@ export interface NetWorthSnapshot {
 }
 
 export interface PortfolioSummary {
-  totalValue: number;
+  totalValue: number;       // Net value (assets - debts)
+  grossAssets: number;      // Total positive positions
+  totalDebts: number;       // Total debt (as positive number)
   change24h: number;
   changePercent24h: number;
   cryptoValue: number;
   stockValue: number;
   cashValue: number;
   manualValue: number;
+  positionCount: number;    // Total number of positions
+  assetCount: number;       // Unique assets (aggregated)
   topAssets: AssetWithPrice[];
   assetsByType: {
     type: AssetType;

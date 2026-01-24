@@ -4,12 +4,12 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Trash2, Wallet, ExternalLink, Copy, Check, ChevronRight } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
-import { calculateAllPositionsWithPrices } from '@/services';
+import { calculatePortfolioSummary } from '@/services';
 import Header from '@/components/Header';
 import AddWalletModal from '@/components/modals/AddWalletModal';
 import { useRefresh } from '@/components/PortfolioProvider';
 import { formatAddress, formatCurrency } from '@/lib/utils';
-import { SUPPORTED_CHAINS } from '@/services';
+import { SUPPORTED_CHAINS, getPerpExchangeName } from '@/services';
 
 export default function WalletsPage() {
   const router = useRouter();
@@ -36,16 +36,23 @@ export default function WalletsPage() {
     return positions.filter((p) => p.walletAddress === address);
   };
 
-  // Get wallet value
+  // Get wallet value - using centralized service
   const getWalletValue = (address: string) => {
     const walletPositions = getWalletPositions(address);
-    const withPrices = calculateAllPositionsWithPrices(walletPositions, prices);
-    return withPrices.reduce((sum, p) => sum + p.value, 0);
+    const summary = calculatePortfolioSummary(walletPositions, prices);
+    return summary.totalValue;
   };
 
   // Get chain name
   const getChainName = (chainId: string) => {
-    return SUPPORTED_CHAINS.find((c) => c.id === chainId)?.name || chainId;
+    return SUPPORTED_CHAINS.find((c) => c.id === chainId)?.name || chainId.toUpperCase();
+  };
+
+  // Get unique chains from wallet positions (auto-detected by DeBank)
+  const getWalletChains = (address: string) => {
+    const walletPositions = getWalletPositions(address);
+    const chains = [...new Set(walletPositions.map(p => p.chain).filter(Boolean))] as string[];
+    return chains.sort();
   };
 
   const handleRowClick = (walletId: string) => {
@@ -152,16 +159,35 @@ export default function WalletsPage() {
                     </td>
                     <td className="py-4">
                       <div className="flex gap-1 flex-wrap">
-                        {wallet.chains.slice(0, 3).map((chain) => (
-                          <span key={chain} className="tag text-xs">
-                            {getChainName(chain)}
-                          </span>
-                        ))}
-                        {wallet.chains.length > 3 && (
-                          <span className="tag text-xs">
-                            +{wallet.chains.length - 3}
-                          </span>
-                        )}
+                        {(() => {
+                          const detectedChains = getWalletChains(wallet.address);
+                          const perpExchanges = wallet.perpExchanges || [];
+                          if (detectedChains.length === 0 && perpExchanges.length === 0) {
+                            return <span className="text-xs text-[var(--foreground-muted)]">Syncing...</span>;
+                          }
+                          return (
+                            <>
+                              {detectedChains.slice(0, 3).map((chain) => (
+                                <span key={chain} className="tag text-xs">
+                                  {getChainName(chain)}
+                                </span>
+                              ))}
+                              {detectedChains.length > 3 && (
+                                <span className="tag text-xs">
+                                  +{detectedChains.length - 3}
+                                </span>
+                              )}
+                              {perpExchanges.map((exchangeId) => (
+                                <span
+                                  key={exchangeId}
+                                  className="tag text-xs bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
+                                >
+                                  {getPerpExchangeName(exchangeId)}
+                                </span>
+                              ))}
+                            </>
+                          );
+                        })()}
                       </div>
                     </td>
                     <td className="py-4 text-right">
@@ -200,8 +226,8 @@ export default function WalletsPage() {
       <div className="mt-6 p-4 bg-[var(--background-secondary)] rounded-lg">
         <h4 className="font-medium mb-2">About Wallet Tracking</h4>
         <p className="text-sm text-[var(--foreground-muted)]">
-          Wallets are tracked using the DeBank API. For demo purposes, the app uses simulated data.
-          To get real wallet data, add your DeBank API key in the Settings page.
+          Wallets are tracked using the DeBank API. For perp exchange positions (Hyperliquid, Lighter, Ethereal),
+          click on a wallet to enable specific exchanges. Only enabled exchanges will be queried for positions.
         </p>
       </div>
 

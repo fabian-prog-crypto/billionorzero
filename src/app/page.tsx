@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import { Plus, TrendingUp, TrendingDown, ArrowUpRight, Wallet, Eye, EyeOff } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
-import { calculatePortfolioSummary, calculateAllPositionsWithPrices } from '@/services';
+import { calculatePortfolioSummary, calculateAllPositionsWithPrices, calculateExposureData } from '@/services';
 import Header from '@/components/Header';
 import NetWorthChart from '@/components/charts/NetWorthChart';
 import AllocationChart from '@/components/charts/AllocationChart';
@@ -17,12 +17,6 @@ import {
   formatNumber,
   getChangeColor,
 } from '@/lib/utils';
-import {
-  AssetCategory,
-  getAssetCategory,
-  getCategoryLabel,
-  CATEGORY_COLORS,
-} from '@/lib/assetCategories';
 import Link from 'next/link';
 
 export default function OverviewPage() {
@@ -42,25 +36,13 @@ export default function OverviewPage() {
     return calculateAllPositionsWithPrices(positions, prices);
   }, [positions, prices]);
 
-  // Calculate category breakdown
-  const categoryBreakdown = useMemo(() => {
-    const categories: Record<AssetCategory, number> = {
-      stablecoins: 0,
-      btc: 0,
-      eth: 0,
-      sol: 0,
-      cash: 0,
-      stocks: 0,
-      other: 0,
-    };
-
-    allAssetsWithPrices.forEach((asset) => {
-      const category = getAssetCategory(asset.symbol, asset.type);
-      categories[category] += asset.value;
-    });
-
-    return categories;
+  // Use centralized exposure calculation - single source of truth
+  const exposureData = useMemo(() => {
+    return calculateExposureData(allAssetsWithPrices);
   }, [allAssetsWithPrices]);
+
+  // Extract what we need from the centralized calculation
+  const { categories, perpsBreakdown, simpleBreakdown, exposureMetrics, perpsMetrics, concentrationMetrics, spotDerivatives } = exposureData;
 
   // Get price data for watchlist
   const watchlist = useMemo(() => {
@@ -111,9 +93,9 @@ export default function OverviewPage() {
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-12 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Main content - Left side */}
-          <div className="col-span-8 space-y-6">
+          <div className="lg:col-span-8 space-y-6">
             {/* Net Worth Card */}
             <div className="card">
               <div className="flex items-start justify-between mb-6">
@@ -143,8 +125,9 @@ export default function OverviewPage() {
                     onClick={toggleHideBalances}
                     className="btn btn-secondary"
                     title={hideBalances ? 'Show balances' : 'Hide balances'}
+                    aria-label={hideBalances ? 'Show balances' : 'Hide balances'}
                   >
-                    {hideBalances ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    {hideBalances ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
                   </button>
                   <button
                     onClick={() => setShowAddPosition(true)}
@@ -162,35 +145,149 @@ export default function OverviewPage() {
               </div>
             </div>
 
-            {/* Category breakdown with quick links */}
-            <div className="grid grid-cols-5 gap-3">
-              {(['stablecoins', 'btc', 'eth', 'sol', 'cash', 'stocks', 'other'] as AssetCategory[]).map((cat) => {
-                const value = categoryBreakdown[cat];
-                const percentage = summary.totalValue > 0 ? (value / summary.totalValue) * 100 : 0;
-                return (
-                  <Link
-                    key={cat}
-                    href={`/positions?category=${cat}`}
-                    className="card hover:border-[var(--accent-primary)] transition-colors cursor-pointer group"
-                  >
-                    <div className="flex items-center gap-2 mb-2">
-                      <div
-                        className="w-2.5 h-2.5 rounded-full"
-                        style={{ backgroundColor: CATEGORY_COLORS[cat] }}
-                      />
-                      <p className="text-sm text-[var(--foreground-muted)] group-hover:text-[var(--foreground)]">
-                        {getCategoryLabel(cat)}
-                      </p>
+            {/* Professional Investor Metrics */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+              {/* Gross Exposure */}
+              <div className="card">
+                <p className="text-xs text-[var(--foreground-muted)] mb-1">Gross Exposure</p>
+                <p className="text-lg font-semibold">
+                  {hideBalances ? '****' : formatCurrency(exposureMetrics.grossExposure)}
+                </p>
+                <div className="flex gap-2 mt-1 text-xs">
+                  <span className="text-[var(--positive)]">L: {hideBalances ? '**' : formatCurrency(exposureMetrics.longExposure)}</span>
+                  <span className="text-[var(--negative)]">S: {hideBalances ? '**' : formatCurrency(exposureMetrics.shortExposure)}</span>
+                </div>
+              </div>
+
+              {/* Leverage */}
+              <div className="card">
+                <p className="text-xs text-[var(--foreground-muted)] mb-1">Leverage</p>
+                <p className={`text-lg font-semibold ${exposureMetrics.leverage > 2 ? 'text-[var(--negative)]' : exposureMetrics.leverage > 1.5 ? 'text-yellow-600' : ''}`}>
+                  {exposureMetrics.leverage.toFixed(2)}x
+                </p>
+                <p className="text-xs text-[var(--foreground-muted)] mt-1">
+                  {exposureMetrics.leverage <= 1 ? 'No leverage' : exposureMetrics.leverage <= 1.5 ? 'Low' : exposureMetrics.leverage <= 2 ? 'Moderate' : 'High'}
+                </p>
+              </div>
+
+              {/* Cash Position */}
+              <div className="card">
+                <p className="text-xs text-[var(--foreground-muted)] mb-1">Cash & Stables</p>
+                <p className="text-lg font-semibold text-[var(--positive)]">
+                  {hideBalances ? '****' : formatCurrency(exposureMetrics.cashPosition)}
+                </p>
+                <p className="text-xs text-[var(--foreground-muted)] mt-1">
+                  {exposureMetrics.cashPercentage.toFixed(1)}% of assets
+                </p>
+              </div>
+
+              {/* Concentration */}
+              <div className="card">
+                <p className="text-xs text-[var(--foreground-muted)] mb-1">Top 5 Concentration</p>
+                <p className={`text-lg font-semibold ${concentrationMetrics.top5Percentage > 80 ? 'text-[var(--negative)]' : concentrationMetrics.top5Percentage > 60 ? 'text-yellow-600' : ''}`}>
+                  {concentrationMetrics.top5Percentage.toFixed(1)}%
+                </p>
+                <p className="text-xs text-[var(--foreground-muted)] mt-1">
+                  {concentrationMetrics.assetCount} assets
+                </p>
+              </div>
+            </div>
+
+            {/* Spot vs Derivatives Breakdown */}
+            {(spotDerivatives.derivativesLong > 0 || spotDerivatives.derivativesShort > 0) && (
+              <div className="card">
+                <h3 className="font-semibold text-sm mb-3">Exposure Breakdown</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Spot */}
+                  <div>
+                    <p className="text-xs text-[var(--foreground-muted)] mb-2">Spot Positions</p>
+                    <div className="space-y-1 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-[var(--foreground-muted)]">Long</span>
+                        <span className="text-[var(--positive)]">{hideBalances ? '****' : formatCurrency(spotDerivatives.spotLong)}</span>
+                      </div>
+                      {spotDerivatives.spotShort > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-[var(--foreground-muted)]">Short/Borrowed</span>
+                          <span className="text-[var(--negative)]">-{hideBalances ? '****' : formatCurrency(spotDerivatives.spotShort)}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between font-medium pt-1 border-t border-[var(--border)]">
+                        <span>Net Spot</span>
+                        <span>{hideBalances ? '****' : formatCurrency(spotDerivatives.spotNet)}</span>
+                      </div>
                     </div>
-                    <p className="text-lg font-semibold">
-                      {hideBalances ? '****' : formatCurrency(value)}
-                    </p>
-                    <p className="text-xs text-[var(--foreground-muted)]">
-                      {percentage.toFixed(1)}%
-                    </p>
-                  </Link>
-                );
-              })}
+                  </div>
+                  {/* Derivatives */}
+                  <div>
+                    <p className="text-xs text-[var(--foreground-muted)] mb-2">Derivatives (Perps)</p>
+                    <div className="space-y-1 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-[var(--foreground-muted)]">Long Notional</span>
+                        <span className="text-[var(--positive)]">{hideBalances ? '****' : formatCurrency(spotDerivatives.derivativesLong)}</span>
+                      </div>
+                      {spotDerivatives.derivativesShort > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-[var(--foreground-muted)]">Short Notional</span>
+                          <span className="text-[var(--negative)]">-{hideBalances ? '****' : formatCurrency(spotDerivatives.derivativesShort)}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between font-medium pt-1 border-t border-[var(--border)]">
+                        <span>Net Perps</span>
+                        <span className={spotDerivatives.derivativesNet < 0 ? 'text-[var(--negative)]' : ''}>{hideBalances ? '****' : formatCurrency(spotDerivatives.derivativesNet)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                {/* Margin info */}
+                {perpsMetrics.collateral > 0 && (
+                  <div className="mt-3 pt-3 border-t border-[var(--border)]">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-[var(--foreground-muted)]">Margin Deposited</span>
+                      <span>{hideBalances ? '****' : formatCurrency(perpsMetrics.collateral)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm mt-1">
+                      <span className="text-[var(--foreground-muted)]">Est. Margin Used</span>
+                      <span className={perpsMetrics.utilizationRate > 80 ? 'text-[var(--negative)]' : ''}>
+                        {hideBalances ? '****' : formatCurrency(perpsMetrics.marginUsed)} ({perpsMetrics.utilizationRate.toFixed(0)}%)
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Asset Allocation by Category */}
+            <div className="card">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold text-sm">Asset Allocation</h3>
+                <Link href="/exposure" className="text-xs text-[var(--accent-primary)]">
+                  View Details
+                </Link>
+              </div>
+              <div className="space-y-2">
+                {simpleBreakdown.map((item) => (
+                  <div key={item.id} className="flex items-center gap-3">
+                    <div
+                      className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: item.color }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="truncate">{item.label}</span>
+                        <span className="font-medium ml-2">{hideBalances ? '****' : formatCurrency(item.value)}</span>
+                      </div>
+                      <div className="w-full bg-[var(--background-secondary)] rounded-full h-1.5 mt-1">
+                        <div
+                          className="h-1.5 rounded-full"
+                          style={{ width: `${Math.max(0, Math.min(100, item.percentage))}%`, backgroundColor: item.color }}
+                        />
+                      </div>
+                    </div>
+                    <span className="text-xs text-[var(--foreground-muted)] w-12 text-right">{item.percentage.toFixed(1)}%</span>
+                  </div>
+                ))}
+              </div>
             </div>
 
             {/* Top Positions */}
@@ -231,7 +328,7 @@ export default function OverviewPage() {
           </div>
 
           {/* Sidebar - Right side */}
-          <div className="col-span-4 space-y-6">
+          <div className="lg:col-span-4 space-y-6">
             {/* Exposure by Category Chart */}
             <div className="card">
               <div className="flex items-center justify-between mb-4">

@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Plus, Trash2, Search, Wallet, RefreshCw, Eye, EyeOff, ArrowUpDown, Download, Layers, Grid3X3 } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
-import { calculateAllPositionsWithPrices } from '@/services';
+import { calculateAllPositionsWithPrices, calculatePortfolioSummary, aggregatePositionsBySymbol } from '@/services';
 import Header from '@/components/Header';
 import AddPositionModal from '@/components/modals/AddPositionModal';
 import { useRefresh } from '@/components/PortfolioProvider';
@@ -16,12 +16,11 @@ import {
   getAssetTypeLabel,
   formatAddress,
 } from '@/lib/utils';
-import { AssetCategory, getAssetCategory, getCategoryLabel } from '@/lib/assetCategories';
-import { AssetWithPrice } from '@/types';
+import { MainCategory, getMainCategory, getCategoryLabel, isPerpProtocol, getCategoryService, isAssetInCategory, AssetCategory, getPerpProtocolsWithPositions } from '@/services';
 
 type ViewMode = 'positions' | 'assets';
 type FilterType = 'all' | 'crypto' | 'stock' | 'cash' | 'manual';
-type CategoryFilter = AssetCategory | null;
+type CategoryFilter = MainCategory | AssetCategory | null;
 type SortField = 'symbol' | 'value' | 'amount' | 'change';
 type SortDirection = 'asc' | 'desc';
 
@@ -41,8 +40,13 @@ export default function PositionsPage() {
   // Read category filter from URL params
   useEffect(() => {
     const categoryParam = searchParams.get('category');
-    if (categoryParam && ['stablecoins', 'btc', 'eth', 'sol', 'cash', 'stocks', 'other'].includes(categoryParam)) {
-      setCategoryFilter(categoryParam as AssetCategory);
+    const validMainCategories = getCategoryService().getMainCategories();
+    const validSubCategories = getCategoryService().getAllSubCategories();
+    if (categoryParam) {
+      if (validMainCategories.includes(categoryParam as MainCategory) ||
+          validSubCategories.includes(categoryParam as AssetCategory)) {
+        setCategoryFilter(categoryParam as CategoryFilter);
+      }
     }
   }, [searchParams]);
 
@@ -51,19 +55,15 @@ export default function PositionsPage() {
     return calculateAllPositionsWithPrices(positions, prices);
   }, [positions, prices]);
 
-  // Calculate total NAV
-  const totalNAV = useMemo(() => {
-    return allPositionsWithPrices.reduce((sum, p) => sum + p.value, 0);
-  }, [allPositionsWithPrices]);
+  // Get portfolio summary from centralized service (single source of truth)
+  const portfolioSummary = useMemo(() => {
+    return calculatePortfolioSummary(positions, prices);
+  }, [positions, prices]);
 
-  // Calculate 24h change
-  const totalChange24h = useMemo(() => {
-    return allPositionsWithPrices.reduce((sum, p) => sum + p.change24h, 0);
-  }, [allPositionsWithPrices]);
-
-  const totalChangePercent = totalNAV > 0
-    ? (totalChange24h / (totalNAV - totalChange24h)) * 100
-    : 0;
+  // Extract values from service - no local calculations
+  const totalNAV = portfolioSummary.totalValue;
+  const totalChange24h = portfolioSummary.change24h;
+  const totalChangePercent = portfolioSummary.changePercent24h;
 
   // Filter positions (for both views)
   const filteredPositions = useMemo(() => {
@@ -77,9 +77,46 @@ export default function PositionsPage() {
       filtered = filtered.filter((p) => p.type === filter);
     }
 
-    // Apply category filter
+    // Apply category filter using the service
     if (categoryFilter) {
-      filtered = filtered.filter((p) => getAssetCategory(p.symbol, p.type) === categoryFilter);
+      const categoryService = getCategoryService();
+
+      // Use shared helper to identify active perp protocols
+      const perpProtocolsWithPositions = getPerpProtocolsWithPositions(allPositionsWithPrices);
+
+      filtered = filtered.filter((p) => {
+        const mainCat = categoryService.getMainCategory(p.symbol, p.type);
+        const subCat = categoryService.getSubCategory(p.symbol, p.type);
+        const isOnPerpProtocol = p.protocol && isPerpProtocol(p.protocol);
+
+        // Handle perp protocol positions specially
+        if (isOnPerpProtocol) {
+          const hasActivePositions = perpProtocolsWithPositions.has(p.protocol!.toLowerCase());
+
+          // If filtering for crypto_perps specifically
+          if (categoryFilter === 'crypto_perps') {
+            if (subCat === 'stablecoins') {
+              return hasActivePositions; // Only if it's being used as margin
+            }
+            return true; // All non-stablecoin perp positions
+          }
+
+          // If filtering by main category 'crypto'
+          if (categoryFilter === 'crypto') {
+            return true; // All perp positions are crypto
+          }
+
+          // For other filters, exclude perp positions unless specifically filtering crypto_stablecoins
+          if (categoryFilter === 'crypto_stablecoins' && subCat === 'stablecoins' && !hasActivePositions) {
+            return true; // Idle stablecoins on perp exchange
+          }
+
+          return false;
+        }
+
+        // Non-perp positions: use the service's isAssetInCategory
+        return categoryService.isAssetInCategory(p.symbol, categoryFilter as AssetCategory, p.type);
+      });
     }
 
     // Apply search filter
@@ -115,33 +152,12 @@ export default function PositionsPage() {
     return filtered;
   }, [allPositionsWithPrices, filter, categoryFilter, searchQuery, sortField, sortDirection]);
 
-  // Aggregate assets by symbol (for assets view)
+  // Aggregate assets by symbol (for assets view) - using centralized service
   const aggregatedAssets = useMemo(() => {
-    const assetMap = new Map<string, AssetWithPrice>();
+    // Use service for aggregation (handles debt positions correctly)
+    const assets = aggregatePositionsBySymbol(filteredPositions);
 
-    filteredPositions.forEach((asset) => {
-      const key = `${asset.symbol.toLowerCase()}-${asset.type}`;
-      const existing = assetMap.get(key);
-
-      if (existing) {
-        const newAmount = existing.amount + asset.amount;
-        const newValue = existing.value + asset.value;
-        const newChange24h = existing.change24h + asset.change24h;
-        assetMap.set(key, {
-          ...existing,
-          amount: newAmount,
-          value: newValue,
-          change24h: newChange24h,
-          allocation: totalNAV > 0 ? (newValue / totalNAV) * 100 : 0,
-        });
-      } else {
-        assetMap.set(key, { ...asset });
-      }
-    });
-
-    const assets = Array.from(assetMap.values());
-
-    // Sort aggregated assets
+    // Sort aggregated assets (UI-specific sorting)
     assets.sort((a, b) => {
       let comparison = 0;
       switch (sortField) {
@@ -162,9 +178,11 @@ export default function PositionsPage() {
     });
 
     return assets;
-  }, [filteredPositions, totalNAV, sortField, sortDirection]);
+  }, [filteredPositions, sortField, sortDirection]);
 
-  // Count positions by source
+  // Position counts - from service for totals, local for source breakdown
+  const totalPositionCount = portfolioSummary.positionCount;
+  const uniqueAssetCount = portfolioSummary.assetCount;
   const walletPositionsCount = positions.filter((p) => p.walletAddress).length;
   const manualPositionsCount = positions.filter((p) => !p.walletAddress).length;
 
@@ -234,16 +252,16 @@ export default function PositionsPage() {
             </div>
           </div>
           <div className="text-right text-sm text-[var(--foreground-muted)]">
-            <p>{positions.length} positions total</p>
-            <p>{aggregatedAssets.length} unique assets</p>
+            <p>{totalPositionCount} positions total</p>
+            <p>{uniqueAssetCount} unique assets</p>
             <p>{walletPositionsCount} from wallets, {manualPositionsCount} manual</p>
           </div>
         </div>
       </div>
 
       {/* View Mode Toggle & Filters */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-4">
+        <div className="flex flex-wrap items-center gap-3">
           {/* View mode toggle */}
           <div className="flex gap-1 p-1 bg-[var(--background-secondary)] rounded-lg">
             <button
@@ -255,7 +273,7 @@ export default function PositionsPage() {
               }`}
             >
               <Layers className="w-3.5 h-3.5" />
-              Positions
+              <span className="hidden sm:inline">Positions</span>
             </button>
             <button
               onClick={() => setViewMode('assets')}
@@ -266,17 +284,17 @@ export default function PositionsPage() {
               }`}
             >
               <Grid3X3 className="w-3.5 h-3.5" />
-              Assets
+              <span className="hidden sm:inline">Assets</span>
             </button>
           </div>
 
           {/* Type filters */}
-          <div className="flex gap-1 p-1 bg-[var(--background-secondary)] rounded-lg">
+          <div className="flex gap-1 p-1 bg-[var(--background-secondary)] rounded-lg overflow-x-auto">
             {(['all', 'crypto', 'stock', 'cash', 'manual'] as FilterType[]).map((type) => (
               <button
                 key={type}
                 onClick={() => setFilter(type)}
-                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                className={`px-2 sm:px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
                   filter === type
                     ? 'bg-white text-[var(--foreground)] shadow-sm'
                     : 'text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
@@ -288,14 +306,14 @@ export default function PositionsPage() {
           </div>
 
           {/* Search */}
-          <div className="relative">
+          <div className="relative flex-1 min-w-[140px] max-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--foreground-muted)]" />
             <input
               type="text"
               placeholder="Search..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 w-48"
+              className="pl-10 w-full"
             />
           </div>
         </div>
@@ -307,7 +325,7 @@ export default function PositionsPage() {
             className="btn btn-secondary"
             title={hideBalances ? 'Show balances' : 'Hide balances'}
           >
-            {hideBalances ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            {hideBalances ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
           </button>
 
           {/* Export */}
@@ -320,15 +338,15 @@ export default function PositionsPage() {
             className="btn btn-primary"
           >
             <Plus className="w-4 h-4" />
-            Add Position
+            <span className="hidden sm:inline">Add Position</span>
           </button>
         </div>
       </div>
 
-      {/* Category quick filters */}
-      <div className="flex items-center gap-2 mb-6">
-        <span className="text-sm text-[var(--foreground-muted)]">Quick filters:</span>
-        {(['stablecoins', 'btc', 'eth', 'sol', 'cash', 'stocks'] as AssetCategory[]).map((cat) => (
+      {/* Category quick filters - main categories */}
+      <div className="flex items-center gap-2 mb-4">
+        <span className="text-sm text-[var(--foreground-muted)]">Categories:</span>
+        {getCategoryService().getMainCategories().map((cat) => (
           <button
             key={cat}
             onClick={() => setCategoryFilter(categoryFilter === cat ? null : cat)}
@@ -338,7 +356,7 @@ export default function PositionsPage() {
                 : 'border-[var(--border)] text-[var(--foreground-muted)] hover:border-[var(--foreground-muted)]'
             }`}
           >
-            {getCategoryLabel(cat)}
+            {getCategoryService().getMainCategoryLabel(cat)}
           </button>
         ))}
         {categoryFilter && (
@@ -350,6 +368,52 @@ export default function PositionsPage() {
           </button>
         )}
       </div>
+
+      {/* Sub-category filters for crypto */}
+      {(categoryFilter === 'crypto' || (categoryFilter && categoryFilter.toString().startsWith('crypto_'))) && (
+        <div className="flex items-center gap-2 mb-6">
+          <span className="text-sm text-[var(--foreground-muted)] ml-4">Sub:</span>
+          {getCategoryService().getSubCategories('crypto').map((sub) => {
+            const catKey = `crypto_${sub}` as AssetCategory;
+            return (
+              <button
+                key={catKey}
+                onClick={() => setCategoryFilter(categoryFilter === catKey ? 'crypto' : catKey)}
+                className={`px-2 py-0.5 text-xs rounded-full border transition-colors ${
+                  categoryFilter === catKey
+                    ? 'bg-[var(--accent-primary)] text-white border-[var(--accent-primary)]'
+                    : 'border-[var(--border)] text-[var(--foreground-muted)] hover:border-[var(--foreground-muted)]'
+                }`}
+              >
+                {getCategoryLabel(catKey)}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Sub-category filters for stocks */}
+      {(categoryFilter === 'stocks' || (categoryFilter && categoryFilter.toString().startsWith('stocks_'))) && (
+        <div className="flex items-center gap-2 mb-6">
+          <span className="text-sm text-[var(--foreground-muted)] ml-4">Sub:</span>
+          {getCategoryService().getSubCategories('stocks').map((sub) => {
+            const catKey = `stocks_${sub}` as AssetCategory;
+            return (
+              <button
+                key={catKey}
+                onClick={() => setCategoryFilter(categoryFilter === catKey ? 'stocks' : catKey)}
+                className={`px-2 py-0.5 text-xs rounded-full border transition-colors ${
+                  categoryFilter === catKey
+                    ? 'bg-[var(--accent-primary)] text-white border-[var(--accent-primary)]'
+                    : 'border-[var(--border)] text-[var(--foreground-muted)] hover:border-[var(--foreground-muted)]'
+                }`}
+              >
+                {getCategoryLabel(catKey)}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Table */}
       <div className="card">
@@ -374,7 +438,8 @@ export default function PositionsPage() {
           </div>
         ) : viewMode === 'positions' ? (
           /* Positions Table */
-          <table className="w-full">
+          <div className="table-scroll">
+          <table className="w-full min-w-[700px]">
             <thead>
               <tr className="border-b border-[var(--border)]">
                 <th className="table-header text-left pb-3 cursor-pointer" onClick={() => toggleSort('symbol')}>
@@ -493,9 +558,11 @@ export default function PositionsPage() {
               })}
             </tbody>
           </table>
+          </div>
         ) : (
           /* Assets Table (aggregated) */
-          <table className="w-full">
+          <div className="table-scroll">
+          <table className="w-full min-w-[600px]">
             <thead>
               <tr className="border-b border-[var(--border)]">
                 <th className="table-header text-left pb-3 cursor-pointer" onClick={() => toggleSort('symbol')}>
@@ -568,6 +635,7 @@ export default function PositionsPage() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 
