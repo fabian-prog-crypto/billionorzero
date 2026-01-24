@@ -4,13 +4,11 @@ import { useMemo } from 'react';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import { calculateAllPositionsWithPrices, calculateExposureData, aggregatePositionsBySymbol } from '@/services';
 import Header from '@/components/Header';
-import { useRefresh } from '@/components/PortfolioProvider';
 import { formatCurrency } from '@/lib/utils';
 import { Info } from 'lucide-react';
 
 export default function ExposurePage() {
   const { positions, prices, customPrices } = usePortfolioStore();
-  const { refresh } = useRefresh();
 
   // Calculate all positions with prices (including custom price overrides)
   const allAssetsWithPrices = useMemo(() => {

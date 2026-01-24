@@ -5,7 +5,6 @@ import { usePortfolioStore } from '@/store/portfolioStore';
 import { calculatePortfolioSummary, calculatePerformanceMetrics, getSharpeInterpretation, getDrawdownInterpretation } from '@/services';
 import Header from '@/components/Header';
 import NetWorthChart from '@/components/charts/NetWorthChart';
-import { useRefresh } from '@/components/PortfolioProvider';
 import { formatCurrency, formatPercent, getChangeColor } from '@/lib/utils';
 import { subDays, subMonths, subYears, format, isAfter } from 'date-fns';
 import { TrendingUp, TrendingDown, Activity, Target, AlertTriangle, Info } from 'lucide-react';
@@ -18,7 +17,6 @@ export default function PerformancePage() {
   const [viewMode, setViewMode] = useState<ViewMode>('value');
 
   const { positions, prices, customPrices, snapshots, riskFreeRate } = usePortfolioStore();
-  const { refresh } = useRefresh();
 
   const summary = useMemo(() => {
     return calculatePortfolioSummary(positions, prices, customPrices);

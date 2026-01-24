@@ -7,7 +7,6 @@ import { usePortfolioStore } from '@/store/portfolioStore';
 import { calculatePortfolioSummary } from '@/services';
 import Header from '@/components/Header';
 import AddWalletModal from '@/components/modals/AddWalletModal';
-import { useRefresh } from '@/components/PortfolioProvider';
 import { formatAddress, formatCurrency } from '@/lib/utils';
 import { SUPPORTED_CHAINS, getPerpExchangeName } from '@/services';
 
@@ -22,7 +21,6 @@ export default function WalletsPage() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
   const { wallets, positions, prices, removeWallet, hideBalances } = usePortfolioStore();
-  const { refresh } = useRefresh();
 
   const handleDelete = (id: string) => {
     if (confirm('Are you sure you want to remove this wallet? All associated positions will be removed.')) {

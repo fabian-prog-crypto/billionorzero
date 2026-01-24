@@ -7,7 +7,6 @@ import { useState } from 'react';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import { calculateAllPositionsWithPrices, calculatePortfolioSummary } from '@/services';
 import Header from '@/components/Header';
-import { useRefresh } from '@/components/PortfolioProvider';
 import {
   formatCurrency,
   formatPercent,
@@ -26,7 +25,6 @@ export default function WalletDetailPage() {
   const [copiedAddress, setCopiedAddress] = useState(false);
 
   const { wallets, positions, prices, hideBalances, updateWallet } = usePortfolioStore();
-  const { refresh } = useRefresh();
 
   const wallet = wallets.find((w) => w.id === walletId);
 

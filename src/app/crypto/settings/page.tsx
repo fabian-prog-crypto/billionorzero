@@ -3,11 +3,11 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
-export default function WalletsRedirect() {
+export default function CryptoSettingsRedirect() {
   const router = useRouter();
 
   useEffect(() => {
-    router.replace('/crypto/wallets');
+    router.replace('/settings');
   }, [router]);
 
   return null;
