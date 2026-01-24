@@ -3,12 +3,12 @@
  * Hierarchical asset categorization for portfolio exposure analysis
  *
  * Structure:
- * - Main Categories: crypto, stocks, equity, cash, other
+ * - Main Categories: crypto, stocks, cash, other
  * - Sub Categories: crypto (btc, eth, sol, stablecoins, tokens, perps), stocks (tech, ai, other)
  */
 
 // Main category types
-export type MainCategory = 'crypto' | 'stocks' | 'equity' | 'cash' | 'other';
+export type MainCategory = 'crypto' | 'stocks' | 'cash' | 'other';
 
 // Sub-category types
 export type CryptoSubCategory = 'btc' | 'eth' | 'sol' | 'stablecoins' | 'tokens' | 'perps';
@@ -19,7 +19,7 @@ export type SubCategory = CryptoSubCategory | StockSubCategory | 'none';
 export type AssetCategory =
   | 'crypto' | 'crypto_btc' | 'crypto_eth' | 'crypto_sol' | 'crypto_stablecoins' | 'crypto_tokens' | 'crypto_perps'
   | 'stocks' | 'stocks_tech' | 'stocks_ai' | 'stocks_other'
-  | 'equity' | 'cash' | 'other';
+  | 'cash' | 'other';
 
 // Category hierarchy structure
 export interface CategoryHierarchy {
@@ -92,7 +92,6 @@ export class CategoryService {
   private mainCategoryColors: Record<MainCategory, string> = {
     crypto: '#627EEA',     // Ethereum blue as main crypto color
     stocks: '#E91E63',     // Pink for stocks
-    equity: '#9C27B0',     // Purple for equity
     cash: '#4CAF50',       // Green for cash
     other: '#8B7355',      // Neutral brown
   };
@@ -116,7 +115,6 @@ export class CategoryService {
   private mainCategoryLabels: Record<MainCategory, string> = {
     crypto: 'Crypto',
     stocks: 'Stocks',
-    equity: 'Equity',
     cash: 'Cash',
     other: 'Other',
   };
@@ -233,7 +231,7 @@ export class CategoryService {
     const main = this.getMainCategory(symbol, assetType);
     const sub = this.getSubCategory(symbol, assetType);
 
-    if (sub === 'none' || main === 'cash' || main === 'equity' || main === 'other') {
+    if (sub === 'none' || main === 'cash' || main === 'other') {
       return main as AssetCategory;
     }
 
@@ -297,7 +295,7 @@ export class CategoryService {
    * Get all main categories
    */
   getMainCategories(): MainCategory[] {
-    return ['crypto', 'stocks', 'equity', 'cash', 'other'];
+    return ['crypto', 'stocks', 'cash', 'other'];
   }
 
   /**
@@ -318,7 +316,7 @@ export class CategoryService {
    * Get all display categories (main categories for overview)
    */
   getDisplayCategories(): MainCategory[] {
-    return ['crypto', 'stocks', 'equity', 'cash', 'other'];
+    return ['crypto', 'stocks', 'cash', 'other'];
   }
 
   /**

@@ -584,7 +584,7 @@ export function filterPerpPositions(assets: AssetWithPrice[]): AssetWithPrice[] 
 /**
  * Calculate exposure data by category - SINGLE SOURCE OF TRUTH
  * This function handles:
- * - Hierarchical category classification (main: crypto, stocks, equity, cash, other)
+ * - Hierarchical category classification (main: crypto, stocks, cash, other)
  * - Sub-categories (crypto: btc, eth, sol, stablecoins, tokens, perps; stocks: tech, ai, other)
  * - Debt position handling (subtracts from category totals)
  * - Perps: positions on Hyperliquid, Lighter, Ethereal (as crypto sub-category)
@@ -727,10 +727,11 @@ export function calculateExposureData(assets: AssetWithPrice[]): ExposureData {
     const debts = directDebts + subDebts;
     const net = gross - debts;
 
-    // Calculate sub-category percentages relative to main category
-    if (net !== 0) {
+    // Calculate sub-category percentages relative to main category's gross assets
+    // Using gross (not net) gives cleaner percentages that sum to ~100%
+    if (gross > 0) {
       subCategories.forEach((sub) => {
-        sub.percentage = (sub.value / net) * 100;
+        sub.percentage = (sub.grossAssets / gross) * 100;
       });
     }
 
@@ -748,11 +749,13 @@ export function calculateExposureData(assets: AssetWithPrice[]): ExposureData {
     .sort((a, b) => b.value - a.value);
 
   // Calculate perps breakdown
+  // Total = margin + net position value (longs - shorts)
+  // This represents the actual economic value of the perps position
   const perpsBreakdown: PerpsBreakdown = {
     margin: perpsMargin,
     longs: perpsLongs,
     shorts: perpsShorts,
-    total: (categoryAssets['crypto_perps'] || 0) - (categoryDebts['crypto_perps'] || 0),
+    total: perpsMargin + perpsLongs - perpsShorts,
   };
 
   // Calculate simple breakdown for pie chart: Cash & Equivalents, BTC, ETH, Tokens
@@ -760,7 +763,7 @@ export function calculateExposureData(assets: AssetWithPrice[]): ExposureData {
                     ((categoryAssets['crypto_stablecoins'] || 0) - (categoryDebts['crypto_stablecoins'] || 0));
   const btcValue = (categoryAssets['crypto_btc'] || 0) - (categoryDebts['crypto_btc'] || 0);
   const ethValue = (categoryAssets['crypto_eth'] || 0) - (categoryDebts['crypto_eth'] || 0);
-  // Tokens = everything else (sol, tokens, perps, stocks, equity, other)
+  // Tokens = everything else (sol, tokens, perps, stocks, other)
   const tokensValue = totalValue - cashValue - btcValue - ethValue;
 
   const simpleBreakdownItems: SimpleExposureItem[] = [
@@ -866,8 +869,14 @@ export function calculateExposureData(assets: AssetWithPrice[]): ExposureData {
   // Professional Perps Metrics
   const grossPerpsNotional = perpsLongs + perpsShorts;
   const netPerpsNotional = perpsLongs - perpsShorts;
-  // Estimate margin used assuming average 10x leverage available
-  const estimatedMarginUsed = grossPerpsNotional / 10;
+
+  // Estimate margin used - this is approximate since actual margin requirements
+  // vary by exchange, asset, position size, and account tier.
+  // Using 5x as a conservative estimate (20% margin requirement) rather than
+  // 10x or higher, since many altcoins have lower max leverage.
+  // Real margin data would require exchange API integration.
+  const ESTIMATED_AVERAGE_LEVERAGE = 5;
+  const estimatedMarginUsed = grossPerpsNotional / ESTIMATED_AVERAGE_LEVERAGE;
   const marginAvailable = Math.max(0, perpsMargin - estimatedMarginUsed);
   const utilizationRate = perpsMargin > 0 ? (estimatedMarginUsed / perpsMargin) * 100 : 0;
 
@@ -883,22 +892,31 @@ export function calculateExposureData(assets: AssetWithPrice[]): ExposureData {
     unrealizedPnl: 0, // Would need exchange API data
   };
 
-  // Concentration Metrics - calculate from positive (long) positions only
-  // Concentration risk is about how concentrated your long exposure is
+  // Concentration Metrics - calculate from AGGREGATED assets (not individual positions)
+  // If you have 10 ETH positions across wallets, that's still 100% ETH concentration
   const positiveAssets = assets.filter(a => a.value > 0);
-  const sortedAssetValues = positiveAssets
-    .map(a => a.value)
+
+  // Aggregate by symbol to get true asset concentration
+  const aggregatedBySymbol = new Map<string, number>();
+  positiveAssets.forEach(a => {
+    const key = a.symbol.toLowerCase();
+    aggregatedBySymbol.set(key, (aggregatedBySymbol.get(key) || 0) + a.value);
+  });
+
+  // Sort aggregated values for concentration calculation
+  const sortedAggregatedValues = Array.from(aggregatedBySymbol.values())
     .sort((a, b) => b - a);
 
-  const top1Value = sortedAssetValues[0] || 0;
-  const top5Value = sortedAssetValues.slice(0, 5).reduce((sum, v) => sum + v, 0);
-  const top10Value = sortedAssetValues.slice(0, 10).reduce((sum, v) => sum + v, 0);
+  const top1Value = sortedAggregatedValues[0] || 0;
+  const top5Value = sortedAggregatedValues.slice(0, 5).reduce((sum, v) => sum + v, 0);
+  const top10Value = sortedAggregatedValues.slice(0, 10).reduce((sum, v) => sum + v, 0);
 
   // Herfindahl-Hirschman Index (HHI) for concentration
   // HHI = sum of squared market shares (0-10000 scale)
   // Lower is more diversified: 0 = perfect diversification, 10000 = single position
+  // Calculate from aggregated assets for true concentration measure
   const hhi = grossAssets > 0
-    ? sortedAssetValues.reduce((sum, v) => {
+    ? sortedAggregatedValues.reduce((sum, v) => {
         const share = (v / grossAssets) * 100;
         return sum + share * share;
       }, 0)
@@ -909,8 +927,8 @@ export function calculateExposureData(assets: AssetWithPrice[]): ExposureData {
     top5Percentage: grossAssets > 0 ? (top5Value / grossAssets) * 100 : 0,
     top10Percentage: grossAssets > 0 ? (top10Value / grossAssets) * 100 : 0,
     herfindahlIndex: Math.round(hhi),
-    positionCount: positiveAssets.length, // Count of long positions (for concentration)
-    assetCount: new Set(positiveAssets.map(a => a.symbol.toLowerCase())).size,
+    positionCount: positiveAssets.length, // Count of individual positions
+    assetCount: aggregatedBySymbol.size,  // Count of unique assets
   };
 
   // Spot vs Derivatives Breakdown

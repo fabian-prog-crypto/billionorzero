@@ -2,11 +2,12 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Plus, Trash2, Search, Wallet, RefreshCw, Eye, EyeOff, ArrowUpDown, Download, Layers, Grid3X3 } from 'lucide-react';
+import { Plus, Trash2, Search, Wallet, RefreshCw, Eye, EyeOff, ArrowUpDown, Download, Layers, Grid3X3, Edit2 } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import { calculateAllPositionsWithPrices, calculatePortfolioSummary, aggregatePositionsBySymbol } from '@/services';
 import Header from '@/components/Header';
 import AddPositionModal from '@/components/modals/AddPositionModal';
+import CustomPriceModal from '@/components/modals/CustomPriceModal';
 import { useRefresh } from '@/components/PortfolioProvider';
 import {
   formatCurrency,
@@ -17,6 +18,7 @@ import {
   formatAddress,
 } from '@/lib/utils';
 import { MainCategory, getCategoryLabel, isPerpProtocol, getCategoryService, AssetCategory, getPerpProtocolsWithPositions } from '@/services';
+import { AssetWithPrice } from '@/types';
 
 type ViewMode = 'positions' | 'assets';
 type CategoryFilter = MainCategory | AssetCategory | 'all';
@@ -41,7 +43,13 @@ export default function PositionsPage() {
   const [sortField, setSortField] = useState<SortField>('value');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
-  const { positions, prices, removePosition, wallets, hideBalances, toggleHideBalances } = usePortfolioStore();
+  // Custom price modal state
+  const [customPriceModal, setCustomPriceModal] = useState<{
+    isOpen: boolean;
+    asset: AssetWithPrice | null;
+  }>({ isOpen: false, asset: null });
+
+  const { positions, prices, customPrices, removePosition, wallets, hideBalances, toggleHideBalances } = usePortfolioStore();
   const { refresh, isRefreshing } = useRefresh();
 
   // Build category options hierarchy
@@ -86,15 +94,15 @@ export default function PositionsPage() {
     }
   }, [searchParams, categoryOptions]);
 
-  // Calculate all positions with current prices
+  // Calculate all positions with current prices (including custom price overrides)
   const allPositionsWithPrices = useMemo(() => {
-    return calculateAllPositionsWithPrices(positions, prices);
-  }, [positions, prices]);
+    return calculateAllPositionsWithPrices(positions, prices, customPrices);
+  }, [positions, prices, customPrices]);
 
   // Get portfolio summary from centralized service
   const portfolioSummary = useMemo(() => {
-    return calculatePortfolioSummary(positions, prices);
-  }, [positions, prices]);
+    return calculatePortfolioSummary(positions, prices, customPrices);
+  }, [positions, prices, customPrices]);
 
   const totalNAV = portfolioSummary.totalValue;
   const totalChange24h = portfolioSummary.change24h;
@@ -218,6 +226,14 @@ export default function PositionsPage() {
       setSortField(field);
       setSortDirection('desc');
     }
+  };
+
+  const openCustomPriceModal = (asset: AssetWithPrice) => {
+    setCustomPriceModal({ isOpen: true, asset });
+  };
+
+  const closeCustomPriceModal = () => {
+    setCustomPriceModal({ isOpen: false, asset: null });
   };
 
   const exportCSV = () => {
@@ -523,8 +539,18 @@ export default function PositionsPage() {
                       <td className="py-3 text-right font-mono text-sm">
                         {hideBalances ? '***' : formatNumber(position.amount)}
                       </td>
-                      <td className="py-3 text-right font-mono text-sm">
-                        {position.currentPrice > 0 ? formatCurrency(position.currentPrice) : '-'}
+                      <td className="py-3 text-right">
+                        <button
+                          onClick={() => openCustomPriceModal(position)}
+                          className="group inline-flex items-center gap-1 font-mono text-sm hover:text-[var(--accent-primary)] transition-colors"
+                          title="Click to set custom price"
+                        >
+                          {position.currentPrice > 0 ? formatCurrency(position.currentPrice) : '-'}
+                          {position.hasCustomPrice && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]" title="Custom price" />
+                          )}
+                          <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity" />
+                        </button>
                       </td>
                       <td className={`py-3 text-right font-semibold ${isDebt ? 'text-[var(--negative)]' : ''}`}>
                         {hideBalances ? '****' : position.value !== 0 ? formatCurrency(position.value) : '-'}
@@ -614,8 +640,18 @@ export default function PositionsPage() {
                     <td className="py-3 text-right font-mono text-sm">
                       {hideBalances ? '***' : formatNumber(asset.amount)}
                     </td>
-                    <td className="py-3 text-right font-mono text-sm">
-                      {formatCurrency(asset.currentPrice)}
+                    <td className="py-3 text-right">
+                      <button
+                        onClick={() => openCustomPriceModal(asset)}
+                        className="group inline-flex items-center gap-1 font-mono text-sm hover:text-[var(--accent-primary)] transition-colors"
+                        title="Click to set custom price"
+                      >
+                        {formatCurrency(asset.currentPrice)}
+                        {asset.hasCustomPrice && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]" title="Custom price" />
+                        )}
+                        <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity" />
+                      </button>
                     </td>
                     <td className="py-3 text-right font-semibold">
                       {hideBalances ? '****' : formatCurrency(asset.value)}
@@ -656,6 +692,23 @@ export default function PositionsPage() {
         isOpen={showAddPosition}
         onClose={() => setShowAddPosition(false)}
       />
+
+      {customPriceModal.asset && (
+        <CustomPriceModal
+          isOpen={customPriceModal.isOpen}
+          onClose={closeCustomPriceModal}
+          symbol={customPriceModal.asset.symbol}
+          name={customPriceModal.asset.name}
+          currentMarketPrice={
+            // Get market price (not custom) for reference
+            customPriceModal.asset.hasCustomPrice
+              ? prices[customPriceModal.asset.symbol.toLowerCase()]?.price || 0
+              : customPriceModal.asset.currentPrice
+          }
+          currentCustomPrice={customPrices[customPriceModal.asset.symbol.toLowerCase()]?.price}
+          currentNote={customPrices[customPriceModal.asset.symbol.toLowerCase()]?.note}
+        />
+      )}
     </div>
   );
 }

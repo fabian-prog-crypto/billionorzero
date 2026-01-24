@@ -24,18 +24,18 @@ export default function OverviewPage() {
   const [showAddPosition, setShowAddPosition] = useState(false);
   const [showAddWallet, setShowAddWallet] = useState(false);
 
-  const { positions, prices, snapshots, wallets, hideBalances, toggleHideBalances } = usePortfolioStore();
+  const { positions, prices, customPrices, snapshots, wallets, hideBalances, toggleHideBalances } = usePortfolioStore();
   const { refresh } = useRefresh();
 
-  // Calculate portfolio summary
+  // Calculate portfolio summary (including custom price overrides)
   const summary = useMemo(() => {
-    return calculatePortfolioSummary(positions, prices);
-  }, [positions, prices]);
+    return calculatePortfolioSummary(positions, prices, customPrices);
+  }, [positions, prices, customPrices]);
 
   // Calculate all positions for exposure chart (not just top 10)
   const allAssetsWithPrices = useMemo(() => {
-    return calculateAllPositionsWithPrices(positions, prices);
-  }, [positions, prices]);
+    return calculateAllPositionsWithPrices(positions, prices, customPrices);
+  }, [positions, prices, customPrices]);
 
   // Use centralized exposure calculation - single source of truth
   const exposureData = useMemo(() => {
@@ -234,7 +234,7 @@ export default function OverviewPage() {
                         <span>1.0-1.5x = Low</span>
                       </div>
                       <div className="flex items-center gap-1">
-                        <div className="w-2 h-2 rounded-full bg-yellow-500" />
+                        <div className="w-2 h-2 rounded-full bg-[var(--warning)]" />
                         <span>1.5-2.0x = Moderate</span>
                       </div>
                       <div className="flex items-center gap-1">
@@ -252,7 +252,7 @@ export default function OverviewPage() {
                     <p className="text-xs text-[var(--foreground-muted)] mb-1">Leverage</p>
                     <Info className="w-3 h-3 text-[var(--foreground-muted)] mb-1" />
                   </div>
-                  <p className={`text-lg font-semibold ${exposureMetrics.leverage > 2 ? 'text-[var(--negative)]' : exposureMetrics.leverage > 1.5 ? 'text-yellow-600' : ''}`}>
+                  <p className={`text-lg font-semibold ${exposureMetrics.leverage > 2 ? 'text-[var(--negative)]' : exposureMetrics.leverage > 1.5 ? 'text-[var(--warning)]' : ''}`}>
                     {exposureMetrics.leverage.toFixed(2)}x
                   </p>
                   <p className="text-xs text-[var(--foreground-muted)] mt-1">
@@ -275,7 +275,7 @@ export default function OverviewPage() {
               {/* Concentration */}
               <div className="card">
                 <p className="text-xs text-[var(--foreground-muted)] mb-1">Top 5 Concentration</p>
-                <p className={`text-lg font-semibold ${concentrationMetrics.top5Percentage > 80 ? 'text-[var(--negative)]' : concentrationMetrics.top5Percentage > 60 ? 'text-yellow-600' : ''}`}>
+                <p className={`text-lg font-semibold ${concentrationMetrics.top5Percentage > 80 ? 'text-[var(--negative)]' : concentrationMetrics.top5Percentage > 60 ? 'text-[var(--warning)]' : ''}`}>
                   {concentrationMetrics.top5Percentage.toFixed(1)}%
                 </p>
                 <p className="text-xs text-[var(--foreground-muted)] mt-1">
@@ -338,7 +338,7 @@ export default function OverviewPage() {
                       <span>{hideBalances ? '****' : formatCurrency(perpsMetrics.collateral)}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm mt-1">
-                      <span className="text-[var(--foreground-muted)]">Est. Margin Used</span>
+                      <span className="text-[var(--foreground-muted)]">Est. Margin Used (~5x)</span>
                       <span className={perpsMetrics.utilizationRate > 80 ? 'text-[var(--negative)]' : ''}>
                         {hideBalances ? '****' : formatCurrency(perpsMetrics.marginUsed)} ({perpsMetrics.utilizationRate.toFixed(0)}%)
                       </span>

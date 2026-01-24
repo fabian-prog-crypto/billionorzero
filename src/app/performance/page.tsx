@@ -16,12 +16,12 @@ export default function PerformancePage() {
   const [period, setPeriod] = useState<TimePeriod>('1mon');
   const [viewMode, setViewMode] = useState<ViewMode>('value');
 
-  const { positions, prices, snapshots } = usePortfolioStore();
+  const { positions, prices, customPrices, snapshots } = usePortfolioStore();
   const { refresh } = useRefresh();
 
   const summary = useMemo(() => {
-    return calculatePortfolioSummary(positions, prices);
-  }, [positions, prices]);
+    return calculatePortfolioSummary(positions, prices, customPrices);
+  }, [positions, prices, customPrices]);
 
   // Filter snapshots based on time period
   const filteredSnapshots = useMemo(() => {
@@ -172,7 +172,7 @@ export default function PerformancePage() {
             </thead>
             <tbody>
               {summary.topAssets.slice(0, 8).map((asset) => (
-                <tr key={asset.id} className="border-b border-[var(--border)] last:border-0">
+                <tr key={asset.id} className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--background-secondary)] transition-colors">
                   <td className="py-2">
                     <div className="flex items-center gap-2">
                       <div className="w-5 h-5 bg-[var(--tag-bg)] rounded-full flex items-center justify-center text-[10px] font-semibold">
@@ -207,7 +207,7 @@ export default function PerformancePage() {
               {summary.topAssets.slice(0, 8).map((asset) => {
                 const startPrice = asset.currentPrice / (1 + asset.changePercent24h / 100);
                 return (
-                  <tr key={asset.id} className="border-b border-[var(--border)] last:border-0">
+                  <tr key={asset.id} className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--background-secondary)] transition-colors">
                     <td className="py-2">
                       <span className="text-sm font-medium">{asset.symbol.toUpperCase()}</span>
                     </td>

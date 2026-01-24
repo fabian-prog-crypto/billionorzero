@@ -7,16 +7,16 @@ import Header from '@/components/Header';
 import { useRefresh } from '@/components/PortfolioProvider';
 import { formatCurrency, formatNumber, formatPercent, getChangeColor } from '@/lib/utils';
 import { getCategoryService } from '@/services';
-import { Wallet } from 'lucide-react';
+import { Wallet, TrendingUp } from 'lucide-react';
 
 export default function PerpsPage() {
-  const { positions, prices, hideBalances } = usePortfolioStore();
+  const { positions, prices, customPrices, hideBalances } = usePortfolioStore();
   const { refresh } = useRefresh();
 
-  // Calculate all positions with prices
+  // Calculate all positions with prices (including custom price overrides)
   const allAssetsWithPrices = useMemo(() => {
-    return calculateAllPositionsWithPrices(positions, prices);
-  }, [positions, prices]);
+    return calculateAllPositionsWithPrices(positions, prices, customPrices);
+  }, [positions, prices, customPrices]);
 
   // Use centralized exposure calculation
   const exposureData = useMemo(() => {
@@ -120,11 +120,16 @@ export default function PerpsPage() {
       <Header title="Perps Overview" onSync={refresh} />
 
       {!hasPerps ? (
-        <div className="card text-center py-12">
-          <p className="text-[var(--foreground-muted)] mb-2">No perpetual positions found</p>
-          <p className="text-sm text-[var(--foreground-muted)]">
-            Connect a wallet with positions on Hyperliquid, Lighter, or Ethereal to see them here.
-          </p>
+        <div className="card">
+          <div className="flex flex-col items-center justify-center py-16">
+            <div className="w-16 h-16 bg-[var(--background-secondary)] rounded-full flex items-center justify-center mb-4">
+              <TrendingUp className="w-8 h-8 text-[var(--foreground-muted)]" />
+            </div>
+            <h3 className="text-lg font-semibold mb-2">No perpetual positions</h3>
+            <p className="text-[var(--foreground-muted)] text-center max-w-md">
+              Connect a wallet with positions on Hyperliquid, Lighter, or Ethereal to see them here.
+            </p>
+          </div>
         </div>
       ) : (
         <>
@@ -146,7 +151,7 @@ export default function PerpsPage() {
             </div>
             <div className="card">
               <p className="text-sm text-[var(--foreground-muted)] mb-1">Net Notional</p>
-              <p className={`text-xl font-semibold ${perpsMetrics.netNotional >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+              <p className={`text-xl font-semibold ${perpsMetrics.netNotional >= 0 ? 'text-[var(--positive)]' : 'text-[var(--negative)]'}`}>
                 {hideBalances ? '****' : formatCurrency(perpsMetrics.netNotional)}
               </p>
               <p className="text-xs text-[var(--foreground-muted)]">{perpsMetrics.netNotional >= 0 ? 'Net Long' : 'Net Short'}</p>
@@ -154,8 +159,8 @@ export default function PerpsPage() {
             <div className="card">
               <p className="text-sm text-[var(--foreground-muted)] mb-1">Utilization</p>
               <p className={`text-xl font-semibold ${
-                perpsMetrics.utilizationRate > 80 ? 'text-red-500' :
-                perpsMetrics.utilizationRate > 60 ? 'text-yellow-600' : ''
+                perpsMetrics.utilizationRate > 80 ? 'text-[var(--negative)]' :
+                perpsMetrics.utilizationRate > 60 ? 'text-[var(--warning)]' : ''
               }`}>
                 {perpsMetrics.utilizationRate.toFixed(1)}%
               </p>
@@ -167,13 +172,13 @@ export default function PerpsPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             <div className="card">
               <p className="text-sm text-[var(--foreground-muted)] mb-1">Long Notional</p>
-              <p className="text-xl font-semibold text-green-500">
+              <p className="text-xl font-semibold text-[var(--positive)]">
                 {hideBalances ? '****' : formatCurrency(perpsMetrics.longNotional)}
               </p>
             </div>
             <div className="card">
               <p className="text-sm text-[var(--foreground-muted)] mb-1">Short Notional</p>
-              <p className="text-xl font-semibold text-red-500">
+              <p className="text-xl font-semibold text-[var(--negative)]">
                 {hideBalances ? '****' : formatCurrency(perpsMetrics.shortNotional)}
               </p>
             </div>
@@ -185,7 +190,7 @@ export default function PerpsPage() {
             </div>
             <div className="card">
               <p className="text-sm text-[var(--foreground-muted)] mb-1">Margin Available</p>
-              <p className={`text-xl font-semibold ${perpsMetrics.marginAvailable < perpsMetrics.collateral * 0.2 ? 'text-yellow-600' : ''}`}>
+              <p className={`text-xl font-semibold ${perpsMetrics.marginAvailable < perpsMetrics.collateral * 0.2 ? 'text-[var(--warning)]' : ''}`}>
                 {hideBalances ? '****' : formatCurrency(perpsMetrics.marginAvailable)}
               </p>
             </div>
@@ -217,16 +222,16 @@ export default function PerpsPage() {
                       <td className="py-3 text-right">
                         {hideBalances ? '****' : formatCurrency(stat.margin)}
                       </td>
-                      <td className="py-3 text-right text-blue-500">
+                      <td className="py-3 text-right text-[var(--accent-primary)]">
                         {hideBalances ? '****' : stat.spot > 0 ? formatCurrency(stat.spot) : '-'}
                       </td>
-                      <td className="py-3 text-right text-green-500">
+                      <td className="py-3 text-right text-[var(--positive)]">
                         {hideBalances ? '****' : stat.longs > 0 ? formatCurrency(stat.longs) : '-'}
                       </td>
-                      <td className="py-3 text-right text-red-500">
+                      <td className="py-3 text-right text-[var(--negative)]">
                         {hideBalances ? '****' : stat.shorts > 0 ? `-${formatCurrency(stat.shorts)}` : '-'}
                       </td>
-                      <td className={`py-3 text-right font-semibold ${stat.net >= 0 ? '' : 'text-red-500'}`}>
+                      <td className={`py-3 text-right font-semibold ${stat.net >= 0 ? '' : 'text-[var(--negative)]'}`}>
                         {hideBalances ? '****' : formatCurrency(stat.net)}
                       </td>
                       <td className="py-3 text-right text-[var(--foreground-muted)]">
@@ -272,8 +277,8 @@ export default function PerpsPage() {
                       >
                         <td className="py-3">
                           <div className="flex items-center gap-3">
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold ${
-                              position.isDebt ? 'bg-red-500 text-white' : 'bg-green-500 text-white'
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold text-white ${
+                              position.isDebt ? 'bg-[var(--negative)]' : 'bg-[var(--positive)]'
                             }`}>
                               {position.symbol.slice(0, 2).toUpperCase()}
                             </div>
@@ -292,8 +297,8 @@ export default function PerpsPage() {
                         <td className="py-3">
                           <span className={`px-2 py-1 text-xs font-semibold rounded ${
                             position.isDebt
-                              ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                              : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                              ? 'bg-[var(--negative-light)] text-[var(--negative)]'
+                              : 'bg-[var(--positive-light)] text-[var(--positive)]'
                           }`}>
                             {position.isDebt ? 'SHORT' : 'LONG'}
                           </span>
@@ -304,7 +309,7 @@ export default function PerpsPage() {
                         <td className="py-3 text-right font-mono text-sm">
                           {position.currentPrice > 0 ? formatCurrency(position.currentPrice) : '-'}
                         </td>
-                        <td className={`py-3 text-right font-semibold ${position.isDebt ? 'text-red-500' : 'text-green-500'}`}>
+                        <td className={`py-3 text-right font-semibold ${position.isDebt ? 'text-[var(--negative)]' : 'text-[var(--positive)]'}`}>
                           {hideBalances ? '****' : formatCurrency(position.value)}
                         </td>
                         <td className={`py-3 text-right ${getChangeColor(position.changePercent24h)}`}>
@@ -406,7 +411,7 @@ export default function PerpsPage() {
                       >
                         <td className="py-3">
                           <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs font-semibold">
+                            <div className="w-8 h-8 bg-[var(--accent-primary)] text-white rounded-full flex items-center justify-center text-xs font-semibold">
                               {position.symbol.slice(0, 2).toUpperCase()}
                             </div>
                             <div>
@@ -427,7 +432,7 @@ export default function PerpsPage() {
                         <td className="py-3 text-right font-mono text-sm">
                           {position.currentPrice > 0 ? formatCurrency(position.currentPrice) : '-'}
                         </td>
-                        <td className="py-3 text-right font-semibold text-blue-500">
+                        <td className="py-3 text-right font-semibold text-[var(--accent-primary)]">
                           {hideBalances ? '****' : formatCurrency(position.value)}
                         </td>
                       </tr>
