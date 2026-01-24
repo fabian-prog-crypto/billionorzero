@@ -175,7 +175,18 @@ export function calculatePositionValue(
   }
 
   const priceKey = getPriceKey(position);
-  const priceData = prices[priceKey];
+  let priceData = prices[priceKey];
+
+  // Fallback to CoinGecko price if DeBank price is 0 or missing
+  // This helps tokens like SYRUP that DeBank doesn't have prices for
+  if ((!priceData || priceData.price === 0) && position.type === 'crypto') {
+    const priceProvider = getPriceProvider();
+    const coinGeckoKey = priceProvider.getCoinId(position.symbol);
+    const coinGeckoData = prices[coinGeckoKey];
+    if (coinGeckoData && coinGeckoData.price > 0) {
+      priceData = coinGeckoData;
+    }
+  }
 
   const currentPrice = priceData?.price || 0;
   // Debt positions have negative value (they reduce your net worth)
@@ -413,13 +424,15 @@ export function aggregatePositionsBySymbol(
  * Used to determine if stablecoins on perp exchanges should count as margin
  */
 export function getPerpProtocolsWithPositions(assets: AssetWithPrice[]): Set<string> {
-  const categoryService = getCategoryService();
   const protocols = new Set<string>();
 
   assets.forEach((asset) => {
     if (asset.protocol && isPerpProtocol(asset.protocol)) {
-      const subCat = categoryService.getSubCategory(asset.symbol, asset.type);
-      if (subCat !== 'stablecoins') {
+      // Check if this is an actual perp trade (Long/Short position)
+      const nameLower = asset.name.toLowerCase();
+      const isActualPerpTrade = nameLower.includes(' long ') || nameLower.includes(' short ') ||
+                                 nameLower.endsWith(' long)') || nameLower.endsWith(' short)');
+      if (isActualPerpTrade) {
         protocols.add(asset.protocol.toLowerCase());
       }
     }
@@ -434,17 +447,16 @@ export function getPerpProtocolsWithPositions(assets: AssetWithPrice[]): Set<str
  */
 export function filterPerpPositions(assets: AssetWithPrice[]): AssetWithPrice[] {
   const categoryService = getCategoryService();
-  const perpProtocolsWithPositions = getPerpProtocolsWithPositions(assets);
 
   return assets.filter((asset) => {
     if (!asset.protocol || !isPerpProtocol(asset.protocol)) return false;
 
-    const subCat = categoryService.getSubCategory(asset.symbol, asset.type);
-    if (subCat === 'stablecoins') {
-      // Stablecoins only count as perps (margin) if there are active positions
-      return perpProtocolsWithPositions.has(asset.protocol.toLowerCase());
-    }
-    return true; // Non-stablecoin on perp exchange = perp position
+    // Include all positions on perp exchanges:
+    // - Stablecoins (margin)
+    // - Perp trades (Long/Short)
+    // - Spot holdings
+    // The perps page will categorize them appropriately
+    return true;
   });
 }
 
@@ -486,15 +498,22 @@ export function calculateExposureData(assets: AssetWithPrice[]): ExposureData {
       const protocolKey = asset.protocol.toLowerCase();
       const hasActivePositions = perpProtocolsWithPositions.has(protocolKey);
 
+      // Check if this is an actual perp trade (Long/Short) vs spot holding
+      const nameLower = asset.name.toLowerCase();
+      const isActualPerpTrade = nameLower.includes(' long ') || nameLower.includes(' short ') ||
+                                 nameLower.endsWith(' long)') || nameLower.endsWith(' short)');
+
       if (subCat === 'stablecoins') {
+        // ALWAYS count stablecoins on perp exchanges as margin for metrics
+        if (!isDebt) perpsMargin += absValue;
+
+        // Only categorize as 'perps' if there are active positions (for portfolio breakdown)
         if (hasActivePositions) {
-          // Stablecoin with active positions = margin, goes to crypto_perps
           subCat = 'perps';
-          if (!isDebt) perpsMargin += absValue;
         }
-        // else: idle stablecoin stays as crypto_stablecoins
-      } else {
-        // Non-stablecoin on perp protocol = perp position
+        // else: stays as crypto_stablecoins for categorization but still counted in perpsMargin
+      } else if (isActualPerpTrade) {
+        // Actual perp trade (Long/Short position)
         subCat = 'perps';
         if (isDebt) {
           perpsShorts += absValue;
@@ -502,6 +521,7 @@ export function calculateExposureData(assets: AssetWithPrice[]): ExposureData {
           perpsLongs += absValue;
         }
       }
+      // else: spot holding on perp exchange - stays in its original category (e.g., crypto_tokens)
     }
 
     // Build the category key
@@ -642,9 +662,12 @@ export function calculateExposureData(assets: AssetWithPrice[]): ExposureData {
     if (isOnPerpExchange) return;
 
     // Check if this is a cash equivalent (stablecoins, Pendle PTs)
-    const isCashEquivalent = subCat === 'stablecoins' ||
-                              asset.symbol.toLowerCase().startsWith('pt-') ||
-                              asset.symbol.toLowerCase().includes('pt-');
+    // Pendle PTs are fixed-term deposits that mature to a known value - no market risk
+    // PT symbols start with 'pt-' (e.g., PT-sUSDe-27MAR2025, PT-weETH-26JUN2025)
+    // Note: YT (Yield Tokens) are NOT cash equivalents as they have yield risk
+    const symbolLower = asset.symbol.toLowerCase();
+    const isPendlePT = symbolLower.startsWith('pt-') || symbolLower.startsWith('pt_');
+    const isCashEquivalent = subCat === 'stablecoins' || isPendlePT;
 
     if (isDebt) {
       spotShortValue += absValue;
@@ -657,19 +680,19 @@ export function calculateExposureData(assets: AssetWithPrice[]): ExposureData {
   });
 
   // Exposure Metrics
-  // For leverage calculation: exclude cash equivalents (stablecoins, Pendle PTs) as they don't add market risk
+  // Exclude cash equivalents (stablecoins, Pendle PTs) as they don't add market risk
   const spotLong = spotLongValue;
   const spotShort = spotShortValue;
-  const longExposure = spotLong + perpsLongs;  // All long positions
+
+  // Risk-adjusted exposure: excludes cash equivalents that don't have market risk
+  const riskAdjustedSpotLong = spotLong - cashEquivalentsForLeverage;
+  const longExposure = riskAdjustedSpotLong + perpsLongs;  // Market-exposed long positions
   const shortExposure = spotShort + perpsShorts; // All short positions (including borrowed)
   const grossExposure = longExposure + shortExposure;
   const netExposure = longExposure - shortExposure;
 
-  // Leverage calculation: exclude cash equivalents from both numerator (exposure) and treat margin as deployed
-  // Risk-adjusted gross = total exposure minus cash equivalents that don't add risk
-  const riskAdjustedLong = spotLong - cashEquivalentsForLeverage + perpsLongs;
-  const riskAdjustedGross = riskAdjustedLong + shortExposure;
-  const leverage = totalValue > 0 ? riskAdjustedGross / totalValue : 0;
+  // Leverage = Gross Exposure / Net Worth
+  const leverage = totalValue > 0 ? grossExposure / totalValue : 0;
 
   const exposureMetrics: ExposureMetrics = {
     longExposure,

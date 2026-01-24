@@ -128,10 +128,12 @@ export class EtherealProvider {
     }
 
     // Process balances
+    let hasBalances = false;
     for (const balance of balances) {
       const amount = parseFloat(balance.amount);
       if (amount <= 0) continue;
 
+      hasBalances = true;
       const symbol = balance.tokenName;
       const priceKey = `ethereal-spot-${symbol.toLowerCase()}`;
 
@@ -160,6 +162,42 @@ export class EtherealProvider {
         addedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
+    }
+
+    // Fallback: If no balances but there are perp positions, estimate margin
+    // from position data (positions require margin to exist)
+    if (!hasBalances && perpPositions.length > 0) {
+      // Calculate estimated margin from total position notional (assume ~10x leverage typical)
+      let totalNotional = 0;
+      for (const pos of perpPositions) {
+        if (pos.isLiquidated) continue;
+        const size = Math.abs(parseFloat(pos.size));
+        const price = parseFloat(pos.avgEntryPrice) || 0;
+        totalNotional += size * price;
+      }
+
+      // Estimate margin as notional / 10 (assuming 10x average leverage)
+      const estimatedMargin = totalNotional > 0 ? totalNotional / 10 : 0;
+
+      if (estimatedMargin > 0) {
+        const priceKey = 'ethereal-usdc';
+        prices[priceKey] = { price: 1, symbol: 'USDC' };
+        accountValue = estimatedMargin;
+
+        positions.push({
+          id: `${walletId}-ethereal-margin-usdc-${subaccount.id.slice(0, 8)}`,
+          type: 'crypto',
+          symbol: 'USDC',
+          name: 'USDC Margin (Ethereal)',
+          amount: estimatedMargin,
+          walletAddress,
+          chain: 'ethereal',
+          protocol: 'Ethereal',
+          debankPriceKey: priceKey,
+          addedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+      }
     }
 
     return { positions, prices, accountValue };

@@ -44,21 +44,6 @@ export default function OverviewPage() {
   // Extract what we need from the centralized calculation
   const { categories, perpsBreakdown, simpleBreakdown, exposureMetrics, perpsMetrics, concentrationMetrics, spotDerivatives } = exposureData;
 
-  // Get price data for watchlist
-  const watchlist = useMemo(() => {
-    const symbols = ['bitcoin', 'ethereum', 'solana', 'arbitrum'];
-    return symbols.map((id) => {
-      const priceData = prices[id];
-      return {
-        id,
-        symbol: id === 'bitcoin' ? 'BTC' : id === 'ethereum' ? 'ETH' : id === 'solana' ? 'SOL' : 'ARB',
-        price: priceData?.price || 0,
-        change1h: 0,
-        change24h: priceData?.changePercent24h || 0,
-      };
-    });
-  }, [prices]);
-
   const hasData = positions.length > 0 || wallets.length > 0;
 
   return (
@@ -343,37 +328,6 @@ export default function OverviewPage() {
                 <h3 className="font-semibold">Top Assets</h3>
               </div>
               <AllocationChart assets={summary.topAssets} size={160} />
-            </div>
-
-            {/* Prices Watchlist */}
-            <div className="card">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold">Prices</h3>
-                <span className="live-indicator">Live</span>
-              </div>
-              <div className="space-y-3">
-                {watchlist.map((coin) => (
-                  <div
-                    key={coin.id}
-                    className="flex items-center justify-between py-2"
-                  >
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 bg-[var(--tag-bg)] rounded-full flex items-center justify-center text-xs font-semibold">
-                        {coin.symbol.slice(0, 1)}
-                      </div>
-                      <span className="font-medium text-sm">{coin.symbol}</span>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-medium">
-                        {coin.price > 0 ? formatCurrency(coin.price) : '-'}
-                      </p>
-                      <p className={`text-xs ${getChangeColor(coin.change24h)}`}>
-                        {coin.price > 0 ? formatPercent(coin.change24h) : '-'}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
             </div>
 
             {/* Connected Wallets */}

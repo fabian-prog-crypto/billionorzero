@@ -1,6 +1,7 @@
 /**
  * CEX Provider - Centralized Exchange Data Provider
  * Fetches balances from CEX accounts (Binance, etc.)
+ * Prices are fetched via the centralized CoinGecko price provider
  */
 
 import { CexAccount, Position } from '@/types';
@@ -18,6 +19,60 @@ interface BinanceAccountResponse {
   accountType: string;
 }
 
+// Common asset name mappings
+const ASSET_NAME_MAP: Record<string, string> = {
+  BTC: 'Bitcoin',
+  ETH: 'Ethereum',
+  USDT: 'Tether USD',
+  USDC: 'USD Coin',
+  BNB: 'BNB',
+  SOL: 'Solana',
+  XRP: 'XRP',
+  ADA: 'Cardano',
+  DOGE: 'Dogecoin',
+  DOT: 'Polkadot',
+  MATIC: 'Polygon',
+  POL: 'Polygon',
+  LINK: 'Chainlink',
+  UNI: 'Uniswap',
+  AVAX: 'Avalanche',
+  ATOM: 'Cosmos',
+  LTC: 'Litecoin',
+  SHIB: 'Shiba Inu',
+  TRX: 'TRON',
+  ETC: 'Ethereum Classic',
+  XLM: 'Stellar',
+  NEAR: 'NEAR Protocol',
+  APT: 'Aptos',
+  ARB: 'Arbitrum',
+  OP: 'Optimism',
+  INJ: 'Injective',
+  SUI: 'Sui',
+  SEI: 'Sei',
+  TIA: 'Celestia',
+  JUP: 'Jupiter',
+  WIF: 'dogwifhat',
+  PEPE: 'Pepe',
+  BONK: 'Bonk',
+  SYRUP: 'Maple Finance',
+  CAKE: 'PancakeSwap',
+  FDUSD: 'First Digital USD',
+  AAVE: 'Aave',
+  MKR: 'Maker',
+  CRV: 'Curve DAO',
+  LDO: 'Lido DAO',
+  ENS: 'Ethereum Name Service',
+  GRT: 'The Graph',
+  FET: 'Fetch.ai',
+  RNDR: 'Render Token',
+  PENDLE: 'Pendle',
+  GMX: 'GMX',
+  DYDX: 'dYdX',
+  ZRO: 'LayerZero',
+  ENA: 'Ethena',
+  EIGEN: 'EigenLayer',
+};
+
 /**
  * Fetch balances from Binance account
  */
@@ -25,9 +80,7 @@ async function fetchBinanceBalances(account: CexAccount): Promise<Position[]> {
   try {
     const response = await fetch('/api/cex/binance', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         apiKey: account.apiKey,
         apiSecret: account.apiSecret,
@@ -42,8 +95,6 @@ async function fetchBinanceBalances(account: CexAccount): Promise<Position[]> {
     }
 
     const data: BinanceAccountResponse = await response.json();
-
-    // Transform balances to positions
     const positions: Position[] = [];
     const now = new Date().toISOString();
 
@@ -55,54 +106,14 @@ async function fetchBinanceBalances(account: CexAccount): Promise<Position[]> {
       // Skip zero balances
       if (total <= 0) continue;
 
-      // Map common stablecoin names
-      let symbol = balance.asset.toUpperCase();
-      let name = balance.asset;
-
-      // Common asset name mappings
-      const nameMap: Record<string, string> = {
-        BTC: 'Bitcoin',
-        ETH: 'Ethereum',
-        USDT: 'Tether USD',
-        USDC: 'USD Coin',
-        BNB: 'BNB',
-        SOL: 'Solana',
-        XRP: 'XRP',
-        ADA: 'Cardano',
-        DOGE: 'Dogecoin',
-        DOT: 'Polkadot',
-        MATIC: 'Polygon',
-        LINK: 'Chainlink',
-        UNI: 'Uniswap',
-        AVAX: 'Avalanche',
-        ATOM: 'Cosmos',
-        LTC: 'Litecoin',
-        SHIB: 'Shiba Inu',
-        TRX: 'TRON',
-        ETC: 'Ethereum Classic',
-        XLM: 'Stellar',
-        NEAR: 'NEAR Protocol',
-        APT: 'Aptos',
-        ARB: 'Arbitrum',
-        OP: 'Optimism',
-        INJ: 'Injective',
-        SUI: 'Sui',
-        SEI: 'Sei',
-        TIA: 'Celestia',
-        JUP: 'Jupiter',
-        WIF: 'dogwifhat',
-        PEPE: 'Pepe',
-        BONK: 'Bonk',
-      };
-
-      if (nameMap[symbol]) {
-        name = nameMap[symbol];
-      }
+      const symbol = balance.asset.toUpperCase();
+      const symbolLower = symbol.toLowerCase();
+      const name = ASSET_NAME_MAP[symbol] || symbol;
 
       positions.push({
         id: uuidv4(),
         type: 'crypto',
-        symbol: symbol.toLowerCase(),
+        symbol: symbolLower,
         name,
         amount: total,
         protocol: `cex:${account.exchange}:${account.id}`,
@@ -157,6 +168,7 @@ export async function fetchAllCexPositions(accounts: CexAccount[]): Promise<Posi
   );
 
   const positions: Position[] = [];
+
   results.forEach((result, index) => {
     if (result.status === 'fulfilled') {
       positions.push(...result.value);

@@ -16,10 +16,11 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Use is_all=true to include all tokens (Pendle PTs, LP tokens, etc.)
-    // Spam filtering is handled in wallet-provider.ts (is_scam, is_suspicious, dust filter)
+    // Use all_token_list with is_all=false to get wallet tokens across ALL chains
+    // is_all=false excludes protocol receipt tokens (aTokens, LP tokens, etc.)
+    // Protocol positions (including Pendle PTs, Aave deposits) come from the protocols endpoint
     const response = await fetch(
-      `${BASE_URL}/user/all_token_list?id=${address}&is_all=true`,
+      `${BASE_URL}/user/all_token_list?id=${address}&is_all=false`,
       {
         headers: {
           'AccessKey': apiKey,

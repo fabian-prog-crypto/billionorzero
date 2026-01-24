@@ -117,9 +117,11 @@ export class HyperliquidProvider {
       });
     }
 
-    // Also add the margin/collateral as a USDC position if there's account value
-    const withdrawable = parseFloat(state.withdrawable) || 0;
-    if (withdrawable > 0) {
+    // Add the margin/collateral as a USDC position based on account value
+    // accountValue = total equity (deposited USDC + unrealized PnL)
+    // This represents the actual collateral value on the exchange
+    const accountValue = parseFloat(state.marginSummary.accountValue) || 0;
+    if (accountValue > 0) {
       const priceKey = 'hyperliquid-usdc';
       prices[priceKey] = { price: 1, symbol: 'USDC' };
 
@@ -128,7 +130,7 @@ export class HyperliquidProvider {
         type: 'crypto',
         symbol: 'USDC',
         name: 'USDC Margin (Hyperliquid)',
-        amount: withdrawable,
+        amount: accountValue,
         walletAddress,
         chain: 'hyperliquid',
         protocol: 'Hyperliquid',
@@ -159,9 +161,12 @@ export class HyperliquidProvider {
 
       const coin = balance.coin;
 
-      // Get price - for USDC it's $1, for others check allMids
+      // USDC/USDT are stablecoins (spot wallet stables, separate from perp margin)
+      const isStable = coin === 'USDC' || coin === 'USDT';
+
+      // Get price - for stables it's $1, for others check allMids
       let price = 1;
-      if (coin !== 'USDC' && coin !== 'USDT') {
+      if (!isStable) {
         // For spot tokens, the mid price might be in format "TOKEN/USDC"
         const spotMid = allMids[`${coin}/USDC`] || allMids[coin];
         if (spotMid) {
@@ -176,7 +181,7 @@ export class HyperliquidProvider {
         id: `${walletId}-hyperliquid-spot-${coin}`,
         type: 'crypto',
         symbol: coin,
-        name: `${coin} (Hyperliquid Spot)`,
+        name: `${coin} (Hyperliquid${isStable ? ' Spot Margin' : ' Spot'})`,
         amount: total,
         walletAddress,
         chain: 'hyperliquid',

@@ -16,20 +16,27 @@ import {
   getAssetTypeLabel,
   formatAddress,
 } from '@/lib/utils';
-import { MainCategory, getMainCategory, getCategoryLabel, isPerpProtocol, getCategoryService, isAssetInCategory, AssetCategory, getPerpProtocolsWithPositions } from '@/services';
+import { MainCategory, getCategoryLabel, isPerpProtocol, getCategoryService, AssetCategory, getPerpProtocolsWithPositions } from '@/services';
 
 type ViewMode = 'positions' | 'assets';
-type FilterType = 'all' | 'crypto' | 'stock' | 'cash' | 'manual';
-type CategoryFilter = MainCategory | AssetCategory | null;
+type CategoryFilter = MainCategory | AssetCategory | 'all';
 type SortField = 'symbol' | 'value' | 'amount' | 'change';
 type SortDirection = 'asc' | 'desc';
+
+// Category hierarchy for the dropdown
+interface CategoryOption {
+  value: CategoryFilter;
+  label: string;
+  isSubcategory?: boolean;
+  parent?: MainCategory;
+  color?: string;
+}
 
 export default function PositionsPage() {
   const searchParams = useSearchParams();
   const [showAddPosition, setShowAddPosition] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('positions');
-  const [filter, setFilter] = useState<FilterType>('all');
-  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>(null);
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortField, setSortField] = useState<SortField>('value');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
@@ -37,51 +44,69 @@ export default function PositionsPage() {
   const { positions, prices, removePosition, wallets, hideBalances, toggleHideBalances } = usePortfolioStore();
   const { refresh, isRefreshing } = useRefresh();
 
+  // Build category options hierarchy
+  const categoryOptions = useMemo((): CategoryOption[] => {
+    const categoryService = getCategoryService();
+    const options: CategoryOption[] = [
+      { value: 'all', label: 'All Categories' }
+    ];
+
+    // Add main categories with their subcategories
+    categoryService.getMainCategories().forEach((mainCat) => {
+      options.push({
+        value: mainCat,
+        label: categoryService.getMainCategoryLabel(mainCat),
+        color: categoryService.getCategoryColor(mainCat as AssetCategory)
+      });
+
+      // Add subcategories
+      categoryService.getSubCategories(mainCat).forEach((subCat) => {
+        const catKey = `${mainCat}_${subCat}` as AssetCategory;
+        options.push({
+          value: catKey,
+          label: getCategoryLabel(catKey),
+          isSubcategory: true,
+          parent: mainCat,
+          color: categoryService.getCategoryColor(catKey)
+        });
+      });
+    });
+
+    return options;
+  }, []);
+
   // Read category filter from URL params
   useEffect(() => {
     const categoryParam = searchParams.get('category');
-    const validMainCategories = getCategoryService().getMainCategories();
-    const validSubCategories = getCategoryService().getAllSubCategories();
     if (categoryParam) {
-      if (validMainCategories.includes(categoryParam as MainCategory) ||
-          validSubCategories.includes(categoryParam as AssetCategory)) {
+      const validOption = categoryOptions.find(o => o.value === categoryParam);
+      if (validOption) {
         setCategoryFilter(categoryParam as CategoryFilter);
       }
     }
-  }, [searchParams]);
+  }, [searchParams, categoryOptions]);
 
   // Calculate all positions with current prices
   const allPositionsWithPrices = useMemo(() => {
     return calculateAllPositionsWithPrices(positions, prices);
   }, [positions, prices]);
 
-  // Get portfolio summary from centralized service (single source of truth)
+  // Get portfolio summary from centralized service
   const portfolioSummary = useMemo(() => {
     return calculatePortfolioSummary(positions, prices);
   }, [positions, prices]);
 
-  // Extract values from service - no local calculations
   const totalNAV = portfolioSummary.totalValue;
   const totalChange24h = portfolioSummary.change24h;
   const totalChangePercent = portfolioSummary.changePercent24h;
 
-  // Filter positions (for both views)
+  // Filter positions
   const filteredPositions = useMemo(() => {
     let filtered = allPositionsWithPrices;
 
-    // Apply type filter
-    if (filter === 'manual') {
-      filtered = filtered.filter((p) => !p.walletAddress && p.type !== 'cash');
-    } else if (filter !== 'all') {
-      // For crypto/stock/cash, show all positions of that type
-      filtered = filtered.filter((p) => p.type === filter);
-    }
-
-    // Apply category filter using the service
-    if (categoryFilter) {
+    // Apply category filter
+    if (categoryFilter !== 'all') {
       const categoryService = getCategoryService();
-
-      // Use shared helper to identify active perp protocols
       const perpProtocolsWithPositions = getPerpProtocolsWithPositions(allPositionsWithPrices);
 
       filtered = filtered.filter((p) => {
@@ -93,28 +118,25 @@ export default function PositionsPage() {
         if (isOnPerpProtocol) {
           const hasActivePositions = perpProtocolsWithPositions.has(p.protocol!.toLowerCase());
 
-          // If filtering for crypto_perps specifically
           if (categoryFilter === 'crypto_perps') {
             if (subCat === 'stablecoins') {
-              return hasActivePositions; // Only if it's being used as margin
+              return hasActivePositions;
             }
-            return true; // All non-stablecoin perp positions
+            return true;
           }
 
-          // If filtering by main category 'crypto'
           if (categoryFilter === 'crypto') {
-            return true; // All perp positions are crypto
+            return true;
           }
 
-          // For other filters, exclude perp positions unless specifically filtering crypto_stablecoins
           if (categoryFilter === 'crypto_stablecoins' && subCat === 'stablecoins' && !hasActivePositions) {
-            return true; // Idle stablecoins on perp exchange
+            return true;
           }
 
           return false;
         }
 
-        // Non-perp positions: use the service's isAssetInCategory
+        // Non-perp positions
         return categoryService.isAssetInCategory(p.symbol, categoryFilter as AssetCategory, p.type);
       });
     }
@@ -150,14 +172,11 @@ export default function PositionsPage() {
     });
 
     return filtered;
-  }, [allPositionsWithPrices, filter, categoryFilter, searchQuery, sortField, sortDirection]);
+  }, [allPositionsWithPrices, categoryFilter, searchQuery, sortField, sortDirection]);
 
-  // Aggregate assets by symbol (for assets view) - using centralized service
+  // Aggregate assets by symbol
   const aggregatedAssets = useMemo(() => {
-    // Use service for aggregation (handles debt positions correctly)
     const assets = aggregatePositionsBySymbol(filteredPositions);
-
-    // Sort aggregated assets (UI-specific sorting)
     assets.sort((a, b) => {
       let comparison = 0;
       switch (sortField) {
@@ -176,15 +195,11 @@ export default function PositionsPage() {
       }
       return sortDirection === 'asc' ? comparison : -comparison;
     });
-
     return assets;
   }, [filteredPositions, sortField, sortDirection]);
 
-  // Position counts - from service for totals, local for source breakdown
   const totalPositionCount = portfolioSummary.positionCount;
   const uniqueAssetCount = portfolioSummary.assetCount;
-  const walletPositionsCount = positions.filter((p) => p.walletAddress).length;
-  const manualPositionsCount = positions.filter((p) => !p.walletAddress).length;
 
   const handleDelete = (id: string, isWalletPosition: boolean) => {
     if (isWalletPosition) {
@@ -227,7 +242,6 @@ export default function PositionsPage() {
 
   const displayData = viewMode === 'assets' ? aggregatedAssets : filteredPositions;
 
-  // Calculate filtered total (for when filters are applied)
   const filteredTotal = useMemo(() => {
     return filteredPositions.reduce((sum, p) => sum + p.value, 0);
   }, [filteredPositions]);
@@ -240,7 +254,7 @@ export default function PositionsPage() {
       <div className="card mb-6">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm text-[var(--foreground-muted)] mb-1">Total Net Asset Value (NAV)</p>
+            <p className="text-sm text-[var(--foreground-muted)] mb-1">Net Asset Value</p>
             <h2 className="text-3xl font-bold">{hideBalances ? '******' : formatCurrency(totalNAV)}</h2>
             <div className="flex items-center gap-2 mt-1">
               <span className={getChangeColor(totalChangePercent)}>
@@ -252,17 +266,89 @@ export default function PositionsPage() {
             </div>
           </div>
           <div className="text-right text-sm text-[var(--foreground-muted)]">
-            <p>{totalPositionCount} positions total</p>
-            <p>{uniqueAssetCount} unique assets</p>
-            <p>{walletPositionsCount} from wallets, {manualPositionsCount} manual</p>
+            <p>{totalPositionCount} positions</p>
+            <p>{uniqueAssetCount} assets</p>
           </div>
         </div>
       </div>
 
-      {/* View Mode Toggle & Filters */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-4">
+      {/* Quick Category Selectors */}
+      <div className="flex flex-wrap gap-2 mb-3">
+        {categoryOptions
+          .filter(opt => !opt.isSubcategory)
+          .map((opt) => {
+            // Check if this main category or any of its subcategories is selected
+            const isMainSelected = categoryFilter === opt.value;
+            const isSubcategorySelected = categoryOptions.some(
+              sub => sub.parent === opt.value && categoryFilter === sub.value
+            );
+            const isActive = isMainSelected || isSubcategorySelected;
+
+            return (
+              <button
+                key={opt.value}
+                onClick={() => setCategoryFilter(opt.value)}
+                className={`px-3 py-1.5 text-sm font-medium rounded-full border transition-colors flex items-center gap-1.5 ${
+                  isActive
+                    ? 'bg-[var(--accent-primary)] text-white border-[var(--accent-primary)]'
+                    : 'bg-[var(--background)] border-[var(--border)] hover:border-[var(--foreground-muted)] text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
+                }`}
+              >
+                {opt.color && (
+                  <span
+                    className="w-2 h-2 rounded-full"
+                    style={{ backgroundColor: isActive ? 'white' : opt.color }}
+                  />
+                )}
+                {opt.label}
+              </button>
+            );
+          })}
+      </div>
+
+      {/* Subcategory Quick Selectors - show when a main category is selected */}
+      {(() => {
+        // Find the current main category (either directly selected or parent of selected subcategory)
+        const selectedOption = categoryOptions.find(opt => opt.value === categoryFilter);
+        const currentMainCategory = selectedOption?.isSubcategory
+          ? selectedOption.parent
+          : (selectedOption?.value !== 'all' ? selectedOption?.value : null);
+
+        if (!currentMainCategory) return null;
+
+        const subcategories = categoryOptions.filter(opt => opt.parent === currentMainCategory);
+        if (subcategories.length === 0) return null;
+
+        return (
+          <div className="flex flex-wrap items-center gap-2 mb-3 pl-2 border-l-2 border-[var(--accent-primary)]">
+            <span className="text-xs text-[var(--foreground-muted)] mr-1">Subcategory:</span>
+            {subcategories.map((sub) => (
+              <button
+                key={sub.value}
+                onClick={() => setCategoryFilter(sub.value)}
+                className={`px-2.5 py-1 text-xs font-medium rounded-full border transition-colors flex items-center gap-1 ${
+                  categoryFilter === sub.value
+                    ? 'bg-[var(--accent-primary)] text-white border-[var(--accent-primary)]'
+                    : 'bg-[var(--background-secondary)] border-[var(--border)] hover:border-[var(--foreground-muted)] text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
+                }`}
+              >
+                {sub.color && (
+                  <span
+                    className="w-1.5 h-1.5 rounded-full"
+                    style={{ backgroundColor: categoryFilter === sub.value ? 'white' : sub.color }}
+                  />
+                )}
+                {sub.label}
+              </button>
+            ))}
+          </div>
+        );
+      })()}
+
+      {/* Unified Filter Bar */}
+      <div className="card mb-4 p-3">
         <div className="flex flex-wrap items-center gap-3">
-          {/* View mode toggle */}
+          {/* View Mode Toggle */}
           <div className="flex gap-1 p-1 bg-[var(--background-secondary)] rounded-lg">
             <button
               onClick={() => setViewMode('positions')}
@@ -273,7 +359,7 @@ export default function PositionsPage() {
               }`}
             >
               <Layers className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Positions</span>
+              Positions
             </button>
             <button
               onClick={() => setViewMode('assets')}
@@ -284,52 +370,35 @@ export default function PositionsPage() {
               }`}
             >
               <Grid3X3 className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Assets</span>
+              Assets
             </button>
           </div>
 
-          {/* Type filters */}
-          <div className="flex gap-1 p-1 bg-[var(--background-secondary)] rounded-lg overflow-x-auto">
-            {(['all', 'crypto', 'stock', 'cash', 'manual'] as FilterType[]).map((type) => (
-              <button
-                key={type}
-                onClick={() => setFilter(type)}
-                className={`px-2 sm:px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
-                  filter === type
-                    ? 'bg-white text-[var(--foreground)] shadow-sm'
-                    : 'text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
-                }`}
-              >
-                {type === 'all' ? 'All' : getAssetTypeLabel(type)}
-              </button>
-            ))}
-          </div>
+          {/* Spacer */}
+          <div className="flex-1" />
 
           {/* Search */}
-          <div className="relative flex-1 min-w-[140px] max-w-[200px]">
+          <div className="relative min-w-[160px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--foreground-muted)]" />
             <input
               type="text"
               placeholder="Search..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 w-full"
+              className="pl-10 w-full text-sm py-2"
             />
           </div>
-        </div>
 
-        <div className="flex items-center gap-2">
-          {/* Hide balances toggle */}
+          {/* Actions */}
           <button
             onClick={toggleHideBalances}
-            className="btn btn-secondary"
+            className="btn btn-secondary p-2"
             title={hideBalances ? 'Show balances' : 'Hide balances'}
           >
             {hideBalances ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
           </button>
 
-          {/* Export */}
-          <button onClick={exportCSV} className="btn btn-secondary">
+          <button onClick={exportCSV} className="btn btn-secondary p-2" title="Export CSV">
             <Download className="w-4 h-4" />
           </button>
 
@@ -338,82 +407,10 @@ export default function PositionsPage() {
             className="btn btn-primary"
           >
             <Plus className="w-4 h-4" />
-            <span className="hidden sm:inline">Add Position</span>
+            <span className="hidden sm:inline">Add</span>
           </button>
         </div>
       </div>
-
-      {/* Category quick filters - main categories */}
-      <div className="flex items-center gap-2 mb-4">
-        <span className="text-sm text-[var(--foreground-muted)]">Categories:</span>
-        {getCategoryService().getMainCategories().map((cat) => (
-          <button
-            key={cat}
-            onClick={() => setCategoryFilter(categoryFilter === cat ? null : cat)}
-            className={`px-3 py-1 text-sm rounded-full border transition-colors ${
-              categoryFilter === cat
-                ? 'bg-[var(--accent-primary)] text-white border-[var(--accent-primary)]'
-                : 'border-[var(--border)] text-[var(--foreground-muted)] hover:border-[var(--foreground-muted)]'
-            }`}
-          >
-            {getCategoryService().getMainCategoryLabel(cat)}
-          </button>
-        ))}
-        {categoryFilter && (
-          <button
-            onClick={() => setCategoryFilter(null)}
-            className="px-2 py-1 text-xs text-[var(--foreground-muted)] hover:text-[var(--foreground)]"
-          >
-            Clear
-          </button>
-        )}
-      </div>
-
-      {/* Sub-category filters for crypto */}
-      {(categoryFilter === 'crypto' || (categoryFilter && categoryFilter.toString().startsWith('crypto_'))) && (
-        <div className="flex items-center gap-2 mb-6">
-          <span className="text-sm text-[var(--foreground-muted)] ml-4">Sub:</span>
-          {getCategoryService().getSubCategories('crypto').map((sub) => {
-            const catKey = `crypto_${sub}` as AssetCategory;
-            return (
-              <button
-                key={catKey}
-                onClick={() => setCategoryFilter(categoryFilter === catKey ? 'crypto' : catKey)}
-                className={`px-2 py-0.5 text-xs rounded-full border transition-colors ${
-                  categoryFilter === catKey
-                    ? 'bg-[var(--accent-primary)] text-white border-[var(--accent-primary)]'
-                    : 'border-[var(--border)] text-[var(--foreground-muted)] hover:border-[var(--foreground-muted)]'
-                }`}
-              >
-                {getCategoryLabel(catKey)}
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Sub-category filters for stocks */}
-      {(categoryFilter === 'stocks' || (categoryFilter && categoryFilter.toString().startsWith('stocks_'))) && (
-        <div className="flex items-center gap-2 mb-6">
-          <span className="text-sm text-[var(--foreground-muted)] ml-4">Sub:</span>
-          {getCategoryService().getSubCategories('stocks').map((sub) => {
-            const catKey = `stocks_${sub}` as AssetCategory;
-            return (
-              <button
-                key={catKey}
-                onClick={() => setCategoryFilter(categoryFilter === catKey ? 'stocks' : catKey)}
-                className={`px-2 py-0.5 text-xs rounded-full border transition-colors ${
-                  categoryFilter === catKey
-                    ? 'bg-[var(--accent-primary)] text-white border-[var(--accent-primary)]'
-                    : 'border-[var(--border)] text-[var(--foreground-muted)] hover:border-[var(--foreground-muted)]'
-                }`}
-              >
-                {getCategoryLabel(catKey)}
-              </button>
-            );
-          })}
-        </div>
-      )}
 
       {/* Table */}
       <div className="card">
@@ -437,204 +434,202 @@ export default function PositionsPage() {
             )}
           </div>
         ) : viewMode === 'positions' ? (
-          /* Positions Table */
           <div className="table-scroll">
-          <table className="w-full min-w-[700px]">
-            <thead>
-              <tr className="border-b border-[var(--border)]">
-                <th className="table-header text-left pb-3 cursor-pointer" onClick={() => toggleSort('symbol')}>
-                  <span className="flex items-center gap-1">
-                    Asset
-                    {sortField === 'symbol' && <ArrowUpDown className="w-3 h-3" />}
-                  </span>
-                </th>
-                <th className="table-header text-left pb-3">Source</th>
-                <th className="table-header text-right pb-3 cursor-pointer" onClick={() => toggleSort('amount')}>
-                  <span className="flex items-center justify-end gap-1">
-                    Amount
-                    {sortField === 'amount' && <ArrowUpDown className="w-3 h-3" />}
-                  </span>
-                </th>
-                <th className="table-header text-right pb-3">Price</th>
-                <th className="table-header text-right pb-3 cursor-pointer" onClick={() => toggleSort('value')}>
-                  <span className="flex items-center justify-end gap-1">
-                    Value
-                    {sortField === 'value' && <ArrowUpDown className="w-3 h-3" />}
-                  </span>
-                </th>
-                <th className="table-header text-right pb-3 cursor-pointer" onClick={() => toggleSort('change')}>
-                  <span className="flex items-center justify-end gap-1">
-                    24h
-                    {sortField === 'change' && <ArrowUpDown className="w-3 h-3" />}
-                  </span>
-                </th>
-                <th className="table-header text-right pb-3">%</th>
-                <th className="table-header text-right pb-3 w-10"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredPositions.map((position) => {
-                const isWalletPosition = !!position.walletAddress;
-                const isDebt = position.isDebt;
+            <table className="w-full min-w-[700px]">
+              <thead>
+                <tr className="border-b border-[var(--border)]">
+                  <th className="table-header text-left pb-3 cursor-pointer" onClick={() => toggleSort('symbol')}>
+                    <span className="flex items-center gap-1">
+                      Asset
+                      {sortField === 'symbol' && <ArrowUpDown className="w-3 h-3" />}
+                    </span>
+                  </th>
+                  <th className="table-header text-left pb-3">Source</th>
+                  <th className="table-header text-right pb-3 cursor-pointer" onClick={() => toggleSort('amount')}>
+                    <span className="flex items-center justify-end gap-1">
+                      Amount
+                      {sortField === 'amount' && <ArrowUpDown className="w-3 h-3" />}
+                    </span>
+                  </th>
+                  <th className="table-header text-right pb-3">Price</th>
+                  <th className="table-header text-right pb-3 cursor-pointer" onClick={() => toggleSort('value')}>
+                    <span className="flex items-center justify-end gap-1">
+                      Value
+                      {sortField === 'value' && <ArrowUpDown className="w-3 h-3" />}
+                    </span>
+                  </th>
+                  <th className="table-header text-right pb-3 cursor-pointer" onClick={() => toggleSort('change')}>
+                    <span className="flex items-center justify-end gap-1">
+                      24h
+                      {sortField === 'change' && <ArrowUpDown className="w-3 h-3" />}
+                    </span>
+                  </th>
+                  <th className="table-header text-right pb-3">%</th>
+                  <th className="table-header text-right pb-3 w-10"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredPositions.map((position) => {
+                  const isWalletPosition = !!position.walletAddress;
+                  const isDebt = position.isDebt;
 
-                return (
-                  <tr
-                    key={position.id}
-                    className={`border-b border-[var(--border)] last:border-0 hover:bg-[var(--background-secondary)] transition-colors ${
-                      isDebt ? 'bg-[var(--negative-light)]' : ''
-                    }`}
-                  >
-                    <td className="py-3">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold ${
-                          isDebt ? 'bg-[var(--negative)] text-white' : 'bg-[var(--tag-bg)]'
-                        }`}>
-                          {position.symbol.slice(0, 2).toUpperCase()}
+                  return (
+                    <tr
+                      key={position.id}
+                      className={`border-b border-[var(--border)] last:border-0 hover:bg-[var(--background-secondary)] transition-colors ${
+                        isDebt ? 'bg-[var(--negative-light)]' : ''
+                      }`}
+                    >
+                      <td className="py-3">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold ${
+                            isDebt ? 'bg-[var(--negative)] text-white' : 'bg-[var(--tag-bg)]'
+                          }`}>
+                            {position.symbol.slice(0, 2).toUpperCase()}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <p className="font-medium">{position.symbol.toUpperCase()}</p>
+                              {isDebt && (
+                                <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-[var(--negative)] text-white rounded">
+                                  DEBT
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-[var(--foreground-muted)]">{position.name}</p>
+                          </div>
                         </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <p className="font-medium">{position.symbol.toUpperCase()}</p>
-                            {isDebt && (
-                              <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-[var(--negative)] text-white rounded">
-                                DEBT
+                      </td>
+                      <td className="py-3">
+                        {isWalletPosition ? (
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <Wallet className="w-3.5 h-3.5 text-[var(--accent-primary)]" />
+                            <span className="text-xs text-[var(--foreground-muted)]">
+                              {formatAddress(position.walletAddress!, 4)}
+                            </span>
+                            {position.chain && (
+                              <span className="tag text-[10px] py-0 px-1.5">{position.chain}</span>
+                            )}
+                            {position.protocol && (
+                              <span className="tag text-[10px] py-0 px-1.5 bg-[var(--accent-primary)] text-white">
+                                {position.protocol}
                               </span>
                             )}
                           </div>
-                          <p className="text-xs text-[var(--foreground-muted)]">{position.name}</p>
+                        ) : (
+                          <span className="tag">{getAssetTypeLabel(position.type)}</span>
+                        )}
+                      </td>
+                      <td className="py-3 text-right font-mono text-sm">
+                        {hideBalances ? '***' : formatNumber(position.amount)}
+                      </td>
+                      <td className="py-3 text-right font-mono text-sm">
+                        {position.currentPrice > 0 ? formatCurrency(position.currentPrice) : '-'}
+                      </td>
+                      <td className={`py-3 text-right font-semibold ${isDebt ? 'text-[var(--negative)]' : ''}`}>
+                        {hideBalances ? '****' : position.value !== 0 ? formatCurrency(position.value) : '-'}
+                      </td>
+                      <td className={`py-3 text-right ${getChangeColor(position.changePercent24h)}`}>
+                        {position.currentPrice > 0 ? formatPercent(position.changePercent24h) : '-'}
+                      </td>
+                      <td className={`py-3 text-right ${isDebt ? 'text-[var(--negative)]' : 'text-[var(--foreground-muted)]'}`}>
+                        {position.allocation.toFixed(1)}%
+                      </td>
+                      <td className="py-3 text-right">
+                        <button
+                          onClick={() => handleDelete(position.id, isWalletPosition)}
+                          className={`p-2 rounded-lg transition-colors ${
+                            isWalletPosition
+                              ? 'text-[var(--foreground-muted)] cursor-not-allowed opacity-50'
+                              : 'hover:bg-[var(--negative-light)] text-[var(--negative)]'
+                          }`}
+                          disabled={isWalletPosition}
+                          title={isWalletPosition ? 'Remove wallet to delete these positions' : 'Delete position'}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="table-scroll">
+            <table className="w-full min-w-[600px]">
+              <thead>
+                <tr className="border-b border-[var(--border)]">
+                  <th className="table-header text-left pb-3 cursor-pointer" onClick={() => toggleSort('symbol')}>
+                    <span className="flex items-center gap-1">
+                      Asset
+                      {sortField === 'symbol' && <ArrowUpDown className="w-3 h-3" />}
+                    </span>
+                  </th>
+                  <th className="table-header text-left pb-3">Type</th>
+                  <th className="table-header text-right pb-3 cursor-pointer" onClick={() => toggleSort('amount')}>
+                    <span className="flex items-center justify-end gap-1">
+                      Amount
+                      {sortField === 'amount' && <ArrowUpDown className="w-3 h-3" />}
+                    </span>
+                  </th>
+                  <th className="table-header text-right pb-3">Price</th>
+                  <th className="table-header text-right pb-3 cursor-pointer" onClick={() => toggleSort('value')}>
+                    <span className="flex items-center justify-end gap-1">
+                      Value
+                      {sortField === 'value' && <ArrowUpDown className="w-3 h-3" />}
+                    </span>
+                  </th>
+                  <th className="table-header text-right pb-3 cursor-pointer" onClick={() => toggleSort('change')}>
+                    <span className="flex items-center justify-end gap-1">
+                      24h
+                      {sortField === 'change' && <ArrowUpDown className="w-3 h-3" />}
+                    </span>
+                  </th>
+                  <th className="table-header text-right pb-3">%</th>
+                </tr>
+              </thead>
+              <tbody>
+                {aggregatedAssets.map((asset, index) => (
+                  <tr
+                    key={`${asset.symbol}-${index}`}
+                    className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--background-secondary)] transition-colors"
+                  >
+                    <td className="py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-[var(--tag-bg)] rounded-full flex items-center justify-center text-xs font-semibold">
+                          {asset.symbol.slice(0, 2).toUpperCase()}
+                        </div>
+                        <div>
+                          <p className="font-medium">{asset.symbol.toUpperCase()}</p>
+                          <p className="text-xs text-[var(--foreground-muted)]">{asset.name}</p>
                         </div>
                       </div>
                     </td>
                     <td className="py-3">
-                      {isWalletPosition ? (
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <Wallet className="w-3.5 h-3.5 text-[var(--accent-primary)]" />
-                          <span className="text-xs text-[var(--foreground-muted)]">
-                            {formatAddress(position.walletAddress!, 4)}
-                          </span>
-                          {position.chain && (
-                            <span className="tag text-[10px] py-0 px-1.5">{position.chain}</span>
-                          )}
-                          {position.protocol && (
-                            <span className="tag text-[10px] py-0 px-1.5 bg-[var(--accent-primary)] text-white">
-                              {position.protocol}
-                            </span>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="tag">{getAssetTypeLabel(position.type)}</span>
-                      )}
+                      <span className="text-sm text-[var(--foreground-muted)]">
+                        {getAssetTypeLabel(asset.type)}
+                      </span>
                     </td>
                     <td className="py-3 text-right font-mono text-sm">
-                      {hideBalances ? '***' : formatNumber(position.amount)}
+                      {hideBalances ? '***' : formatNumber(asset.amount)}
                     </td>
                     <td className="py-3 text-right font-mono text-sm">
-                      {position.currentPrice > 0 ? formatCurrency(position.currentPrice) : '-'}
+                      {formatCurrency(asset.currentPrice)}
                     </td>
-                    <td className={`py-3 text-right font-semibold ${isDebt ? 'text-[var(--negative)]' : ''}`}>
-                      {hideBalances ? '****' : position.value !== 0 ? formatCurrency(position.value) : '-'}
+                    <td className="py-3 text-right font-semibold">
+                      {hideBalances ? '****' : formatCurrency(asset.value)}
                     </td>
-                    <td className={`py-3 text-right ${getChangeColor(position.changePercent24h)}`}>
-                      {position.currentPrice > 0 ? formatPercent(position.changePercent24h) : '-'}
+                    <td className={`py-3 text-right ${getChangeColor(asset.changePercent24h)}`}>
+                      {formatPercent(asset.changePercent24h)}
                     </td>
-                    <td className={`py-3 text-right ${isDebt ? 'text-[var(--negative)]' : 'text-[var(--foreground-muted)]'}`}>
-                      {position.allocation.toFixed(1)}%
-                    </td>
-                    <td className="py-3 text-right">
-                      <button
-                        onClick={() => handleDelete(position.id, isWalletPosition)}
-                        className={`p-2 rounded-lg transition-colors ${
-                          isWalletPosition
-                            ? 'text-[var(--foreground-muted)] cursor-not-allowed opacity-50'
-                            : 'hover:bg-[var(--negative-light)] text-[var(--negative)]'
-                        }`}
-                        disabled={isWalletPosition}
-                        title={isWalletPosition ? 'Remove wallet to delete these positions' : 'Delete position'}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                    <td className="py-3 text-right text-[var(--foreground-muted)]">
+                      {asset.allocation.toFixed(1)}%
                     </td>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          </div>
-        ) : (
-          /* Assets Table (aggregated) */
-          <div className="table-scroll">
-          <table className="w-full min-w-[600px]">
-            <thead>
-              <tr className="border-b border-[var(--border)]">
-                <th className="table-header text-left pb-3 cursor-pointer" onClick={() => toggleSort('symbol')}>
-                  <span className="flex items-center gap-1">
-                    Asset
-                    {sortField === 'symbol' && <ArrowUpDown className="w-3 h-3" />}
-                  </span>
-                </th>
-                <th className="table-header text-left pb-3">Type</th>
-                <th className="table-header text-right pb-3 cursor-pointer" onClick={() => toggleSort('amount')}>
-                  <span className="flex items-center justify-end gap-1">
-                    Total Amount
-                    {sortField === 'amount' && <ArrowUpDown className="w-3 h-3" />}
-                  </span>
-                </th>
-                <th className="table-header text-right pb-3">Price</th>
-                <th className="table-header text-right pb-3 cursor-pointer" onClick={() => toggleSort('value')}>
-                  <span className="flex items-center justify-end gap-1">
-                    Value
-                    {sortField === 'value' && <ArrowUpDown className="w-3 h-3" />}
-                  </span>
-                </th>
-                <th className="table-header text-right pb-3 cursor-pointer" onClick={() => toggleSort('change')}>
-                  <span className="flex items-center justify-end gap-1">
-                    24h
-                    {sortField === 'change' && <ArrowUpDown className="w-3 h-3" />}
-                  </span>
-                </th>
-                <th className="table-header text-right pb-3">Allocation</th>
-              </tr>
-            </thead>
-            <tbody>
-              {aggregatedAssets.map((asset, index) => (
-                <tr
-                  key={`${asset.symbol}-${index}`}
-                  className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--background-secondary)] transition-colors"
-                >
-                  <td className="py-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-[var(--tag-bg)] rounded-full flex items-center justify-center text-xs font-semibold">
-                        {asset.symbol.slice(0, 2).toUpperCase()}
-                      </div>
-                      <div>
-                        <p className="font-medium">{asset.symbol.toUpperCase()}</p>
-                        <p className="text-xs text-[var(--foreground-muted)]">{asset.name}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="py-3">
-                    <span className="text-sm text-[var(--foreground-muted)]">
-                      {getAssetTypeLabel(asset.type)}
-                    </span>
-                  </td>
-                  <td className="py-3 text-right font-mono text-sm">
-                    {hideBalances ? '***' : formatNumber(asset.amount)}
-                  </td>
-                  <td className="py-3 text-right font-mono text-sm">
-                    {formatCurrency(asset.currentPrice)}
-                  </td>
-                  <td className="py-3 text-right font-semibold">
-                    {hideBalances ? '****' : formatCurrency(asset.value)}
-                  </td>
-                  <td className={`py-3 text-right ${getChangeColor(asset.changePercent24h)}`}>
-                    {formatPercent(asset.changePercent24h)}
-                  </td>
-                  <td className="py-3 text-right text-[var(--foreground-muted)]">
-                    {asset.allocation.toFixed(1)}%
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
@@ -642,13 +637,17 @@ export default function PositionsPage() {
       {/* Summary footer */}
       <div className="mt-4 flex items-center justify-between text-sm text-[var(--foreground-muted)]">
         <span>
-          Showing {displayData.length} {viewMode === 'assets' ? 'assets' : 'positions'}
-          {wallets.length > 0 && ` | ${wallets.length} wallet${wallets.length > 1 ? 's' : ''} connected`}
+          {displayData.length} {viewMode === 'assets' ? 'assets' : 'positions'}
+          {wallets.length > 0 && ` | ${wallets.length} wallet${wallets.length > 1 ? 's' : ''}`}
         </span>
         <span>
-          {(filter !== 'all' || categoryFilter) ? 'Filtered' : 'Total'}: <span className="font-semibold text-[var(--foreground)]">{hideBalances ? '******' : formatCurrency(filteredTotal)}</span>
-          {(filter !== 'all' || categoryFilter) && (
-            <span className="text-[var(--foreground-muted)]"> of {hideBalances ? '******' : formatCurrency(totalNAV)}</span>
+          {categoryFilter !== 'all' || searchQuery ? (
+            <>
+              Filtered: <span className="font-semibold text-[var(--foreground)]">{hideBalances ? '******' : formatCurrency(filteredTotal)}</span>
+              <span className="text-[var(--foreground-muted)]"> of {hideBalances ? '******' : formatCurrency(totalNAV)}</span>
+            </>
+          ) : (
+            <>Total: <span className="font-semibold text-[var(--foreground)]">{hideBalances ? '******' : formatCurrency(totalNAV)}</span></>
           )}
         </span>
       </div>

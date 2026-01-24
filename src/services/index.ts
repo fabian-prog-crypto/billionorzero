@@ -41,5 +41,8 @@ export * from './domain';
 // Configuration Layer
 export * from './config';
 
+// Utils (caching, etc.)
+export * from './utils';
+
 // Main Portfolio Service
 export * from './portfolio-service';

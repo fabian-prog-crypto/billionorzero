@@ -116,17 +116,42 @@ export class LighterProvider {
       });
     }
 
-    // Process spot/collateral balances
+    // ALWAYS create margin position from collateral field (USD value)
+    // This is the actual margin available for trading, regardless of what assets back it
+    const collateralValue = parseFloat(account.collateral) || 0;
+    if (collateralValue > 0) {
+      const priceKey = 'lighter-usdc';
+      prices[priceKey] = { price: 1, symbol: 'USDC' };
+
+      positions.push({
+        id: `${walletId}-lighter-margin-usdc-${account.index}`,
+        type: 'crypto',
+        symbol: 'USDC',
+        name: 'USDC Margin (Lighter)',
+        amount: collateralValue,
+        walletAddress,
+        chain: 'lighter',
+        protocol: 'Lighter',
+        debankPriceKey: priceKey,
+        addedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+    }
+
+    // Process spot token holdings (non-stablecoin assets on the exchange)
+    // Note: These may be the underlying assets backing the collateral
     for (const asset of account.assets || []) {
       const balance = parseFloat(asset.balance);
       if (balance <= 0) continue;
 
       const symbol = asset.symbol;
-      const priceKey = `lighter-spot-${symbol.toLowerCase()}`;
 
-      // Get price from asset details or default to 1 for stables
+      // Skip stablecoins - they're already counted in collateral
       const isStable = symbol === 'USDC' || symbol === 'USDT';
-      const price = isStable ? 1 : (assetPrices.get(symbol) || 0);
+      if (isStable) continue;
+
+      const priceKey = `lighter-spot-${symbol.toLowerCase()}`;
+      const price = assetPrices.get(symbol) || 0;
 
       prices[priceKey] = {
         price,
@@ -137,7 +162,7 @@ export class LighterProvider {
         id: `${walletId}-lighter-spot-${symbol}-${account.index}`,
         type: 'crypto',
         symbol,
-        name: `${symbol} (Lighter${isStable ? ' Margin' : ''})`,
+        name: `${symbol} (Lighter Spot)`,
         amount: balance,
         walletAddress,
         chain: 'lighter',
@@ -147,9 +172,6 @@ export class LighterProvider {
         updatedAt: new Date().toISOString(),
       });
     }
-
-    // Note: The `collateral` field is the USD value of all assets, not separate USDC
-    // We already process individual assets above, so no need to add collateral separately
 
     return { positions, prices, accountValue };
   }

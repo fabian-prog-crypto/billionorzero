@@ -1,16 +1,21 @@
 /**
  * Wallet Data Provider
  * Abstracts wallet data fetching with fallback to demo data
+ * Includes caching to reduce API calls during debugging
  */
 
 import { WalletBalance, DefiPosition, Position, Wallet } from '@/types';
 import { getDebankApiClient, ApiError } from '../api';
 import { generateDemoWalletTokens, generateDemoDefiPositions } from './demo-data';
 import { getPerpExchangeService } from '../domain/perp-exchange-service';
+import { getCached, setCache, clearAllCache, formatCacheAge } from '../utils/cache';
+
+const DEFAULT_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 export interface WalletProviderConfig {
   debankApiKey?: string;
   useDemoData?: boolean;
+  cacheTtlMs?: number; // Cache TTL in milliseconds (default 5 min)
 }
 
 export interface WalletTokensResult {
@@ -37,9 +42,9 @@ export class WalletProvider {
   }
 
   /**
-   * Fetch wallet tokens with automatic fallback to demo data
+   * Fetch wallet tokens with caching and automatic fallback to demo data
    */
-  async getWalletTokens(address: string): Promise<WalletTokensResult> {
+  async getWalletTokens(address: string, forceRefresh: boolean = false): Promise<WalletTokensResult> {
     // If explicitly using demo data or no API key
     if (this.config.useDemoData || !this.config.debankApiKey) {
       console.info('WalletProvider: Using demo data (no API key configured)');
@@ -49,29 +54,41 @@ export class WalletProvider {
       };
     }
 
+    // Check cache first (unless force refresh)
+    const cacheKey = `tokens_${address.toLowerCase()}`;
+    if (!forceRefresh) {
+      const cached = getCached<WalletTokensResult>(cacheKey);
+      if (cached) {
+        console.log(`[CACHE] Using cached tokens for ${address.slice(0, 8)}... (${formatCacheAge(cached.age)})`);
+        return cached.data;
+      }
+    }
+
     try {
       const client = getDebankApiClient(this.config.debankApiKey);
       const rawTokens = await client.getWalletTokens(address);
 
-      // Transform API response to WalletBalance with spam filtering
+      // Transform API response to WalletBalance with filtering
+      // The DeBank token_list endpoint (without is_all=true) returns ONLY wallet tokens,
+      // NOT protocol receipt tokens (aTokens, LP tokens, Pendle PTs). Those come from protocols API.
+      // Strategy:
+      // 1. Exclude scam/suspicious tokens
+      // 2. Skip tiny dust balances (for priced tokens)
+      // 3. Include everything else - DeBank's token_list already filters to legitimate tokens
       const tokens: WalletBalance[] = rawTokens
         .filter((token) => {
-          // Basic filters
-          if (token.amount <= 0 || token.price <= 0) return false;
+          // Must have a positive amount
+          if (token.amount <= 0) return false;
 
           // Exclude if explicitly marked as scam/suspicious
           if (token.is_scam === true || token.is_suspicious === true) return false;
 
-          // Only include verified or core tokens (filters out spam like ETHG)
-          // Protocol tokens (Pendle PTs, etc.) come from getWalletProtocols() which is already trusted
-          if (token.is_verified !== true && token.is_core !== true) {
-            console.log(`[FILTER] Excluding unverified token: ${token.symbol} (verified=${token.is_verified}, core=${token.is_core})`);
-            return false;
-          }
+          // Calculate value for filtering decisions
+          const value = token.amount * (token.price || 0);
 
-          // Skip dust (less than $0.01)
-          const value = token.amount * token.price;
-          if (value < 0.01) return false;
+          // Skip dust (less than $0.01) for priced tokens
+          // But keep tokens with no price (like SYRUP) - they might get price from CoinGecko
+          if (token.price > 0 && value < 0.01) return false;
 
           return true;
         })
@@ -87,7 +104,14 @@ export class WalletProvider {
         }))
         .sort((a, b) => b.value - a.value);
 
-      return { tokens, isDemo: false };
+      const result = { tokens, isDemo: false };
+
+      // Cache the result
+      const ttl = this.config.cacheTtlMs || DEFAULT_CACHE_TTL_MS;
+      setCache(cacheKey, result, ttl);
+      console.log(`[CACHE] Cached ${tokens.length} tokens for ${address.slice(0, 8)}...`);
+
+      return result;
     } catch (error) {
       console.error('WalletProvider: API error, falling back to demo data', error);
 
@@ -100,14 +124,24 @@ export class WalletProvider {
   }
 
   /**
-   * Fetch DeFi protocol positions with automatic fallback
+   * Fetch DeFi protocol positions with caching and automatic fallback
    */
-  async getWalletProtocols(address: string): Promise<WalletProtocolsResult> {
+  async getWalletProtocols(address: string, forceRefresh: boolean = false): Promise<WalletProtocolsResult> {
     if (this.config.useDemoData || !this.config.debankApiKey) {
       return {
         positions: generateDemoDefiPositions(address),
         isDemo: true,
       };
+    }
+
+    // Check cache first (unless force refresh)
+    const cacheKey = `protocols_${address.toLowerCase()}`;
+    if (!forceRefresh) {
+      const cached = getCached<WalletProtocolsResult>(cacheKey);
+      if (cached) {
+        console.log(`[CACHE] Using cached protocols for ${address.slice(0, 8)}... (${formatCacheAge(cached.age)})`);
+        return cached.data;
+      }
     }
 
     try {
@@ -164,10 +198,17 @@ export class WalletProvider {
         }
       }
 
-      return {
+      const result = {
         positions: positions.sort((a, b) => b.value - a.value),
         isDemo: false,
       };
+
+      // Cache the result
+      const ttl = this.config.cacheTtlMs || DEFAULT_CACHE_TTL_MS;
+      setCache(cacheKey, result, ttl);
+      console.log(`[CACHE] Cached ${positions.length} protocols for ${address.slice(0, 8)}...`);
+
+      return result;
     } catch (error) {
       console.error('WalletProvider: Protocol API error, falling back to demo', error);
 
@@ -188,24 +229,34 @@ export class WalletProvider {
    * IMPORTANT: Protocol positions are processed FIRST to avoid double counting.
    * Tokens that appear in protocol positions (e.g., PT tokens in Pendle) are
    * excluded from the regular token list to prevent counting the same asset twice.
+   *
+   * @param wallets - Wallets to fetch positions for
+   * @param forceRefresh - If true, bypass cache and fetch fresh data
    */
-  async fetchAllWalletPositions(wallets: Wallet[]): Promise<{
+  async fetchAllWalletPositions(wallets: Wallet[], forceRefresh: boolean = false): Promise<{
     positions: Position[];
     prices: Record<string, { price: number; symbol: string }>;
   }> {
     if (wallets.length === 0) return { positions: [], prices: {} };
+
+    if (forceRefresh) {
+      console.log('[CACHE] Force refresh requested - bypassing cache');
+    }
 
     const allPositions: Position[] = [];
     const debankPrices: Record<string, { price: number; symbol: string }> = {};
 
     for (const wallet of wallets) {
       // Track tokens that come from protocols to avoid double counting
-      // Key: "symbol-chain" (lowercase)
-      const protocolTokenKeys = new Set<string>();
+      // Use multiple keys for robust matching:
+      // - "symbol-chain" for exact match
+      // - "symbol" for fallback (handles chain ID differences)
+      const protocolTokenKeysByChain = new Set<string>();
+      const protocolTokenSymbols = new Set<string>(); // Track just symbols for fallback
 
       // FIRST: Fetch DeFi protocol positions (including debt)
       // This must happen before regular tokens to track what's in protocols
-      const { positions: protocolPositions } = await this.getWalletProtocols(wallet.address);
+      const { positions: protocolPositions } = await this.getWalletProtocols(wallet.address, forceRefresh);
 
       // Track seen position IDs to avoid duplicates within protocols
       const seenPositionIds = new Set<string>();
@@ -213,11 +264,13 @@ export class WalletProvider {
       for (const defiPos of protocolPositions) {
         // Add supply tokens (collateral, lending, staking, LP)
         for (const token of defiPos.tokens) {
-          if (token.amount <= 0 || token.price <= 0) continue;
+          // Skip tokens with zero amount, but allow price=0 (pre-market, new tokens)
+          if (token.amount <= 0) continue;
 
-          // Track this token as coming from a protocol
+          // Track this token as coming from a protocol (for dedup against wallet tokens)
           const tokenKey = `${token.symbol.toLowerCase()}-${defiPos.chain}`;
-          protocolTokenKeys.add(tokenKey);
+          protocolTokenKeysByChain.add(tokenKey);
+          protocolTokenSymbols.add(token.symbol.toLowerCase());
 
           // Use protocol + type + symbol for unique ID
           const positionId = `${wallet.id}-${defiPos.protocol}-${defiPos.type}-${token.symbol}-supply`;
@@ -260,7 +313,8 @@ export class WalletProvider {
         // - Only supply tokens should prevent duplicate counting from wallet token list
         if (defiPos.debtTokens) {
           for (const token of defiPos.debtTokens) {
-            if (token.amount <= 0 || token.price <= 0) continue;
+            // Skip tokens with zero amount, but allow price=0 (pre-market, new tokens)
+            if (token.amount <= 0) continue;
 
             // Use protocol + type + symbol for unique ID
             const positionId = `${wallet.id}-${defiPos.protocol}-${defiPos.type}-${token.symbol}-debt`;
@@ -300,17 +354,32 @@ export class WalletProvider {
       }
 
       // SECOND: Fetch regular wallet tokens, excluding those already in protocols
-      const { tokens } = await this.getWalletTokens(wallet.address);
+      const { tokens } = await this.getWalletTokens(wallet.address, forceRefresh);
 
       const walletPositions = tokens
         .filter((token) => {
           // Skip tokens that are already tracked via protocol positions
-          // This prevents double counting of PT tokens, LP tokens, etc.
+          // This prevents double counting of tokens deposited in DeFi protocols
           const tokenKey = `${token.symbol.toLowerCase()}-${token.chain}`;
-          if (protocolTokenKeys.has(tokenKey)) {
-            console.log(`[DEDUP] Skipping ${token.symbol} on ${token.chain} - already in protocol position`);
+          const symbolOnly = token.symbol.toLowerCase();
+
+          // First check exact chain match
+          if (protocolTokenKeysByChain.has(tokenKey)) {
+            console.log(`[DEDUP] Skipping ${token.symbol} on ${token.chain} - already in protocol position (exact match)`);
             return false;
           }
+
+          // Fallback: check if symbol is in protocols on any chain
+          // This handles cases where chain IDs differ between tokens and protocols APIs
+          // But be careful: only skip if it's NOT a major token that could legitimately exist in both places
+          // (e.g., user could have USDC in Aave AND separate USDC in wallet)
+          // Skip this fallback for common tokens that might legitimately exist separately
+          const commonTokens = new Set(['usdc', 'usdt', 'dai', 'weth', 'wbtc', 'eth', 'btc', 'frax', 'lusd']);
+          if (!commonTokens.has(symbolOnly) && protocolTokenSymbols.has(symbolOnly)) {
+            console.log(`[DEDUP] Skipping ${token.symbol} on ${token.chain} - already in protocol position (symbol match)`);
+            return false;
+          }
+
           return true;
         })
         .map((token, index) => {
@@ -361,4 +430,12 @@ export function getWalletProvider(config?: WalletProviderConfig): WalletProvider
     instance.updateConfig(config);
   }
   return instance;
+}
+
+/**
+ * Clear all wallet data cache
+ * Useful for debugging or forcing fresh data
+ */
+export function clearWalletCache(): void {
+  clearAllCache();
 }

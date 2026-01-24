@@ -7,6 +7,7 @@ import {
   createDailySnapshot,
   shouldTakeSnapshot,
   fetchAllCexPositions,
+  getPriceProvider,
 } from '@/services';
 
 const REFRESH_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours (once per day)
@@ -47,9 +48,16 @@ export default function PortfolioProvider({ children }: PortfolioProviderProps) 
 
       // Also fetch CEX account positions
       let cexPositions: typeof result.walletPositions = [];
+      let cexPrices: Record<string, import('@/types').PriceData> = {};
       if (store.accounts.length > 0) {
         try {
           cexPositions = await fetchAllCexPositions(store.accounts);
+          // Fetch prices for CEX positions from CoinGecko
+          if (cexPositions.length > 0) {
+            const priceProvider = getPriceProvider();
+            const { prices } = await priceProvider.getPricesForPositions(cexPositions);
+            cexPrices = prices;
+          }
         } catch (error) {
           console.error('Error fetching CEX positions:', error);
         }
@@ -58,8 +66,8 @@ export default function PortfolioProvider({ children }: PortfolioProviderProps) 
       // Get fresh state for updates
       const currentStore = usePortfolioStore.getState();
 
-      // Update prices in store
-      currentStore.setPrices({ ...currentStore.prices, ...result.prices });
+      // Update prices in store (including CEX prices from CoinGecko)
+      currentStore.setPrices({ ...currentStore.prices, ...result.prices, ...cexPrices });
 
       // Update wallet positions in store
       if (result.walletPositions.length > 0) {
@@ -118,13 +126,14 @@ export default function PortfolioProvider({ children }: PortfolioProviderProps) 
 
 /**
  * Hook to trigger manual refresh and access refresh state
+ * @param forceRefresh - If true, bypass cache and fetch fresh data (default: true for manual refresh)
  */
 export function useRefresh() {
   const isRefreshing = usePortfolioStore((state) => state.isRefreshing);
   const portfolioService = useRef(getPortfolioService());
   const isRefreshingRef = useRef(false);
 
-  const refresh = useCallback(async () => {
+  const refreshWithForce = useCallback(async (forceRefresh: boolean = true) => {
     if (isRefreshingRef.current) return;
     isRefreshingRef.current = true;
 
@@ -137,17 +146,25 @@ export function useRefresh() {
         (p) => !p.walletAddress && !p.protocol?.startsWith('cex:')
       );
 
-      // Use the portfolio service
+      // Use the portfolio service (forceRefresh=true bypasses cache)
       const result = await portfolioService.current.refreshPortfolio(
         manualPositions,
-        store.wallets
+        store.wallets,
+        forceRefresh
       );
 
       // Also fetch CEX account positions
       let cexPositions: typeof result.walletPositions = [];
+      let cexPrices: Record<string, import('@/types').PriceData> = {};
       if (store.accounts.length > 0) {
         try {
           cexPositions = await fetchAllCexPositions(store.accounts);
+          // Fetch prices for CEX positions from CoinGecko
+          if (cexPositions.length > 0) {
+            const priceProvider = getPriceProvider();
+            const { prices } = await priceProvider.getPricesForPositions(cexPositions);
+            cexPrices = prices;
+          }
         } catch (error) {
           console.error('Error fetching CEX positions:', error);
         }
@@ -156,8 +173,8 @@ export function useRefresh() {
       // Get fresh state
       const currentStore = usePortfolioStore.getState();
 
-      // Update store
-      currentStore.setPrices({ ...currentStore.prices, ...result.prices });
+      // Update store (including CEX prices from CoinGecko)
+      currentStore.setPrices({ ...currentStore.prices, ...result.prices, ...cexPrices });
 
       if (result.walletPositions.length > 0) {
         currentStore.setWalletPositions(result.walletPositions);
@@ -186,6 +203,9 @@ export function useRefresh() {
       isRefreshingRef.current = false;
     }
   }, []);
+
+  // onClick-compatible wrapper that forces refresh
+  const refresh = useCallback(() => refreshWithForce(true), [refreshWithForce]);
 
   return { refresh, isRefreshing };
 }

@@ -61,10 +61,15 @@ export class PortfolioService {
    * - Fetches current prices for manual positions from CoinGecko/Finnhub
    * - DeBank prices are used for wallet tokens (more accurate)
    * - 24h changes fetched from CoinGecko for all crypto
+   *
+   * @param manualPositions - Manual positions to fetch prices for
+   * @param wallets - Wallets to fetch positions from
+   * @param forceRefresh - If true, bypass cache and fetch fresh data
    */
   async refreshPortfolio(
     manualPositions: Position[],
-    wallets: Wallet[]
+    wallets: Wallet[],
+    forceRefresh: boolean = false
   ): Promise<RefreshResult> {
     // Ensure providers have latest config
     this.updateProviders();
@@ -73,7 +78,7 @@ export class PortfolioService {
     const priceProvider = getPriceProvider();
 
     // Fetch wallet positions - includes prices from DeBank
-    const walletResult = await walletProvider.fetchAllWalletPositions(wallets);
+    const walletResult = await walletProvider.fetchAllWalletPositions(wallets, forceRefresh);
     const walletPositions = walletResult.positions;
 
     // Get unique wallet token symbols to fetch 24h changes from CoinGecko
@@ -107,8 +112,10 @@ export class PortfolioService {
     // Wallet positions use DeBank prices which are more accurate
     const { prices: externalPrices, isDemo } = await priceProvider.getPricesForPositions(manualPositions);
 
-    // Merge prices: DeBank prices take priority for wallet tokens
-    const allPrices = { ...externalPrices, ...debankPrices };
+    // Also include CoinGecko prices directly so they can be used as fallback
+    // for wallet tokens where DeBank has no price (like SYRUP)
+    // These are keyed by CoinGecko ID (e.g., "maple-finance" for SYRUP)
+    const allPrices = { ...coingeckoPrices, ...externalPrices, ...debankPrices };
 
     // Debug logging
     console.log('[REFRESH] DeBank prices:', Object.keys(debankPrices).length, 'tokens');

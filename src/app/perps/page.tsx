@@ -45,6 +45,13 @@ export default function PerpsPage() {
     return grouped;
   }, [perpPositions]);
 
+  // Helper to check if position is perp trade (same logic as above)
+  const isPerpTradeForStats = (p: typeof perpPositions[0]) => {
+    const nameLower = p.name.toLowerCase();
+    return nameLower.includes(' long ') || nameLower.includes(' short ') ||
+           nameLower.endsWith(' long)') || nameLower.endsWith(' short)');
+  };
+
   // Calculate stats per exchange
   const exchangeStats = useMemo(() => {
     return Object.entries(positionsByExchange).map(([exchange, positions]) => {
@@ -55,25 +62,35 @@ export default function PerpsPage() {
         })
         .reduce((sum, p) => sum + p.value, 0);
 
+      // Only count actual perp trades as longs/shorts (not spot holdings)
       const longs = positions
         .filter((p) => {
           const cat = getCategoryService().getSubCategory(p.symbol, p.type);
-          return cat !== 'stablecoins' && !p.isDebt;
+          return cat !== 'stablecoins' && !p.isDebt && isPerpTradeForStats(p);
         })
         .reduce((sum, p) => sum + p.value, 0);
 
       const shorts = positions
         .filter((p) => {
           const cat = getCategoryService().getSubCategory(p.symbol, p.type);
-          return cat !== 'stablecoins' && p.isDebt;
+          return cat !== 'stablecoins' && p.isDebt && isPerpTradeForStats(p);
         })
         .reduce((sum, p) => sum + Math.abs(p.value), 0);
 
-      const net = margin + longs - shorts;
+      // Spot holdings (non-stablecoin, non-perp assets on the exchange)
+      const spot = positions
+        .filter((p) => {
+          const cat = getCategoryService().getSubCategory(p.symbol, p.type);
+          return cat !== 'stablecoins' && !isPerpTradeForStats(p);
+        })
+        .reduce((sum, p) => sum + p.value, 0);
+
+      const net = margin + spot + longs - shorts;
 
       return {
         exchange,
         margin,
+        spot,
         longs,
         shorts,
         net,
@@ -82,15 +99,29 @@ export default function PerpsPage() {
     }).sort((a, b) => b.net - a.net);
   }, [positionsByExchange]);
 
-  // Separate margin and trading positions for display
+  // Helper to check if position is an actual perp trade (Long/Short) vs spot holding
+  const isPerpTrade = (p: typeof perpPositions[0]) => {
+    const nameLower = p.name.toLowerCase();
+    return nameLower.includes(' long ') || nameLower.includes(' short ') ||
+           nameLower.endsWith(' long)') || nameLower.endsWith(' short)');
+  };
+
+  // Separate margin, trading positions, and spot holdings for display
   const marginPositions = perpPositions.filter((p) => {
     const cat = getCategoryService().getSubCategory(p.symbol, p.type);
-    return cat === 'stablecoins' ;
+    return cat === 'stablecoins';
   });
 
+  // Actual perp trades (Long/Short positions)
   const tradingPositions = perpPositions.filter((p) => {
     const cat = getCategoryService().getSubCategory(p.symbol, p.type);
-    return cat !== 'stablecoins';
+    return cat !== 'stablecoins' && isPerpTrade(p);
+  });
+
+  // Spot holdings on perp exchanges (not stablecoins, not perp trades)
+  const spotHoldings = perpPositions.filter((p) => {
+    const cat = getCategoryService().getSubCategory(p.symbol, p.type);
+    return cat !== 'stablecoins' && !isPerpTrade(p);
   });
 
   const hasPerps = perpsBreakdown.total !== 0 || perpPositions.length > 0;
@@ -176,11 +207,12 @@ export default function PerpsPage() {
             <div className="card mb-6">
               <h3 className="font-semibold mb-4">By Exchange</h3>
               <div className="table-scroll">
-              <table className="w-full min-w-[550px]">
+              <table className="w-full min-w-[650px]">
                 <thead>
                   <tr className="border-b border-[var(--border)]">
                     <th className="table-header text-left pb-3">Exchange</th>
                     <th className="table-header text-right pb-3">Margin</th>
+                    <th className="table-header text-right pb-3">Spot</th>
                     <th className="table-header text-right pb-3">Longs</th>
                     <th className="table-header text-right pb-3">Shorts</th>
                     <th className="table-header text-right pb-3">Net Value</th>
@@ -196,8 +228,11 @@ export default function PerpsPage() {
                       <td className="py-3 text-right">
                         {hideBalances ? '****' : formatCurrency(stat.margin)}
                       </td>
+                      <td className="py-3 text-right text-blue-500">
+                        {hideBalances ? '****' : stat.spot > 0 ? formatCurrency(stat.spot) : '-'}
+                      </td>
                       <td className="py-3 text-right text-green-500">
-                        {hideBalances ? '****' : formatCurrency(stat.longs)}
+                        {hideBalances ? '****' : stat.longs > 0 ? formatCurrency(stat.longs) : '-'}
                       </td>
                       <td className="py-3 text-right text-red-500">
                         {hideBalances ? '****' : stat.shorts > 0 ? `-${formatCurrency(stat.shorts)}` : '-'}
@@ -296,7 +331,7 @@ export default function PerpsPage() {
 
           {/* Margin Deposits */}
           {marginPositions.length > 0 && (
-            <div className="card">
+            <div className="card mb-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-semibold">Margin Deposits</h3>
                 <span className="text-sm text-[var(--foreground-muted)]">
@@ -342,6 +377,68 @@ export default function PerpsPage() {
                           {hideBalances ? '***' : formatNumber(position.amount)}
                         </td>
                         <td className="py-3 text-right font-semibold">
+                          {hideBalances ? '****' : formatCurrency(position.value)}
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+              </div>
+            </div>
+          )}
+
+          {/* Spot Holdings on Perp Exchanges */}
+          {spotHoldings.length > 0 && (
+            <div className="card">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold">Spot Holdings</h3>
+                <span className="text-sm text-[var(--foreground-muted)]">
+                  {spotHoldings.length} asset{spotHoldings.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+              <div className="table-scroll">
+              <table className="w-full min-w-[500px]">
+                <thead>
+                  <tr className="border-b border-[var(--border)]">
+                    <th className="table-header text-left pb-3">Asset</th>
+                    <th className="table-header text-left pb-3">Exchange</th>
+                    <th className="table-header text-right pb-3">Amount</th>
+                    <th className="table-header text-right pb-3">Price</th>
+                    <th className="table-header text-right pb-3">Value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {spotHoldings
+                    .sort((a, b) => b.value - a.value)
+                    .map((position) => (
+                      <tr
+                        key={position.id}
+                        className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--background-secondary)] transition-colors"
+                      >
+                        <td className="py-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs font-semibold">
+                              {position.symbol.slice(0, 2).toUpperCase()}
+                            </div>
+                            <div>
+                              <p className="font-medium">{position.symbol.toUpperCase()}</p>
+                              <p className="text-xs text-[var(--foreground-muted)]">{position.name}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3">
+                          <div className="flex items-center gap-1.5">
+                            <Wallet className="w-3.5 h-3.5 text-[var(--accent-primary)]" />
+                            <span className="tag text-xs">{position.protocol}</span>
+                          </div>
+                        </td>
+                        <td className="py-3 text-right font-mono text-sm">
+                          {hideBalances ? '***' : formatNumber(position.amount)}
+                        </td>
+                        <td className="py-3 text-right font-mono text-sm">
+                          {position.currentPrice > 0 ? formatCurrency(position.currentPrice) : '-'}
+                        </td>
+                        <td className="py-3 text-right font-semibold text-blue-500">
                           {hideBalances ? '****' : formatCurrency(position.value)}
                         </td>
                       </tr>
