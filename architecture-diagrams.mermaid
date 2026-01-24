@@ -1,0 +1,379 @@
+---
+title: Billion or Zero - Architecture Diagrams
+---
+
+%% ============================================
+%% DIAGRAM 1: High-Level System Architecture
+%% ============================================
+
+---
+title: System Architecture Overview
+---
+flowchart TB
+    subgraph UI["UI / Pages Layer"]
+        Dashboard["Dashboard<br/>(Overview)"]
+        Wallets["Wallets<br/>Management"]
+        Positions["Positions<br/>& Assets"]
+        Perps["Perpetuals<br/>Overview"]
+        Exposure["Exposure<br/>Analysis"]
+        Settings["Settings<br/>& Security"]
+    end
+
+    subgraph Components["Components & State"]
+        PortfolioProvider["PortfolioProvider<br/>(React Context)"]
+        AuthProvider["AuthProvider<br/>(WebAuthn)"]
+        ZustandStores["Zustand Stores<br/>(Portfolio, Auth)"]
+    end
+
+    subgraph Services["Services Layer"]
+        PortfolioService["PortfolioService<br/>(Orchestrator)"]
+
+        subgraph Providers["Providers"]
+            WalletProvider["Wallet<br/>Provider"]
+            PriceProvider["Price<br/>Provider"]
+            PerpProviders["Perp Exchange<br/>Providers"]
+            CexProvider["CEX<br/>Provider"]
+        end
+
+        subgraph Domain["Domain Logic"]
+            Calculator["Portfolio<br/>Calculator"]
+            CategorySvc["Category<br/>Service"]
+            ExposureSvc["Exposure<br/>Analysis"]
+        end
+    end
+
+    subgraph APIClients["API Clients"]
+        DebankAPI["DeBank<br/>Client"]
+        CoinGeckoAPI["CoinGecko<br/>Client"]
+        FinnhubAPI["Finnhub<br/>Client"]
+        HyperliquidAPI["Hyperliquid<br/>Client"]
+        LighterAPI["Lighter<br/>Client"]
+        EtherealAPI["Ethereal<br/>Client"]
+    end
+
+    subgraph External["External APIs"]
+        DeBank["DeBank Pro API<br/>(Wallet Data)"]
+        CoinGecko["CoinGecko API<br/>(Crypto Prices)"]
+        Finnhub["Finnhub API<br/>(Stock Prices)"]
+        Hyperliquid["Hyperliquid<br/>(Perp Exchange)"]
+        Lighter["Lighter<br/>(Perp Exchange)"]
+        Ethereal["Ethereal<br/>(Perp Exchange)"]
+    end
+
+    UI --> Components
+    Components --> Services
+    PortfolioService --> Providers
+    PortfolioService --> Domain
+    Providers --> APIClients
+    APIClients --> External
+
+    style UI fill:#e0f2fe,stroke:#0284c7
+    style Components fill:#fef3c7,stroke:#d97706
+    style Services fill:#dcfce7,stroke:#16a34a
+    style APIClients fill:#f3e8ff,stroke:#9333ea
+    style External fill:#fee2e2,stroke:#dc2626
+
+
+%% ============================================
+%% DIAGRAM 2: Data Flow - Portfolio Refresh
+%% ============================================
+
+---
+title: Portfolio Refresh Data Flow
+---
+sequenceDiagram
+    participant User
+    participant UI as Dashboard UI
+    participant PP as PortfolioProvider
+    participant PS as PortfolioService
+    participant WP as WalletProvider
+    participant PrP as PriceProvider
+    participant Store as Zustand Store
+    participant DeBank as DeBank API
+    participant CG as CoinGecko API
+
+    User->>UI: Click Refresh
+    UI->>PP: doRefresh()
+    PP->>PS: refreshPortfolio(wallets, positions)
+
+    par Fetch Wallet Data
+        PS->>WP: fetchAllWalletPositions()
+        WP->>DeBank: GET /tokens
+        DeBank-->>WP: Token list with prices
+        WP->>DeBank: GET /protocols
+        DeBank-->>WP: DeFi positions
+    and Fetch 24h Changes
+        PS->>PrP: getPricesForPositions()
+        PrP->>CG: GET /simple/price
+        CG-->>PrP: Prices with 24h changes
+    end
+
+    WP-->>PS: Wallet positions
+    PrP-->>PS: External prices
+
+    PS->>PS: Merge & deduplicate
+    PS-->>PP: Combined data
+
+    PP->>Store: setWalletPositions()
+    PP->>Store: setPrices()
+    Store-->>UI: React re-render
+    UI-->>User: Updated dashboard
+
+
+%% ============================================
+%% DIAGRAM 3: Service Layer Detail
+%% ============================================
+
+---
+title: Service Layer Architecture
+---
+flowchart LR
+    subgraph Facade["Facade Layer"]
+        PS[PortfolioService]
+    end
+
+    subgraph Providers["Provider Layer"]
+        WP[WalletProvider<br/>- DeBank tokens<br/>- DeFi protocols<br/>- 5min cache]
+        PP[PriceProvider<br/>- Crypto: CoinGecko<br/>- Stocks: Finnhub]
+        PerpP[PerpExchangeService<br/>- Hyperliquid<br/>- Lighter<br/>- Ethereal]
+        CexP[CexProvider<br/>- Binance<br/>- Coinbase<br/>- Kraken]
+    end
+
+    subgraph Domain["Domain Layer"]
+        PC[PortfolioCalculator<br/>- Summary metrics<br/>- Position enrichment<br/>- Exposure analysis]
+        CS[CategoryService<br/>- Hierarchical categories<br/>- Asset classification]
+        SM[SnapshotManager<br/>- Daily snapshots<br/>- History tracking]
+    end
+
+    subgraph API["API Layer"]
+        DA[DebankApiClient]
+        CGA[CoinGeckoApiClient]
+        FA[StockApiClient]
+        HA[HyperliquidApiClient]
+        LA[LighterApiClient]
+        EA[EtherealApiClient]
+    end
+
+    PS --> WP
+    PS --> PP
+    PS --> PerpP
+    PS --> CexP
+    PS --> PC
+    PS --> CS
+    PS --> SM
+
+    WP --> DA
+    PP --> CGA
+    PP --> FA
+    PerpP --> HA
+    PerpP --> LA
+    PerpP --> EA
+
+    style Facade fill:#1e40af,color:#fff
+    style Providers fill:#059669,color:#fff
+    style Domain fill:#7c3aed,color:#fff
+    style API fill:#dc2626,color:#fff
+
+
+%% ============================================
+%% DIAGRAM 4: State Management
+%% ============================================
+
+---
+title: State Management Flow
+---
+flowchart TB
+    subgraph Storage["Browser Storage"]
+        LS[(localStorage)]
+    end
+
+    subgraph Zustand["Zustand Stores"]
+        subgraph PS["portfolioStore"]
+            Positions["positions[]"]
+            Wallets["wallets[]"]
+            Accounts["accounts[]"]
+            Prices["prices{}"]
+            Snapshots["snapshots[]"]
+            UIState["hideBalances, isRefreshing"]
+        end
+
+        subgraph AS["authStore"]
+            IsAuth["isAuthenticated"]
+            IsPasskey["isPasskeyEnabled"]
+            Session["loginTimestamp"]
+        end
+    end
+
+    subgraph Calculations["Computed Values (useMemo)"]
+        Summary["calculatePortfolioSummary()"]
+        Enriched["calculateAllPositionsWithPrices()"]
+        ExpData["calculateExposureData()"]
+    end
+
+    subgraph Components["React Components"]
+        Dashboard["Dashboard"]
+        PositionsPage["Positions Page"]
+        ExposurePage["Exposure Page"]
+    end
+
+    LS <--> PS
+    LS <--> AS
+    PS --> Calculations
+    AS --> Components
+    Calculations --> Components
+
+    style Storage fill:#fbbf24,stroke:#d97706
+    style Zustand fill:#60a5fa,stroke:#2563eb
+    style Calculations fill:#a78bfa,stroke:#7c3aed
+    style Components fill:#34d399,stroke:#059669
+
+
+%% ============================================
+%% DIAGRAM 5: Exposure Classification
+%% ============================================
+
+---
+title: Exposure Classification Logic
+---
+flowchart TD
+    Asset[Asset Position] --> IsPerp{On Perp<br/>Exchange?}
+
+    IsPerp -->|Yes| PerpType{Position Type?}
+    IsPerp -->|No| IsDebt{Is Debt?}
+
+    PerpType -->|Long Position| PerpLong[perp-long<br/>Notional Exposure]
+    PerpType -->|Short Position| PerpShort[perp-short<br/>Notional Exposure]
+    PerpType -->|Stablecoin| PerpMargin[perp-margin<br/>Collateral]
+    PerpType -->|Spot Token| PerpSpot[perp-spot<br/>Spot Holdings]
+
+    IsDebt -->|Yes| DebtType{Stablecoin?}
+    IsDebt -->|No| IsStable{Stablecoin<br/>or Cash?}
+
+    DebtType -->|Yes| BorrowedCash[borrowed-cash<br/>Leverage]
+    DebtType -->|No| SpotShort[spot-short<br/>True Short]
+
+    IsStable -->|Yes| Cash[cash<br/>Cash Position]
+    IsStable -->|No| SpotLong[spot-long<br/>Long Exposure]
+
+    style PerpLong fill:#22c55e,color:#fff
+    style PerpShort fill:#ef4444,color:#fff
+    style PerpMargin fill:#eab308,color:#000
+    style PerpSpot fill:#06b6d4,color:#fff
+    style SpotLong fill:#22c55e,color:#fff
+    style SpotShort fill:#ef4444,color:#fff
+    style Cash fill:#a855f7,color:#fff
+    style BorrowedCash fill:#f97316,color:#fff
+
+
+%% ============================================
+%% DIAGRAM 6: API Route Architecture
+%% ============================================
+
+---
+title: API Route Proxy Architecture
+---
+flowchart LR
+    subgraph Client["Browser Client"]
+        WP[WalletProvider]
+        PP[PriceProvider]
+        PerpP[PerpProviders]
+    end
+
+    subgraph NextJS["Next.js API Routes"]
+        DBRoute["/api/debank/*"]
+        PerpRoutes["/api/perps/*"]
+        CexRoutes["/api/cex/*"]
+    end
+
+    subgraph External["External APIs"]
+        DeBank["DeBank Pro<br/>pro-openapi.debank.com"]
+        HL["Hyperliquid<br/>api.hyperliquid.xyz"]
+        LT["Lighter<br/>mainnet.zklighter.elliot.ai"]
+        ET["Ethereal<br/>api.ethereal.trade"]
+        BN["Binance<br/>api.binance.com"]
+    end
+
+    WP --> DBRoute
+    DBRoute --> DeBank
+
+    PerpP --> PerpRoutes
+    PerpRoutes --> HL
+    PerpRoutes --> LT
+    PerpRoutes --> ET
+
+    PerpP --> CexRoutes
+    CexRoutes --> BN
+
+    style Client fill:#dbeafe,stroke:#2563eb
+    style NextJS fill:#fef3c7,stroke:#d97706
+    style External fill:#fee2e2,stroke:#dc2626
+
+
+%% ============================================
+%% DIAGRAM 7: Authentication Flow
+%% ============================================
+
+---
+title: Authentication Flow (Passkey/WebAuthn)
+---
+flowchart TD
+    Start([App Load]) --> Hydrate[Hydrate Auth Store<br/>from localStorage]
+    Hydrate --> CheckPasskey{Passkey<br/>Enabled?}
+
+    CheckPasskey -->|No| AutoAuth[Auto-Authenticate<br/>Free Access]
+    CheckPasskey -->|Yes| CheckSession{Session<br/>Valid?}
+
+    CheckSession -->|Yes, < 30 days| Authenticated[Authenticated<br/>Access Granted]
+    CheckSession -->|No, Expired| ShowLogin[Show Login Screen]
+
+    ShowLogin --> UserAuth[User Triggers<br/>Passkey Auth]
+    UserAuth --> WebAuthn[WebAuthn<br/>Verification]
+    WebAuthn --> Success{Success?}
+
+    Success -->|Yes| SetAuth[Set isAuthenticated = true<br/>Set loginTimestamp]
+    Success -->|No| ShowError[Show Error<br/>Retry]
+
+    SetAuth --> Authenticated
+    ShowError --> UserAuth
+    AutoAuth --> Authenticated
+
+    Authenticated --> AppReady([App Ready])
+
+    style Start fill:#60a5fa
+    style AppReady fill:#34d399
+    style Authenticated fill:#22c55e,color:#fff
+    style ShowLogin fill:#fbbf24
+    style WebAuthn fill:#a78bfa
+
+
+%% ============================================
+%% DIAGRAM 8: Category Hierarchy
+%% ============================================
+
+---
+title: Asset Category Hierarchy
+---
+flowchart TD
+    Root[All Assets] --> Crypto[Crypto]
+    Root --> Stocks[Stocks]
+    Root --> Equity[Equity]
+    Root --> CashCat[Cash]
+    Root --> Other[Other]
+
+    Crypto --> BTC[BTC<br/>Bitcoin, WBTC, tBTC]
+    Crypto --> ETH[ETH<br/>Ethereum, stETH, rETH]
+    Crypto --> SOL[SOL<br/>Solana, mSOL, jitoSOL]
+    Crypto --> Stables[Stablecoins<br/>USDC, USDT, DAI]
+    Crypto --> Tokens[Other Tokens<br/>All remaining crypto]
+    Crypto --> Perps[Perps<br/>Exchange positions]
+
+    Stocks --> Tech[Tech<br/>AAPL, MSFT, TSLA]
+    Stocks --> AI[AI<br/>NVDA, UPST]
+    Stocks --> OtherStocks[Other<br/>Remaining stocks]
+
+    style Crypto fill:#f59e0b,color:#fff
+    style Stocks fill:#3b82f6,color:#fff
+    style CashCat fill:#10b981,color:#fff
+    style BTC fill:#f97316
+    style ETH fill:#6366f1
+    style SOL fill:#9333ea

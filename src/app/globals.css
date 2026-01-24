@@ -244,8 +244,8 @@ input::placeholder {
   right: 0;
   margin-top: 8px;
   padding: 8px 12px;
-  background: var(--background-tertiary);
-  border: 1px solid var(--border-color);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
   border-radius: 6px;
   font-size: 12px;
   white-space: nowrap;
@@ -253,12 +253,24 @@ input::placeholder {
   visibility: hidden;
   transition: opacity 0.15s, visibility 0.15s;
   z-index: 50;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .group:hover .tooltip {
   opacity: 1;
   visibility: visible;
+}
+
+/* Tooltip content - for Tooltip component */
+.tooltip-content {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 13px;
+  color: var(--foreground);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.08);
+  line-height: 1.5;
 }
 
 /* Animation for refresh */

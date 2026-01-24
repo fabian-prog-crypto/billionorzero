@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Billion or Zero - Architecture Diagrams</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            min-height: 100vh;
+            color: #e2e8f0;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        header {
+            text-align: center;
+            margin-bottom: 60px;
+        }
+        h1 {
+            font-size: 3rem;
+            font-weight: 700;
+            background: linear-gradient(90deg, #60a5fa, #a78bfa, #f472b6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            font-size: 1.25rem;
+            color: #94a3b8;
+        }
+        .diagram-section {
+            background: rgba(30, 41, 59, 0.8);
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 40px;
+            border: 1px solid rgba(148, 163, 184, 0.1);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+        }
+        .diagram-section h2 {
+            font-size: 1.5rem;
+            color: #60a5fa;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .diagram-section h2::before {
+            content: '';
+            display: inline-block;
+            width: 4px;
+            height: 24px;
+            background: linear-gradient(180deg, #60a5fa, #a78bfa);
+            border-radius: 2px;
+        }
+        .diagram-section p {
+            color: #94a3b8;
+            margin-bottom: 20px;
+            font-size: 0.95rem;
+        }
+        .mermaid {
+            background: #fff;
+            border-radius: 12px;
+            padding: 30px;
+            display: flex;
+            justify-content: center;
+        }
+        .toc {
+            background: rgba(30, 41, 59, 0.8);
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 40px;
+            border: 1px solid rgba(148, 163, 184, 0.1);
+        }
+        .toc h2 {
+            font-size: 1.25rem;
+            color: #60a5fa;
+            margin-bottom: 15px;
+        }
+        .toc ul {
+            list-style: none;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 10px;
+        }
+        .toc li a {
+            color: #94a3b8;
+            text-decoration: none;
+            display: block;
+            padding: 10px 15px;
+            border-radius: 8px;
+            transition: all 0.2s;
+        }
+        .toc li a:hover {
+            background: rgba(96, 165, 250, 0.1);
+            color: #60a5fa;
+        }
+        .toc li a span {
+            color: #64748b;
+            margin-right: 8px;
+        }
+        footer {
+            text-align: center;
+            padding: 40px 0;
+            color: #64748b;
+            font-size: 0.875rem;
+        }
+        @media print {
+            body {
+                background: white;
+                color: black;
+            }
+            .diagram-section {
+                break-inside: avoid;
+                page-break-inside: avoid;
+                border: 1px solid #e2e8f0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Billion or Zero</h1>
+            <p class="subtitle">Service Architecture Diagrams</p>
+        </header>
+
+        <nav class="toc">
+            <h2>Table of Contents</h2>
+            <ul>
+                <li><a href="#system-architecture"><span>1.</span> System Architecture Overview</a></li>
+                <li><a href="#data-flow"><span>2.</span> Portfolio Refresh Data Flow</a></li>
+                <li><a href="#service-layer"><span>3.</span> Service Layer Architecture</a></li>
+                <li><a href="#state-management"><span>4.</span> State Management Flow</a></li>
+                <li><a href="#exposure"><span>5.</span> Exposure Classification Logic</a></li>
+                <li><a href="#api-routes"><span>6.</span> API Route Proxy Architecture</a></li>
+                <li><a href="#auth-flow"><span>7.</span> Authentication Flow</a></li>
+                <li><a href="#categories"><span>8.</span> Asset Category Hierarchy</a></li>
+            </ul>
+        </nav>
+
+        <section id="system-architecture" class="diagram-section">
+            <h2>System Architecture Overview</h2>
+            <p>High-level view of the application's layered architecture showing the flow from UI through services to external APIs.</p>
+            <div class="mermaid">
+flowchart TB
+    subgraph UI["UI / Pages Layer"]
+        Dashboard["Dashboard<br/>(Overview)"]
+        Wallets["Wallets<br/>Management"]
+        Positions["Positions<br/>& Assets"]
+        Perps["Perpetuals<br/>Overview"]
+        Exposure["Exposure<br/>Analysis"]
+        Settings["Settings<br/>& Security"]
+    end
+
+    subgraph Components["Components & State"]
+        PortfolioProvider["PortfolioProvider<br/>(React Context)"]
+        AuthProvider["AuthProvider<br/>(WebAuthn)"]
+        ZustandStores["Zustand Stores<br/>(Portfolio, Auth)"]
+    end
+
+    subgraph Services["Services Layer"]
+        PortfolioService["PortfolioService<br/>(Orchestrator)"]
+
+        subgraph Providers["Providers"]
+            WalletProvider["Wallet<br/>Provider"]
+            PriceProvider["Price<br/>Provider"]
+            PerpProviders["Perp Exchange<br/>Providers"]
+        end
+
+        subgraph Domain["Domain Logic"]
+            Calculator["Portfolio<br/>Calculator"]
+            CategorySvc["Category<br/>Service"]
+        end
+    end
+
+    subgraph APIClients["API Clients"]
+        DebankAPI["DeBank"]
+        CoinGeckoAPI["CoinGecko"]
+        PerpAPIs["Perp APIs"]
+    end
+
+    UI --> Components
+    Components --> Services
+    PortfolioService --> Providers
+    PortfolioService --> Domain
+    Providers --> APIClients
+
+    style UI fill:#e0f2fe,stroke:#0284c7
+    style Components fill:#fef3c7,stroke:#d97706
+    style Services fill:#dcfce7,stroke:#16a34a
+    style APIClients fill:#f3e8ff,stroke:#9333ea
+            </div>
+        </section>
+
+        <section id="data-flow" class="diagram-section">
+            <h2>Portfolio Refresh Data Flow</h2>
+            <p>Sequence diagram showing how data flows through the system when a user triggers a portfolio refresh.</p>
+            <div class="mermaid">
+sequenceDiagram
+    participant User
+    participant UI as Dashboard UI
+    participant PP as PortfolioProvider
+    participant PS as PortfolioService
+    participant WP as WalletProvider
+    participant PrP as PriceProvider
+    participant Store as Zustand Store
+    participant DeBank as DeBank API
+    participant CG as CoinGecko API
+
+    User->>UI: Click Refresh
+    UI->>PP: doRefresh()
+    PP->>PS: refreshPortfolio(wallets)
+
+    par Fetch Wallet Data
+        PS->>WP: fetchAllWalletPositions()
+        WP->>DeBank: GET /tokens
+        DeBank-->>WP: Token list with prices
+    and Fetch 24h Changes
+        PS->>PrP: getPricesForPositions()
+        PrP->>CG: GET /simple/price
+        CG-->>PrP: Prices with 24h changes
+    end
+
+    WP-->>PS: Wallet positions
+    PrP-->>PS: External prices
+    PS->>PS: Merge & deduplicate
+    PS-->>PP: Combined data
+
+    PP->>Store: setWalletPositions()
+    PP->>Store: setPrices()
+    Store-->>UI: React re-render
+    UI-->>User: Updated dashboard
+            </div>
+        </section>
+
+        <section id="service-layer" class="diagram-section">
+            <h2>Service Layer Architecture</h2>
+            <p>Detailed view of the service layer showing providers, domain services, and their connections to API clients.</p>
+            <div class="mermaid">
+flowchart LR
+    subgraph Facade["Facade Layer"]
+        PS[PortfolioService]
+    end
+
+    subgraph Providers["Provider Layer"]
+        WP[WalletProvider<br/>DeBank tokens<br/>DeFi protocols]
+        PP[PriceProvider<br/>CoinGecko<br/>Finnhub]
+        PerpP[PerpExchangeService<br/>Hyperliquid<br/>Lighter / Ethereal]
+    end
+
+    subgraph Domain["Domain Layer"]
+        PC[PortfolioCalculator<br/>Summary metrics<br/>Exposure analysis]
+        CS[CategoryService<br/>Asset classification]
+        SM[SnapshotManager<br/>History tracking]
+    end
+
+    subgraph API["API Layer"]
+        DA[DeBank API]
+        CGA[CoinGecko API]
+        FA[Finnhub API]
+        HA[Hyperliquid API]
+    end
+
+    PS --> WP
+    PS --> PP
+    PS --> PerpP
+    PS --> PC
+    PS --> CS
+    PS --> SM
+
+    WP --> DA
+    PP --> CGA
+    PP --> FA
+    PerpP --> HA
+
+    style Facade fill:#1e40af,color:#fff
+    style Providers fill:#059669,color:#fff
+    style Domain fill:#7c3aed,color:#fff
+    style API fill:#dc2626,color:#fff
+            </div>
+        </section>
+
+        <section id="state-management" class="diagram-section">
+            <h2>State Management Flow</h2>
+            <p>How Zustand stores persist to localStorage and provide computed values to React components.</p>
+            <div class="mermaid">
+flowchart TB
+    subgraph Storage["Browser Storage"]
+        LS[(localStorage)]
+    end
+
+    subgraph Zustand["Zustand Stores"]
+        subgraph PS["portfolioStore"]
+            Positions["positions[]"]
+            Wallets["wallets[]"]
+            Prices["prices{}"]
+            Snapshots["snapshots[]"]
+        end
+
+        subgraph AS["authStore"]
+            IsAuth["isAuthenticated"]
+            Session["loginTimestamp"]
+        end
+    end
+
+    subgraph Calculations["Computed Values"]
+        Summary["calculatePortfolioSummary()"]
+        Enriched["calculateAllPositionsWithPrices()"]
+        ExpData["calculateExposureData()"]
+    end
+
+    subgraph Components["React Components"]
+        Dashboard["Dashboard"]
+        PositionsPage["Positions Page"]
+        ExposurePage["Exposure Page"]
+    end
+
+    LS <--> PS
+    LS <--> AS
+    PS --> Calculations
+    AS --> Components
+    Calculations --> Components
+
+    style Storage fill:#fbbf24,stroke:#d97706
+    style Zustand fill:#60a5fa,stroke:#2563eb
+    style Calculations fill:#a78bfa,stroke:#7c3aed
+    style Components fill:#34d399,stroke:#059669
+            </div>
+        </section>
+
+        <section id="exposure" class="diagram-section">
+            <h2>Exposure Classification Logic</h2>
+            <p>Decision tree showing how each asset position is classified for exposure analysis.</p>
+            <div class="mermaid">
+flowchart TD
+    Asset[Asset Position] --> IsPerp{On Perp<br/>Exchange?}
+
+    IsPerp -->|Yes| PerpType{Position Type?}
+    IsPerp -->|No| IsDebt{Is Debt?}
+
+    PerpType -->|Long| PerpLong[perp-long<br/>Notional Exposure]
+    PerpType -->|Short| PerpShort[perp-short<br/>Notional Exposure]
+    PerpType -->|Stablecoin| PerpMargin[perp-margin<br/>Collateral]
+    PerpType -->|Spot| PerpSpot[perp-spot]
+
+    IsDebt -->|Yes| DebtType{Stablecoin?}
+    IsDebt -->|No| IsStable{Stablecoin?}
+
+    DebtType -->|Yes| BorrowedCash[borrowed-cash<br/>Leverage]
+    DebtType -->|No| SpotShort[spot-short<br/>True Short]
+
+    IsStable -->|Yes| Cash[cash<br/>Cash Position]
+    IsStable -->|No| SpotLong[spot-long<br/>Long Exposure]
+
+    style PerpLong fill:#22c55e,color:#fff
+    style PerpShort fill:#ef4444,color:#fff
+    style PerpMargin fill:#eab308,color:#000
+    style SpotLong fill:#22c55e,color:#fff
+    style SpotShort fill:#ef4444,color:#fff
+    style Cash fill:#a855f7,color:#fff
+    style BorrowedCash fill:#f97316,color:#fff
+            </div>
+        </section>
+
+        <section id="api-routes" class="diagram-section">
+            <h2>API Route Proxy Architecture</h2>
+            <p>How browser clients communicate through Next.js API routes to external services (CORS proxy pattern).</p>
+            <div class="mermaid">
+flowchart LR
+    subgraph Client["Browser Client"]
+        WP[WalletProvider]
+        PP[PriceProvider]
+        PerpP[PerpProviders]
+    end
+
+    subgraph NextJS["Next.js API Routes"]
+        DBRoute[/api/debank/*]
+        PerpRoutes[/api/perps/*]
+    end
+
+    subgraph External["External APIs"]
+        DeBank["DeBank Pro"]
+        HL["Hyperliquid"]
+        LT["Lighter"]
+        ET["Ethereal"]
+    end
+
+    WP --> DBRoute
+    DBRoute --> DeBank
+
+    PerpP --> PerpRoutes
+    PerpRoutes --> HL
+    PerpRoutes --> LT
+    PerpRoutes --> ET
+
+    style Client fill:#dbeafe,stroke:#2563eb
+    style NextJS fill:#fef3c7,stroke:#d97706
+    style External fill:#fee2e2,stroke:#dc2626
+            </div>
+        </section>
+
+        <section id="auth-flow" class="diagram-section">
+            <h2>Authentication Flow</h2>
+            <p>Passkey (WebAuthn) authentication flow from app load to authenticated state.</p>
+            <div class="mermaid">
+flowchart TD
+    Start([App Load]) --> Hydrate[Hydrate Auth Store]
+    Hydrate --> CheckPasskey{Passkey<br/>Enabled?}
+
+    CheckPasskey -->|No| AutoAuth[Auto-Authenticate]
+    CheckPasskey -->|Yes| CheckSession{Session<br/>Valid?}
+
+    CheckSession -->|Yes| Authenticated[Authenticated]
+    CheckSession -->|Expired| ShowLogin[Show Login]
+
+    ShowLogin --> UserAuth[User Triggers Auth]
+    UserAuth --> WebAuthn[WebAuthn Verify]
+    WebAuthn --> Success{Success?}
+
+    Success -->|Yes| SetAuth[Set Authenticated]
+    Success -->|No| ShowError[Show Error]
+
+    SetAuth --> Authenticated
+    ShowError --> UserAuth
+    AutoAuth --> Authenticated
+
+    Authenticated --> AppReady([App Ready])
+
+    style Start fill:#60a5fa
+    style AppReady fill:#34d399
+    style Authenticated fill:#22c55e,color:#fff
+    style ShowLogin fill:#fbbf24
+    style WebAuthn fill:#a78bfa
+            </div>
+        </section>
+
+        <section id="categories" class="diagram-section">
+            <h2>Asset Category Hierarchy</h2>
+            <p>Hierarchical categorization of assets for portfolio analysis and filtering.</p>
+            <div class="mermaid">
+flowchart TD
+    Root[All Assets] --> Crypto[Crypto]
+    Root --> Stocks[Stocks]
+    Root --> CashCat[Cash]
+    Root --> Other[Other]
+
+    Crypto --> BTC[BTC<br/>Bitcoin, WBTC]
+    Crypto --> ETH[ETH<br/>Ethereum, stETH]
+    Crypto --> SOL[SOL<br/>Solana, mSOL]
+    Crypto --> Stables[Stablecoins<br/>USDC, USDT]
+    Crypto --> Tokens[Other Tokens]
+    Crypto --> Perps[Perps]
+
+    Stocks --> Tech[Tech<br/>AAPL, MSFT]
+    Stocks --> AI[AI<br/>NVDA, UPST]
+    Stocks --> OtherStocks[Other]
+
+    style Crypto fill:#f59e0b,color:#fff
+    style Stocks fill:#3b82f6,color:#fff
+    style CashCat fill:#10b981,color:#fff
+    style BTC fill:#f97316
+    style ETH fill:#6366f1
+    style SOL fill:#9333ea
+            </div>
+        </section>
+
+        <footer>
+            <p>Billion or Zero v0.1.0 | Generated January 2026</p>
+        </footer>
+    </div>
+
+    <script>
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'default',
+            securityLevel: 'loose',
+            flowchart: {
+                useMaxWidth: true,
+                htmlLabels: true,
+                curve: 'basis'
+            },
+            sequence: {
+                diagramMarginX: 50,
+                diagramMarginY: 10,
+                actorMargin: 50,
+                width: 150,
+                height: 65,
+                boxMargin: 10,
+                useMaxWidth: true
+            }
+        });
+    </script>
+</body>
+</html>
