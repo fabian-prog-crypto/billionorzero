@@ -109,7 +109,7 @@ export default function PerformancePage() {
               onClick={() => setPeriod(p)}
               className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                 period === p
-                  ? 'bg-white text-[var(--foreground)] shadow-sm'
+                  ? 'bg-[var(--card-bg)] text-[var(--foreground)] shadow-sm'
                   : 'text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
               }`}
             >

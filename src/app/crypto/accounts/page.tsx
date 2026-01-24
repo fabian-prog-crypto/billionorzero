@@ -334,7 +334,7 @@ function AddAccountModal({ onClose }: { onClose: () => void }) {
                 >
                   <div className="flex items-center gap-2">
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-semibold ${
-                      info.supported ? 'bg-[var(--accent-primary)]' : 'bg-gray-400'
+                      info.supported ? 'bg-[var(--accent-primary)]' : 'bg-[var(--foreground-subtle)]'
                     }`}>
                       {info.logo}
                     </div>
