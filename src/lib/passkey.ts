@@ -1,6 +1,20 @@
 /**
  * Passkey (WebAuthn) utilities for local authentication
+ * With integrated encryption key management
  */
+
+import {
+  generateMasterKey,
+  deriveKeyFromPasskey,
+  wrapMasterKey,
+  unwrapMasterKey,
+  storeWrappedMasterKey,
+  getStoredWrappedMasterKey,
+  setMasterKey,
+  clearMasterKey,
+  isEncryptionSetUp,
+  clearEncryptionData,
+} from './encryption';
 
 // Check if WebAuthn is supported
 export function isPasskeySupported(): boolean {
@@ -112,6 +126,23 @@ export async function registerPasskey(): Promise<{ success: boolean; error?: str
 
     localStorage.setItem(CREDENTIAL_STORAGE_KEY, JSON.stringify(storedCredential));
 
+    // === ENCRYPTION KEY SETUP ===
+    // Generate a new master key for encrypting data
+    const masterKey = await generateMasterKey();
+
+    // Derive a wrapping key from the passkey credential
+    const wrappingKey = await deriveKeyFromPasskey(
+      credential.rawId,
+      response.getAuthenticatorData()
+    );
+
+    // Wrap (encrypt) the master key with the passkey-derived key
+    const wrappedMasterKey = await wrapMasterKey(masterKey, wrappingKey);
+    storeWrappedMasterKey(wrappedMasterKey);
+
+    // Store the master key in memory for immediate use
+    setMasterKey(masterKey);
+
     return { success: true };
   } catch (error) {
     console.error('Passkey registration error:', error);
@@ -161,8 +192,25 @@ export async function authenticateWithPasskey(): Promise<{ success: boolean; err
       return { success: false, error: 'Authentication failed' };
     }
 
-    // For client-side only auth, we just verify the credential was used
-    // In a real app, you'd verify the signature on the server
+    // === ENCRYPTION KEY RECOVERY ===
+    // Retrieve the wrapped master key and unwrap it
+    const wrappedMasterKey = getStoredWrappedMasterKey();
+    if (wrappedMasterKey && isEncryptionSetUp()) {
+      const response = assertion.response as AuthenticatorAssertionResponse;
+
+      // Derive the unwrapping key from the passkey credential
+      const unwrappingKey = await deriveKeyFromPasskey(
+        assertion.rawId,
+        response.authenticatorData
+      );
+
+      // Unwrap (decrypt) the master key
+      const masterKey = await unwrapMasterKey(wrappedMasterKey, unwrappingKey);
+
+      // Store the master key in memory for use during this session
+      setMasterKey(masterKey);
+    }
+
     return { success: true };
   } catch (error) {
     console.error('Passkey authentication error:', error);
@@ -176,7 +224,17 @@ export async function authenticateWithPasskey(): Promise<{ success: boolean; err
   }
 }
 
-// Remove stored passkey
+// Remove stored passkey and encryption data
 export function removePasskey(): void {
   localStorage.removeItem(CREDENTIAL_STORAGE_KEY);
+  clearEncryptionData();
+  clearMasterKey();
 }
+
+// Clear master key from memory (call on logout)
+export function clearSessionKey(): void {
+  clearMasterKey();
+}
+
+// Re-export encryption status check
+export { isEncryptionSetUp } from './encryption';

@@ -3,12 +3,20 @@ import { persist } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
 import { Position, Wallet, PriceData, NetWorthSnapshot, CexAccount } from '@/types';
 
+// Custom price entry
+export interface CustomPrice {
+  price: number;
+  note?: string;         // Optional note explaining why custom price is used
+  setAt: string;         // ISO timestamp when set
+}
+
 interface PortfolioState {
   // Data
   positions: Position[];
   wallets: Wallet[];
   accounts: CexAccount[];
   prices: Record<string, PriceData>;
+  customPrices: Record<string, CustomPrice>;  // Symbol -> custom price override
   snapshots: NetWorthSnapshot[];
   lastRefresh: string | null;
   isRefreshing: boolean;
@@ -39,6 +47,10 @@ interface PortfolioState {
   setPrices: (prices: Record<string, PriceData>) => void;
   updatePrice: (symbol: string, price: PriceData) => void;
 
+  // Custom price actions
+  setCustomPrice: (symbol: string, price: number, note?: string) => void;
+  removeCustomPrice: (symbol: string) => void;
+
   // Snapshot actions
   addSnapshot: (snapshot: Omit<NetWorthSnapshot, 'id'>) => void;
 
@@ -60,6 +72,7 @@ export const usePortfolioStore = create<PortfolioState>()(
       wallets: [],
       accounts: [],
       prices: {},
+      customPrices: {},
       snapshots: [],
       lastRefresh: null,
       isRefreshing: false,
@@ -209,6 +222,28 @@ export const usePortfolioStore = create<PortfolioState>()(
         }));
       },
 
+      // Set a custom price override for a symbol
+      setCustomPrice: (symbol, price, note) => {
+        set((state) => ({
+          customPrices: {
+            ...state.customPrices,
+            [symbol.toLowerCase()]: {
+              price,
+              note,
+              setAt: new Date().toISOString(),
+            },
+          },
+        }));
+      },
+
+      // Remove a custom price override
+      removeCustomPrice: (symbol) => {
+        set((state) => {
+          const { [symbol.toLowerCase()]: _, ...rest } = state.customPrices;
+          return { customPrices: rest };
+        });
+      },
+
       // Add a daily snapshot
       addSnapshot: (snapshot) => {
         set((state) => ({
@@ -241,6 +276,7 @@ export const usePortfolioStore = create<PortfolioState>()(
           wallets: [],
           accounts: [],
           prices: {},
+          customPrices: {},
           snapshots: [],
           lastRefresh: null,
           isRefreshing: false,

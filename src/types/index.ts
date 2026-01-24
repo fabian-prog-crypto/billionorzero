@@ -56,6 +56,7 @@ export interface AssetWithPrice extends Position {
   change24h: number;
   changePercent24h: number;
   allocation: number; // Negative for debt positions
+  hasCustomPrice?: boolean; // True if using a custom price override
 }
 
 export interface NetWorthSnapshot {

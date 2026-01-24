@@ -17,6 +17,30 @@ import {
 } from './category-service';
 
 /**
+ * Check if a position is an actual perp trade (Long/Short position)
+ * Returns { isPerpTrade, isLong, isShort }
+ *
+ * Matches names like:
+ * - "BTC Long (Hyperliquid)"
+ * - "ETH Short (Lighter)"
+ * - "SOL Long" or "SOL Short"
+ */
+export function detectPerpTrade(name: string): { isPerpTrade: boolean; isLong: boolean; isShort: boolean } {
+  const nameLower = name.toLowerCase();
+
+  // Check for "Long" or "Short" followed by optional space and opening paren or end of string
+  // This matches: "BTC Long (Hyperliquid)", "ETH Short", "SOL Long (Ethereal)"
+  const longMatch = / long(\s*\(|$)/i.test(name);
+  const shortMatch = / short(\s*\(|$)/i.test(name);
+
+  return {
+    isPerpTrade: longMatch || shortMatch,
+    isLong: longMatch,
+    isShort: shortMatch,
+  };
+}
+
+/**
  * Sub-category breakdown with values (net of debt)
  */
 export interface SubCategoryBreakdown {
@@ -155,12 +179,23 @@ export function getPriceKey(position: Position): string {
 }
 
 /**
+ * Custom price entry for manual price overrides
+ */
+export interface CustomPrice {
+  price: number;
+  note?: string;
+  setAt: string;
+}
+
+/**
  * Calculate value and enriched data for a single position
  * Debt positions have negative value (reduce net worth)
+ * Custom prices take precedence over market prices
  */
 export function calculatePositionValue(
   position: Position,
-  prices: Record<string, PriceData>
+  prices: Record<string, PriceData>,
+  customPrices?: Record<string, CustomPrice>
 ): AssetWithPrice {
   // Cash positions always have price = 1 (1 USD = 1 USD)
   if (position.type === 'cash') {
@@ -171,6 +206,25 @@ export function calculatePositionValue(
       change24h: 0,
       changePercent24h: 0,
       allocation: 0,
+    };
+  }
+
+  // Check for custom price first (takes precedence over market price)
+  const symbolLower = position.symbol.toLowerCase();
+  const customPrice = customPrices?.[symbolLower];
+  if (customPrice) {
+    const currentPrice = customPrice.price;
+    const rawValue = position.amount * currentPrice;
+    const value = position.isDebt ? -rawValue : rawValue;
+
+    return {
+      ...position,
+      currentPrice,
+      value,
+      change24h: 0,        // No 24h change for custom prices
+      changePercent24h: 0, // No 24h change for custom prices
+      allocation: 0,
+      hasCustomPrice: true, // Flag to indicate custom price is used
     };
   }
 
@@ -216,14 +270,16 @@ export function calculatePositionValue(
 /**
  * Calculate all positions with prices and allocations
  * Returns positions sorted by value (highest first, debts at the end)
+ * Custom prices take precedence over market prices when provided
  */
 export function calculateAllPositionsWithPrices(
   positions: Position[],
-  prices: Record<string, PriceData>
+  prices: Record<string, PriceData>,
+  customPrices?: Record<string, CustomPrice>
 ): AssetWithPrice[] {
   // Calculate values for all positions
   const positionsWithPrices = positions.map((p) =>
-    calculatePositionValue(p, prices)
+    calculatePositionValue(p, prices, customPrices)
   );
 
   // Calculate total gross assets (positive values only, for allocation %)
@@ -253,12 +309,14 @@ export function calculateAllPositionsWithPrices(
 
 /**
  * Calculate comprehensive portfolio summary
+ * Custom prices take precedence over market prices when provided
  */
 export function calculatePortfolioSummary(
   positions: Position[],
-  prices: Record<string, PriceData>
+  prices: Record<string, PriceData>,
+  customPrices?: Record<string, CustomPrice>
 ): PortfolioSummary {
-  const assetsWithPrice = calculateAllPositionsWithPrices(positions, prices);
+  const assetsWithPrice = calculateAllPositionsWithPrices(positions, prices, customPrices);
   const totalValue = assetsWithPrice.reduce((sum, a) => sum + a.value, 0);
 
   // Calculate total 24h change
@@ -428,11 +486,8 @@ export function getPerpProtocolsWithPositions(assets: AssetWithPrice[]): Set<str
 
   assets.forEach((asset) => {
     if (asset.protocol && isPerpProtocol(asset.protocol)) {
-      // Check if this is an actual perp trade (Long/Short position)
-      const nameLower = asset.name.toLowerCase();
-      const isActualPerpTrade = nameLower.includes(' long ') || nameLower.includes(' short ') ||
-                                 nameLower.endsWith(' long)') || nameLower.endsWith(' short)');
-      if (isActualPerpTrade) {
+      const { isPerpTrade } = detectPerpTrade(asset.name);
+      if (isPerpTrade) {
         protocols.add(asset.protocol.toLowerCase());
       }
     }
@@ -499,9 +554,7 @@ export function calculateExposureData(assets: AssetWithPrice[]): ExposureData {
       const hasActivePositions = perpProtocolsWithPositions.has(protocolKey);
 
       // Check if this is an actual perp trade (Long/Short) vs spot holding
-      const nameLower = asset.name.toLowerCase();
-      const isActualPerpTrade = nameLower.includes(' long ') || nameLower.includes(' short ') ||
-                                 nameLower.endsWith(' long)') || nameLower.endsWith(' short)');
+      const { isPerpTrade, isLong, isShort } = detectPerpTrade(asset.name);
 
       if (subCat === 'stablecoins') {
         // ALWAYS count stablecoins on perp exchanges as margin for metrics
@@ -512,10 +565,12 @@ export function calculateExposureData(assets: AssetWithPrice[]): ExposureData {
           subCat = 'perps';
         }
         // else: stays as crypto_stablecoins for categorization but still counted in perpsMargin
-      } else if (isActualPerpTrade) {
+      } else if (isPerpTrade) {
         // Actual perp trade (Long/Short position)
+        // Use position name to determine long vs short, not value sign
+        // (exchanges may report shorts as positive notional values)
         subCat = 'perps';
-        if (isDebt) {
+        if (isShort) {
           perpsShorts += absValue;
         } else {
           perpsLongs += absValue;
@@ -658,8 +713,19 @@ export function calculateExposureData(assets: AssetWithPrice[]): ExposureData {
     const isDebt = asset.isDebt || asset.value < 0;
     const absValue = Math.abs(asset.value);
 
-    // Skip perp exchange assets - they're handled separately
-    if (isOnPerpExchange) return;
+    // Check if this is a perp trade (counted separately in perpsLongs/perpsShorts)
+    const { isPerpTrade } = detectPerpTrade(asset.name);
+
+    // Handle perp exchange assets:
+    // - Stablecoins: skip (margin, counted in perpsMargin)
+    // - Perp trades: skip (counted in perpsLongs/perpsShorts)
+    // - Spot holdings: count as spot exposure (e.g., holding ETH on Hyperliquid)
+    if (isOnPerpExchange) {
+      if (subCat === 'stablecoins' || isPerpTrade) {
+        return; // Skip margin and perp trades
+      }
+      // Spot holdings on perp exchanges - fall through to count as spot
+    }
 
     // Check if this is a cash equivalent (stablecoins, Pendle PTs)
     // Pendle PTs are fixed-term deposits that mature to a known value - no market risk
@@ -693,6 +759,43 @@ export function calculateExposureData(assets: AssetWithPrice[]): ExposureData {
 
   // Leverage = Gross Exposure / Net Worth
   const leverage = totalValue > 0 ? grossExposure / totalValue : 0;
+
+  // Debug logging for exposure calculation
+  console.log('[EXPOSURE] Calculation breakdown:', {
+    spotLong: spotLong.toFixed(2),
+    spotShort: spotShort.toFixed(2),
+    cashEquivalents: cashEquivalentsForLeverage.toFixed(2),
+    riskAdjustedSpotLong: riskAdjustedSpotLong.toFixed(2),
+    perpsLongs: perpsLongs.toFixed(2),
+    perpsShorts: perpsShorts.toFixed(2),
+    perpsMargin: perpsMargin.toFixed(2),
+    longExposure: longExposure.toFixed(2),
+    shortExposure: shortExposure.toFixed(2),
+    grossExposure: grossExposure.toFixed(2),
+    netExposure: netExposure.toFixed(2),
+    netWorth: totalValue.toFixed(2),
+    leverage: leverage.toFixed(2),
+  });
+
+  // Log assets contributing to short exposure to help debug
+  if (spotShort > 0 || perpsShorts > 0) {
+    console.log('[EXPOSURE] Short positions breakdown:');
+    assets.forEach((asset) => {
+      const isOnPerpExchange = asset.protocol && isPerpProtocol(asset.protocol);
+      const isDebt = asset.isDebt || asset.value < 0;
+      const { isShort } = detectPerpTrade(asset.name);
+      const absValue = Math.abs(asset.value);
+
+      // Check if it's a perp short (counted in perpsShorts)
+      if (isOnPerpExchange && isShort) {
+        console.log(`  [PERP SHORT] ${asset.symbol}: $${absValue.toFixed(2)} - ${asset.name}`);
+      }
+      // Check if it's a spot short (counted in spotShort)
+      else if (isDebt && !isOnPerpExchange) {
+        console.log(`  [SPOT SHORT] ${asset.symbol}: $${absValue.toFixed(2)} - ${asset.name} (isDebt: ${asset.isDebt}, value: ${asset.value.toFixed(2)})`);
+      }
+    });
+  }
 
   const exposureMetrics: ExposureMetrics = {
     longExposure,
