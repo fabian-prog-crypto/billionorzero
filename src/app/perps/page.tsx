@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import { usePortfolioStore } from '@/store/portfolioStore';
-import { calculateAllPositionsWithPrices, calculateExposureData, filterPerpPositions } from '@/services';
+import { calculateAllPositionsWithPrices, calculateExposureData, filterPerpPositions, detectPerpTrade } from '@/services';
 import Header from '@/components/Header';
 import { useRefresh } from '@/components/PortfolioProvider';
 import { formatCurrency, formatNumber, formatPercent, getChangeColor } from '@/lib/utils';
@@ -45,12 +45,8 @@ export default function PerpsPage() {
     return grouped;
   }, [perpPositions]);
 
-  // Helper to check if position is perp trade (same logic as above)
-  const isPerpTradeForStats = (p: typeof perpPositions[0]) => {
-    const nameLower = p.name.toLowerCase();
-    return nameLower.includes(' long ') || nameLower.includes(' short ') ||
-           nameLower.endsWith(' long)') || nameLower.endsWith(' short)');
-  };
+  // Use centralized detectPerpTrade helper
+  const isPerpTradePosition = (p: typeof perpPositions[0]) => detectPerpTrade(p.name).isPerpTrade;
 
   // Calculate stats per exchange
   const exchangeStats = useMemo(() => {
@@ -66,14 +62,14 @@ export default function PerpsPage() {
       const longs = positions
         .filter((p) => {
           const cat = getCategoryService().getSubCategory(p.symbol, p.type);
-          return cat !== 'stablecoins' && !p.isDebt && isPerpTradeForStats(p);
+          return cat !== 'stablecoins' && !p.isDebt && isPerpTradePosition(p);
         })
         .reduce((sum, p) => sum + p.value, 0);
 
       const shorts = positions
         .filter((p) => {
           const cat = getCategoryService().getSubCategory(p.symbol, p.type);
-          return cat !== 'stablecoins' && p.isDebt && isPerpTradeForStats(p);
+          return cat !== 'stablecoins' && p.isDebt && isPerpTradePosition(p);
         })
         .reduce((sum, p) => sum + Math.abs(p.value), 0);
 
@@ -81,7 +77,7 @@ export default function PerpsPage() {
       const spot = positions
         .filter((p) => {
           const cat = getCategoryService().getSubCategory(p.symbol, p.type);
-          return cat !== 'stablecoins' && !isPerpTradeForStats(p);
+          return cat !== 'stablecoins' && !isPerpTradePosition(p);
         })
         .reduce((sum, p) => sum + p.value, 0);
 
@@ -99,29 +95,22 @@ export default function PerpsPage() {
     }).sort((a, b) => b.net - a.net);
   }, [positionsByExchange]);
 
-  // Helper to check if position is an actual perp trade (Long/Short) vs spot holding
-  const isPerpTrade = (p: typeof perpPositions[0]) => {
-    const nameLower = p.name.toLowerCase();
-    return nameLower.includes(' long ') || nameLower.includes(' short ') ||
-           nameLower.endsWith(' long)') || nameLower.endsWith(' short)');
-  };
-
   // Separate margin, trading positions, and spot holdings for display
   const marginPositions = perpPositions.filter((p) => {
     const cat = getCategoryService().getSubCategory(p.symbol, p.type);
     return cat === 'stablecoins';
   });
 
-  // Actual perp trades (Long/Short positions)
+  // Actual perp trades (Long/Short positions) - use centralized detectPerpTrade
   const tradingPositions = perpPositions.filter((p) => {
     const cat = getCategoryService().getSubCategory(p.symbol, p.type);
-    return cat !== 'stablecoins' && isPerpTrade(p);
+    return cat !== 'stablecoins' && isPerpTradePosition(p);
   });
 
   // Spot holdings on perp exchanges (not stablecoins, not perp trades)
   const spotHoldings = perpPositions.filter((p) => {
     const cat = getCategoryService().getSubCategory(p.symbol, p.type);
-    return cat !== 'stablecoins' && !isPerpTrade(p);
+    return cat !== 'stablecoins' && !isPerpTradePosition(p);
   });
 
   const hasPerps = perpsBreakdown.total !== 0 || perpPositions.length > 0;
