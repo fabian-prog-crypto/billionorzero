@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Trash2, Wallet, ExternalLink, Copy, Check, ChevronRight } from 'lucide-react';
+import { Plus, Trash2, Wallet, ExternalLink, Copy, Check, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import { calculatePortfolioSummary } from '@/services';
 import Header from '@/components/Header';
@@ -11,10 +11,15 @@ import { useRefresh } from '@/components/PortfolioProvider';
 import { formatAddress, formatCurrency } from '@/lib/utils';
 import { SUPPORTED_CHAINS, getPerpExchangeName } from '@/services';
 
+type SortField = 'name' | 'assets' | 'value';
+type SortDirection = 'asc' | 'desc';
+
 export default function WalletsPage() {
   const router = useRouter();
   const [showAddWallet, setShowAddWallet] = useState(false);
   const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
+  const [sortField, setSortField] = useState<SortField>('value');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
   const { wallets, positions, prices, removeWallet, hideBalances } = usePortfolioStore();
   const { refresh } = useRefresh();
@@ -59,6 +64,45 @@ export default function WalletsPage() {
     router.push(`/wallets/${walletId}`);
   };
 
+  // Sort wallets
+  const sortedWallets = useMemo(() => {
+    return [...wallets].sort((a, b) => {
+      let comparison = 0;
+
+      switch (sortField) {
+        case 'name':
+          comparison = a.name.localeCompare(b.name);
+          break;
+        case 'assets':
+          comparison = getWalletPositions(a.address).length - getWalletPositions(b.address).length;
+          break;
+        case 'value':
+          comparison = getWalletValue(a.address) - getWalletValue(b.address);
+          break;
+      }
+
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
+  }, [wallets, positions, prices, sortField, sortDirection]);
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection(field === 'name' ? 'asc' : 'desc');
+    }
+  };
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="w-3 h-3 text-[var(--foreground-muted)]" />;
+    }
+    return sortDirection === 'asc'
+      ? <ArrowUp className="w-3 h-3" />
+      : <ArrowDown className="w-3 h-3" />;
+  };
+
   return (
     <div>
       <Header title="Wallets" onSync={refresh} />
@@ -101,16 +145,40 @@ export default function WalletsPage() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-[var(--border)]">
-                <th className="table-header text-left pb-3">Name</th>
+                <th className="table-header text-left pb-3">
+                  <button
+                    onClick={() => handleSort('name')}
+                    className="flex items-center gap-1 hover:text-[var(--foreground)] transition-colors"
+                  >
+                    Name
+                    <SortIcon field="name" />
+                  </button>
+                </th>
                 <th className="table-header text-left pb-3">Address</th>
                 <th className="table-header text-left pb-3">Networks</th>
-                <th className="table-header text-right pb-3">Assets</th>
-                <th className="table-header text-right pb-3">Value</th>
+                <th className="table-header text-right pb-3">
+                  <button
+                    onClick={() => handleSort('assets')}
+                    className="flex items-center gap-1 ml-auto hover:text-[var(--foreground)] transition-colors"
+                  >
+                    Assets
+                    <SortIcon field="assets" />
+                  </button>
+                </th>
+                <th className="table-header text-right pb-3">
+                  <button
+                    onClick={() => handleSort('value')}
+                    className="flex items-center gap-1 ml-auto hover:text-[var(--foreground)] transition-colors"
+                  >
+                    Value
+                    <SortIcon field="value" />
+                  </button>
+                </th>
                 <th className="table-header text-right pb-3 w-20"></th>
               </tr>
             </thead>
             <tbody>
-              {wallets.map((wallet) => {
+              {sortedWallets.map((wallet) => {
                 const walletPositions = getWalletPositions(wallet.address);
                 const walletValue = getWalletValue(wallet.address);
 
