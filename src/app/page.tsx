@@ -1,484 +1,340 @@
 'use client';
 
-import { useState, useMemo } from 'react';
-import { Plus, TrendingUp, TrendingDown, ArrowUpRight, Wallet, Eye, EyeOff, Info } from 'lucide-react';
+import { useMemo } from 'react';
+import { TrendingUp, TrendingDown, ArrowUpRight, Info } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import { calculatePortfolioSummary, calculateAllPositionsWithPrices, calculateExposureData } from '@/services';
-import Header from '@/components/Header';
 import NetWorthChart from '@/components/charts/NetWorthChart';
-import AllocationChart from '@/components/charts/AllocationChart';
 import ExposureChart from '@/components/charts/ExposureChart';
-import AddPositionModal from '@/components/modals/AddPositionModal';
-import AddWalletModal from '@/components/modals/AddWalletModal';
-import { useRefresh } from '@/components/PortfolioProvider';
+import Tooltip from '@/components/ui/Tooltip';
+import Link from 'next/link';
 import {
   formatCurrency,
   formatPercent,
   formatNumber,
   getChangeColor,
 } from '@/lib/utils';
-import Link from 'next/link';
-import Tooltip from '@/components/ui/Tooltip';
 
 export default function OverviewPage() {
-  const [showAddPosition, setShowAddPosition] = useState(false);
-  const [showAddWallet, setShowAddWallet] = useState(false);
-
-  const { positions, prices, customPrices, snapshots, wallets, hideBalances, toggleHideBalances } = usePortfolioStore();
-  const { refresh } = useRefresh();
+  const { positions, prices, customPrices, snapshots, hideBalances } = usePortfolioStore();
 
   // Calculate portfolio summary (including custom price overrides)
   const summary = useMemo(() => {
     return calculatePortfolioSummary(positions, prices, customPrices);
   }, [positions, prices, customPrices]);
 
-  // Calculate all positions for exposure chart (not just top 10)
+  // Calculate all positions for exposure chart
   const allAssetsWithPrices = useMemo(() => {
     return calculateAllPositionsWithPrices(positions, prices, customPrices);
   }, [positions, prices, customPrices]);
 
-  // Use centralized exposure calculation - single source of truth
+  // Use centralized exposure calculation
   const exposureData = useMemo(() => {
     return calculateExposureData(allAssetsWithPrices);
   }, [allAssetsWithPrices]);
 
-  // Extract what we need from the centralized calculation
-  const { categories, perpsBreakdown, simpleBreakdown, exposureMetrics, perpsMetrics, concentrationMetrics, spotDerivatives } = exposureData;
+  const { simpleBreakdown, exposureMetrics, perpsMetrics, concentrationMetrics, spotDerivatives } = exposureData;
 
-  const hasData = positions.length > 0 || wallets.length > 0;
+  const hasData = positions.length > 0;
+
+  if (!hasData) {
+    return (
+      <div className="flex flex-col items-center justify-center py-32">
+        <div className="w-20 h-20 rounded-2xl bg-[var(--background-tertiary)] flex items-center justify-center mb-6">
+          <TrendingUp className="w-10 h-10 text-[var(--foreground-muted)]" />
+        </div>
+        <h2 className="text-xl font-semibold mb-2">No positions yet</h2>
+        <p className="text-[var(--foreground-muted)] text-center max-w-md">
+          Add your first position to start tracking your portfolio.
+        </p>
+      </div>
+    );
+  }
 
   return (
-    <div>
-      <Header title="Overview" onSync={refresh} />
-
-      {!hasData ? (
-        // Empty state
-        <div className="flex flex-col items-center justify-center py-20">
-          <div className="w-20 h-20 bg-[var(--background-secondary)] rounded-full flex items-center justify-center mb-6">
-            <Wallet className="w-10 h-10 text-[var(--foreground-muted)]" />
+    <div className="space-y-8">
+      {/* Hero Stats */}
+      <div className="card-glow">
+        <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
+          <div>
+            <p className="stat-label mb-2">Net Worth</p>
+            <h2 className="stat-value-lg">
+              {hideBalances ? '••••••••' : formatCurrency(summary.totalValue)}
+            </h2>
+            <div className="flex items-center gap-3 mt-3">
+              <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg ${
+                summary.changePercent24h >= 0 ? 'bg-[var(--positive-light)]' : 'bg-[var(--negative-light)]'
+              }`}>
+                {summary.changePercent24h >= 0 ? (
+                  <TrendingUp className="w-4 h-4 text-[var(--positive)]" />
+                ) : (
+                  <TrendingDown className="w-4 h-4 text-[var(--negative)]" />
+                )}
+                <span className={getChangeColor(summary.changePercent24h) + ' font-semibold'}>
+                  {formatPercent(summary.changePercent24h)}
+                </span>
+              </div>
+              <span className="text-[var(--foreground-muted)] text-sm">
+                {hideBalances ? '••••' : formatCurrency(Math.abs(summary.change24h))} today
+              </span>
+            </div>
           </div>
-          <h2 className="text-xl font-semibold mb-2">No positions yet</h2>
-          <p className="text-[var(--foreground-muted)] mb-6 text-center max-w-md">
-            Start tracking your portfolio by adding positions manually or connecting a wallet.
-          </p>
-          <div className="flex gap-3">
-            <button
-              onClick={() => setShowAddPosition(true)}
-              className="btn btn-primary"
-            >
-              <Plus className="w-4 h-4" />
-              Add Position
-            </button>
-            <button
-              onClick={() => setShowAddWallet(true)}
-              className="btn btn-secondary"
-            >
-              <Wallet className="w-4 h-4" />
-              Connect Wallet
-            </button>
+
+          {/* Mini chart */}
+          <div className="w-full lg:w-[400px] h-[120px]">
+            <NetWorthChart snapshots={snapshots} height={120} minimal />
           </div>
         </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Main content - Left side */}
-          <div className="lg:col-span-8 space-y-6">
-            {/* Net Worth Card */}
-            <div className="card">
-              <div className="flex items-start justify-between mb-6">
-                <div>
-                  <p className="text-[var(--foreground-muted)] text-sm mb-1">
-                    Total Net Worth
-                  </p>
-                  <h2 className="text-3xl font-bold">
-                    {hideBalances ? '******' : formatCurrency(summary.totalValue)}
-                  </h2>
-                  <div className="flex items-center gap-2 mt-1">
-                    {summary.changePercent24h >= 0 ? (
-                      <TrendingUp className="w-4 h-4 text-positive" />
-                    ) : (
-                      <TrendingDown className="w-4 h-4 text-negative" />
-                    )}
-                    <span className={getChangeColor(summary.changePercent24h)}>
-                      {formatPercent(summary.changePercent24h)}
-                    </span>
-                    <span className="text-[var(--foreground-muted)] text-sm">
-                      ({hideBalances ? '****' : formatCurrency(Math.abs(summary.change24h))}) 24h
-                    </span>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={toggleHideBalances}
-                    className="btn btn-secondary"
-                    title={hideBalances ? 'Show balances' : 'Hide balances'}
-                    aria-label={hideBalances ? 'Show balances' : 'Hide balances'}
-                  >
-                    {hideBalances ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-                  </button>
-                  <button
-                    onClick={() => setShowAddPosition(true)}
-                    className="btn btn-primary"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Add Position
-                  </button>
-                </div>
-              </div>
+      </div>
 
-              {/* Chart */}
-              <div className="chart-container">
-                <NetWorthChart snapshots={snapshots} height={180} />
+      {/* Key Metrics Grid */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <Tooltip
+          content={
+            <div className="space-y-2 text-sm">
+              <div className="font-medium border-b border-[var(--border)] pb-2">Exposure Breakdown</div>
+              <div className="flex justify-between">
+                <span className="text-[var(--positive)]">Long</span>
+                <span>{formatCurrency(exposureMetrics.longExposure)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[var(--negative)]">Short</span>
+                <span>{formatCurrency(exposureMetrics.shortExposure)}</span>
               </div>
             </div>
-
-            {/* Professional Investor Metrics */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-              {/* Gross Exposure */}
-              <Tooltip
-                content={
-                  <div className="space-y-2">
-                    <div className="font-medium border-b border-[var(--border)] pb-1 mb-2">Gross Exposure Breakdown</div>
-                    <div className="space-y-1.5">
-                      <div className="text-[var(--foreground-muted)]">Long Exposure:</div>
-                      <div className="pl-2 space-y-0.5 text-xs">
-                        <div className="flex justify-between">
-                          <span>Spot Long (excl. stables)</span>
-                          <span>{formatCurrency(spotDerivatives.spotLong)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>+ Perps Long</span>
-                          <span>{formatCurrency(perpsMetrics.longNotional)}</span>
-                        </div>
-                        <div className="flex justify-between font-medium text-[var(--positive)] pt-0.5 border-t border-[var(--border)]">
-                          <span>= Long</span>
-                          <span>{formatCurrency(exposureMetrics.longExposure)}</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="space-y-1.5">
-                      <div className="text-[var(--foreground-muted)]">Short Exposure:</div>
-                      <div className="pl-2 space-y-0.5 text-xs">
-                        <div className="flex justify-between">
-                          <span>Borrowed Crypto</span>
-                          <span>{formatCurrency(spotDerivatives.spotShort)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>+ Perps Short</span>
-                          <span>{formatCurrency(perpsMetrics.shortNotional)}</span>
-                        </div>
-                        <div className="flex justify-between font-medium text-[var(--negative)] pt-0.5 border-t border-[var(--border)]">
-                          <span>= Short</span>
-                          <span>{formatCurrency(exposureMetrics.shortExposure)}</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex justify-between font-medium pt-2 border-t border-[var(--border)]">
-                      <span>Gross (L + S)</span>
-                      <span>{formatCurrency(exposureMetrics.grossExposure)}</span>
-                    </div>
-                    <div className="text-xs text-[var(--foreground-muted)] pt-2 border-t border-[var(--border)] space-y-1">
-                      <div className="font-medium text-[var(--foreground)]">What counts as exposure:</div>
-                      <div><span className="text-[var(--positive)]">Long:</span> Crypto, stocks, perp longs</div>
-                      <div><span className="text-[var(--negative)]">Short:</span> Borrowed crypto (ETH/BTC), perp shorts</div>
-                      <div><span className="text-[var(--foreground-muted)]">Excluded:</span> Stablecoins (held or borrowed)</div>
-                    </div>
-                  </div>
-                }
-                position="bottom"
-                maxWidth={340}
-              >
-                <div className="card cursor-help">
-                  <div className="flex items-center gap-1">
-                    <p className="text-xs text-[var(--foreground-muted)] mb-1">Gross Exposure</p>
-                    <Info className="w-3 h-3 text-[var(--foreground-muted)] mb-1" />
-                  </div>
-                  <p className="text-lg font-semibold">
-                    {hideBalances ? '****' : formatCurrency(exposureMetrics.grossExposure)}
-                  </p>
-                  <div className="flex gap-2 mt-1 text-xs">
-                    <span className="text-[var(--positive)]">L: {hideBalances ? '**' : formatCurrency(exposureMetrics.longExposure)}</span>
-                    <span className="text-[var(--negative)]">S: {hideBalances ? '**' : formatCurrency(exposureMetrics.shortExposure)}</span>
-                  </div>
-                </div>
-              </Tooltip>
-
-              {/* Leverage */}
-              <Tooltip
-                content={
-                  <div className="space-y-2">
-                    <div className="font-medium border-b border-[var(--border)] pb-1 mb-2">Leverage Calculation</div>
-                    <div className="space-y-1.5 text-xs">
-                      <div className="flex justify-between">
-                        <span className="text-[var(--foreground-muted)]">Gross Exposure</span>
-                        <span>{formatCurrency(exposureMetrics.grossExposure)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-[var(--foreground-muted)]">Net Worth</span>
-                        <span>{formatCurrency(exposureMetrics.netWorth)}</span>
-                      </div>
-                      <div className="flex justify-between font-medium pt-1 border-t border-[var(--border)]">
-                        <span>Leverage</span>
-                        <span>{exposureMetrics.leverage.toFixed(2)}x</span>
-                      </div>
-                    </div>
-                    <div className="text-xs text-[var(--foreground-muted)] pt-2 border-t border-[var(--border)]">
-                      <span className="font-medium">Formula:</span> Gross Exposure / Net Worth
-                    </div>
-                    <div className="text-xs pt-1">
-                      <div className="flex items-center gap-1">
-                        <div className="w-2 h-2 rounded-full bg-[var(--positive)]" />
-                        <span>&le; 1.0x = No leverage</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <div className="w-2 h-2 rounded-full bg-[var(--positive)]" />
-                        <span>1.0-1.5x = Low</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <div className="w-2 h-2 rounded-full bg-[var(--warning)]" />
-                        <span>1.5-2.0x = Moderate</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <div className="w-2 h-2 rounded-full bg-[var(--negative)]" />
-                        <span>&gt; 2.0x = High</span>
-                      </div>
-                    </div>
-                  </div>
-                }
-                position="bottom"
-                maxWidth={280}
-              >
-                <div className="card cursor-help">
-                  <div className="flex items-center gap-1">
-                    <p className="text-xs text-[var(--foreground-muted)] mb-1">Leverage</p>
-                    <Info className="w-3 h-3 text-[var(--foreground-muted)] mb-1" />
-                  </div>
-                  <p className={`text-lg font-semibold ${exposureMetrics.leverage > 2 ? 'text-[var(--negative)]' : exposureMetrics.leverage > 1.5 ? 'text-[var(--warning)]' : ''}`}>
-                    {exposureMetrics.leverage.toFixed(2)}x
-                  </p>
-                  <p className="text-xs text-[var(--foreground-muted)] mt-1">
-                    {exposureMetrics.leverage <= 1 ? 'No leverage' : exposureMetrics.leverage <= 1.5 ? 'Low' : exposureMetrics.leverage <= 2 ? 'Moderate' : 'High'}
-                  </p>
-                </div>
-              </Tooltip>
-
-              {/* Cash Position */}
-              <div className="card">
-                <p className="text-xs text-[var(--foreground-muted)] mb-1">Cash & Stables</p>
-                <p className="text-lg font-semibold text-[var(--positive)]">
-                  {hideBalances ? '****' : formatCurrency(exposureMetrics.cashPosition)}
-                </p>
-                <p className="text-xs text-[var(--foreground-muted)] mt-1">
-                  {exposureMetrics.cashPercentage.toFixed(1)}% of assets
-                </p>
-              </div>
-
-              {/* Concentration */}
-              <div className="card">
-                <p className="text-xs text-[var(--foreground-muted)] mb-1">Top 5 Concentration</p>
-                <p className={`text-lg font-semibold ${concentrationMetrics.top5Percentage > 80 ? 'text-[var(--negative)]' : concentrationMetrics.top5Percentage > 60 ? 'text-[var(--warning)]' : ''}`}>
-                  {concentrationMetrics.top5Percentage.toFixed(1)}%
-                </p>
-                <p className="text-xs text-[var(--foreground-muted)] mt-1">
-                  {concentrationMetrics.assetCount} assets
-                </p>
-              </div>
+          }
+          position="bottom"
+        >
+          <div className="metric-card cursor-help">
+            <div className="flex items-center gap-1.5 mb-2">
+              <p className="stat-label">Gross Exposure</p>
+              <Info className="w-3.5 h-3.5 text-[var(--foreground-subtle)]" />
             </div>
+            <p className="stat-value">
+              {hideBalances ? '••••' : formatCurrency(exposureMetrics.grossExposure)}
+            </p>
+          </div>
+        </Tooltip>
 
-            {/* Spot vs Derivatives Breakdown */}
-            {(spotDerivatives.derivativesLong > 0 || spotDerivatives.derivativesShort > 0) && (
-              <div className="card">
-                <h3 className="font-semibold text-sm mb-3">Exposure Breakdown</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  {/* Spot */}
-                  <div>
-                    <p className="text-xs text-[var(--foreground-muted)] mb-2">Spot Positions</p>
-                    <div className="space-y-1 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-[var(--foreground-muted)]">Long</span>
-                        <span className="text-[var(--positive)]">{hideBalances ? '****' : formatCurrency(spotDerivatives.spotLong)}</span>
-                      </div>
-                      {spotDerivatives.spotShort > 0 && (
-                        <div className="flex justify-between">
-                          <span className="text-[var(--foreground-muted)]">Short/Borrowed</span>
-                          <span className="text-[var(--negative)]">-{hideBalances ? '****' : formatCurrency(spotDerivatives.spotShort)}</span>
-                        </div>
-                      )}
-                      <div className="flex justify-between font-medium pt-1 border-t border-[var(--border)]">
-                        <span>Net Spot</span>
-                        <span>{hideBalances ? '****' : formatCurrency(spotDerivatives.spotNet)}</span>
-                      </div>
-                    </div>
-                  </div>
-                  {/* Derivatives */}
-                  <div>
-                    <p className="text-xs text-[var(--foreground-muted)] mb-2">Derivatives (Perps)</p>
-                    <div className="space-y-1 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-[var(--foreground-muted)]">Long Notional</span>
-                        <span className="text-[var(--positive)]">{hideBalances ? '****' : formatCurrency(spotDerivatives.derivativesLong)}</span>
-                      </div>
-                      {spotDerivatives.derivativesShort > 0 && (
-                        <div className="flex justify-between">
-                          <span className="text-[var(--foreground-muted)]">Short Notional</span>
-                          <span className="text-[var(--negative)]">-{hideBalances ? '****' : formatCurrency(spotDerivatives.derivativesShort)}</span>
-                        </div>
-                      )}
-                      <div className="flex justify-between font-medium pt-1 border-t border-[var(--border)]">
-                        <span>Net Perps</span>
-                        <span className={spotDerivatives.derivativesNet < 0 ? 'text-[var(--negative)]' : ''}>{hideBalances ? '****' : formatCurrency(spotDerivatives.derivativesNet)}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                {/* Margin info */}
-                {perpsMetrics.collateral > 0 && (
-                  <div className="mt-3 pt-3 border-t border-[var(--border)]">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-[var(--foreground-muted)]">Margin Deposited</span>
-                      <span>{hideBalances ? '****' : formatCurrency(perpsMetrics.collateral)}</span>
-                    </div>
-                    <div className="flex items-center justify-between text-sm mt-1">
-                      <span className="text-[var(--foreground-muted)]">Est. Margin Used (~5x)</span>
-                      <span className={perpsMetrics.utilizationRate > 80 ? 'text-[var(--negative)]' : ''}>
-                        {hideBalances ? '****' : formatCurrency(perpsMetrics.marginUsed)} ({perpsMetrics.utilizationRate.toFixed(0)}%)
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Asset Allocation by Category */}
-            <div className="card">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-semibold text-sm">Asset Allocation</h3>
-                <Link href="/exposure" className="text-xs text-[var(--accent-primary)]">
-                  View Details
-                </Link>
-              </div>
-              <div className="space-y-2">
-                {simpleBreakdown.map((item) => (
-                  <div key={item.id} className="flex items-center gap-3">
-                    <div
-                      className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: item.color }}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="truncate">{item.label}</span>
-                        <span className="font-medium ml-2">{hideBalances ? '****' : formatCurrency(item.value)}</span>
-                      </div>
-                      <div className="w-full bg-[var(--background-secondary)] rounded-full h-1.5 mt-1">
-                        <div
-                          className="h-1.5 rounded-full"
-                          style={{ width: `${Math.max(0, Math.min(100, item.percentage))}%`, backgroundColor: item.color }}
-                        />
-                      </div>
-                    </div>
-                    <span className="text-xs text-[var(--foreground-muted)] w-12 text-right">{item.percentage.toFixed(1)}%</span>
-                  </div>
-                ))}
-              </div>
+        <Tooltip
+          content={
+            <div className="text-sm">
+              <p className="mb-2">Gross Exposure / Net Worth</p>
+              <p className="text-[var(--foreground-muted)]">
+                {exposureMetrics.leverage <= 1 ? 'No leverage' :
+                 exposureMetrics.leverage <= 1.5 ? 'Low leverage' :
+                 exposureMetrics.leverage <= 2 ? 'Moderate leverage' : 'High leverage'}
+              </p>
             </div>
-
-            {/* Top Positions */}
-            <div className="card">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold">Top Positions</h3>
-                <a href="/positions" className="text-sm text-[var(--accent-primary)] flex items-center gap-1">
-                  See all <ArrowUpRight className="w-3 h-3" />
-                </a>
-              </div>
-              <div className="space-y-3">
-                {summary.topAssets.slice(0, 5).map((asset) => (
-                  <div
-                    key={asset.id}
-                    className="flex items-center justify-between py-2 border-b border-[var(--border)] last:border-0"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-[var(--tag-bg)] rounded-full flex items-center justify-center text-xs font-semibold">
-                        {asset.symbol.slice(0, 2).toUpperCase()}
-                      </div>
-                      <div>
-                        <p className="font-medium">{asset.symbol.toUpperCase()}</p>
-                        <p className="text-xs text-[var(--foreground-muted)]">
-                          {hideBalances ? '***' : formatNumber(asset.amount)} @ {formatCurrency(asset.currentPrice)}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-medium">{hideBalances ? '****' : formatCurrency(asset.value)}</p>
-                      <p className={`text-xs ${getChangeColor(asset.changePercent24h)}`}>
-                        {formatPercent(asset.changePercent24h)}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
+          }
+          position="bottom"
+        >
+          <div className="metric-card cursor-help">
+            <div className="flex items-center gap-1.5 mb-2">
+              <p className="stat-label">Leverage</p>
+              <Info className="w-3.5 h-3.5 text-[var(--foreground-subtle)]" />
             </div>
+            <p className={`stat-value ${
+              exposureMetrics.leverage > 2 ? 'text-[var(--negative)]' :
+              exposureMetrics.leverage > 1.5 ? 'text-[var(--warning)]' : ''
+            }`}>
+              {exposureMetrics.leverage.toFixed(2)}x
+            </p>
+          </div>
+        </Tooltip>
+
+        <div className="metric-card">
+          <p className="stat-label mb-2">Cash & Stables</p>
+          <p className="stat-value text-[var(--positive)]">
+            {hideBalances ? '••••' : formatCurrency(exposureMetrics.cashPosition)}
+          </p>
+          <p className="text-xs text-[var(--foreground-muted)] mt-1">
+            {exposureMetrics.cashPercentage.toFixed(1)}% of portfolio
+          </p>
+        </div>
+
+        <div className="metric-card">
+          <p className="stat-label mb-2">Concentration</p>
+          <p className={`stat-value ${
+            concentrationMetrics.top5Percentage > 80 ? 'text-[var(--negative)]' :
+            concentrationMetrics.top5Percentage > 60 ? 'text-[var(--warning)]' : ''
+          }`}>
+            {concentrationMetrics.top5Percentage.toFixed(0)}%
+          </p>
+          <p className="text-xs text-[var(--foreground-muted)] mt-1">
+            Top 5 positions
+          </p>
+        </div>
+      </div>
+
+      {/* Main Content Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Allocation Breakdown */}
+        <div className="lg:col-span-2 card">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="font-semibold">Allocation</h3>
+            <Link href="/exposure" className="text-sm text-[var(--accent-primary)] flex items-center gap-1 hover:underline">
+              Details <ArrowUpRight className="w-3 h-3" />
+            </Link>
           </div>
 
-          {/* Sidebar - Right side */}
-          <div className="lg:col-span-4 space-y-6">
-            {/* Exposure by Category Chart */}
-            <div className="card">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold">Exposure</h3>
-              </div>
-              <ExposureChart assets={allAssetsWithPrices} size={160} />
-            </div>
-
-            {/* Allocation Chart */}
-            <div className="card">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold">Top Assets</h3>
-              </div>
-              <AllocationChart assets={summary.topAssets} size={160} />
-            </div>
-
-            {/* Connected Wallets */}
-            {wallets.length > 0 && (
-              <div className="card">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-semibold">Connected Wallets</h3>
-                  <button
-                    onClick={() => setShowAddWallet(true)}
-                    className="text-sm text-[var(--accent-primary)]"
-                  >
-                    + Add
-                  </button>
-                </div>
-                <div className="space-y-2">
-                  {wallets.map((wallet) => (
+          <div className="space-y-4">
+            {simpleBreakdown.map((item) => (
+              <div key={item.id}>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-3">
                     <div
-                      key={wallet.id}
-                      className="flex items-center gap-2 p-2 bg-[var(--background-secondary)] rounded-lg"
-                    >
-                      <Wallet className="w-4 h-4 text-[var(--foreground-muted)]" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{wallet.name}</p>
-                        <p className="text-xs text-[var(--foreground-muted)] font-mono truncate">
-                          {wallet.address.slice(0, 6)}...{wallet.address.slice(-4)}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
+                      className="w-3 h-3 rounded-full"
+                      style={{ backgroundColor: item.color }}
+                    />
+                    <span className="font-medium">{item.label}</span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className="text-[var(--foreground-muted)]">
+                      {item.percentage.toFixed(1)}%
+                    </span>
+                    <span className="font-mono font-medium w-28 text-right">
+                      {hideBalances ? '••••' : formatCurrency(item.value)}
+                    </span>
+                  </div>
+                </div>
+                <div className="progress-bar">
+                  <div
+                    className="progress-bar-fill"
+                    style={{
+                      width: `${Math.max(0, Math.min(100, item.percentage))}%`,
+                      backgroundColor: item.color,
+                    }}
+                  />
                 </div>
               </div>
-            )}
+            ))}
+          </div>
+        </div>
+
+        {/* Exposure Chart */}
+        <div className="card">
+          <h3 className="font-semibold mb-4">Exposure</h3>
+          <ExposureChart assets={allAssetsWithPrices} size={180} />
+        </div>
+      </div>
+
+      {/* Spot vs Derivatives */}
+      {(spotDerivatives.derivativesLong > 0 || spotDerivatives.derivativesShort > 0) && (
+        <div className="card">
+          <h3 className="font-semibold mb-6">Spot vs Derivatives</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="p-5 bg-[var(--background-tertiary)] rounded-xl">
+              <p className="stat-label mb-3">Spot Positions</p>
+              <div className="space-y-3">
+                <div className="flex justify-between">
+                  <span className="text-[var(--foreground-muted)]">Long</span>
+                  <span className="text-[var(--positive)] font-mono">
+                    {hideBalances ? '••••' : formatCurrency(spotDerivatives.spotLong)}
+                  </span>
+                </div>
+                {spotDerivatives.spotShort > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-[var(--foreground-muted)]">Short</span>
+                    <span className="text-[var(--negative)] font-mono">
+                      -{hideBalances ? '••••' : formatCurrency(spotDerivatives.spotShort)}
+                    </span>
+                  </div>
+                )}
+                <div className="divider !my-2" />
+                <div className="flex justify-between font-medium">
+                  <span>Net</span>
+                  <span className="font-mono">
+                    {hideBalances ? '••••' : formatCurrency(spotDerivatives.spotNet)}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-5 bg-[var(--background-tertiary)] rounded-xl">
+              <p className="stat-label mb-3">Derivatives</p>
+              <div className="space-y-3">
+                <div className="flex justify-between">
+                  <span className="text-[var(--foreground-muted)]">Long</span>
+                  <span className="text-[var(--positive)] font-mono">
+                    {hideBalances ? '••••' : formatCurrency(spotDerivatives.derivativesLong)}
+                  </span>
+                </div>
+                {spotDerivatives.derivativesShort > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-[var(--foreground-muted)]">Short</span>
+                    <span className="text-[var(--negative)] font-mono">
+                      -{hideBalances ? '••••' : formatCurrency(spotDerivatives.derivativesShort)}
+                    </span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span className="text-[var(--foreground-muted)]">Collateral</span>
+                  <span className="font-mono">
+                    {hideBalances ? '••••' : formatCurrency(spotDerivatives.derivativesCollateral)}
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Modals */}
-      <AddPositionModal
-        isOpen={showAddPosition}
-        onClose={() => setShowAddPosition(false)}
-      />
-      <AddWalletModal
-        isOpen={showAddWallet}
-        onClose={() => setShowAddWallet(false)}
-      />
+      {/* Top Positions */}
+      <div className="card">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="font-semibold">Top Positions</h3>
+          <Link href="/positions" className="text-sm text-[var(--accent-primary)] flex items-center gap-1 hover:underline">
+            View All <ArrowUpRight className="w-3 h-3" />
+          </Link>
+        </div>
+
+        <div className="table-scroll">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-[var(--border)]">
+                <th className="table-header text-left pb-3">Asset</th>
+                <th className="table-header text-right pb-3">Price</th>
+                <th className="table-header text-right pb-3">Holdings</th>
+                <th className="table-header text-right pb-3">Value</th>
+                <th className="table-header text-right pb-3">24h</th>
+              </tr>
+            </thead>
+            <tbody>
+              {summary.topAssets.slice(0, 8).map((asset) => (
+                <tr
+                  key={asset.id}
+                  className="hover-row border-b border-[var(--border)] last:border-0"
+                >
+                  <td className="py-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-[var(--background-tertiary)] flex items-center justify-center text-sm font-bold">
+                        {asset.symbol.slice(0, 2).toUpperCase()}
+                      </div>
+                      <div>
+                        <p className="font-medium">{asset.symbol.toUpperCase()}</p>
+                        <p className="text-xs text-[var(--foreground-muted)]">{asset.name}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="py-4 text-right font-mono text-sm">
+                    {formatCurrency(asset.currentPrice)}
+                  </td>
+                  <td className="py-4 text-right font-mono text-sm text-[var(--foreground-muted)]">
+                    {hideBalances ? '•••' : formatNumber(asset.amount)}
+                  </td>
+                  <td className="py-4 text-right font-mono font-medium">
+                    {hideBalances ? '••••' : formatCurrency(asset.value)}
+                  </td>
+                  <td className={`py-4 text-right font-mono text-sm ${getChangeColor(asset.changePercent24h)}`}>
+                    {formatPercent(asset.changePercent24h)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }

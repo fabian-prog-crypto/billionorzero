@@ -117,7 +117,7 @@ export default function ExposurePage() {
         </div>
         <div className="card">
           <div className="flex items-center gap-2 mb-1">
-            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#8B5CF6' }} />
+            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#22D3EE' }} />
             <p className="text-sm text-[var(--foreground-muted)]">Tokens</p>
           </div>
           <p className="text-xl font-semibold">{formatCurrency(tokensItem?.value || 0)}</p>

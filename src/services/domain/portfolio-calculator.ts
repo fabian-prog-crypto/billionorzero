@@ -793,7 +793,7 @@ export function calculateExposureData(assets: AssetWithPrice[]): ExposureData {
       label: 'Tokens',
       value: tokensValue,
       percentage: totalValue > 0 ? (tokensValue / totalValue) * 100 : 0,
-      color: '#8B5CF6', // purple
+      color: '#22D3EE', // cyan
     },
   ];
   const simpleBreakdown = simpleBreakdownItems

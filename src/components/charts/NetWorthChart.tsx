@@ -16,11 +16,13 @@ import { formatCurrency } from '@/lib/utils';
 interface NetWorthChartProps {
   snapshots: NetWorthSnapshot[];
   height?: number;
+  minimal?: boolean;
 }
 
 export default function NetWorthChart({
   snapshots,
   height = 200,
+  minimal = false,
 }: NetWorthChartProps) {
   const data = useMemo(() => {
     return snapshots.map((s) => ({
@@ -45,49 +47,55 @@ export default function NetWorthChart({
 
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <AreaChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+      <AreaChart data={data} margin={{ top: 5, right: 5, left: minimal ? -10 : 0, bottom: 0 }}>
         <defs>
           <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="#8B7355" stopOpacity={0.3} />
-            <stop offset="95%" stopColor="#8B7355" stopOpacity={0} />
+            <stop offset="5%" stopColor="#22D3EE" stopOpacity={0.3} />
+            <stop offset="95%" stopColor="#22D3EE" stopOpacity={0} />
           </linearGradient>
         </defs>
-        <XAxis
-          dataKey="date"
-          axisLine={false}
-          tickLine={false}
-          tick={{ fontSize: 11, fill: 'var(--foreground-muted)' }}
-          tickFormatter={(value) => format(new Date(value), 'd/M')}
-        />
-        <YAxis
-          axisLine={false}
-          tickLine={false}
-          tick={{ fontSize: 11, fill: 'var(--foreground-muted)' }}
-          tickFormatter={(value) => formatCurrency(value, 0)}
-          width={70}
-        />
-        <Tooltip
-          content={({ active, payload }) => {
-            if (active && payload && payload.length) {
-              const data = payload[0].payload;
-              return (
-                <div className="card p-3 shadow-lg">
-                  <p className="text-xs text-[var(--foreground-muted)] mb-1">
-                    {format(new Date(data.date), 'MMM d, yyyy')}
-                  </p>
-                  <p className="font-semibold">
-                    {formatCurrency(data.value)}
-                  </p>
-                </div>
-              );
-            }
-            return null;
-          }}
-        />
+        {!minimal && (
+          <XAxis
+            dataKey="date"
+            axisLine={false}
+            tickLine={false}
+            tick={{ fontSize: 11, fill: 'var(--foreground-muted)' }}
+            tickFormatter={(value) => format(new Date(value), 'd/M')}
+          />
+        )}
+        {!minimal && (
+          <YAxis
+            axisLine={false}
+            tickLine={false}
+            tick={{ fontSize: 11, fill: 'var(--foreground-muted)' }}
+            tickFormatter={(value) => formatCurrency(value, 0)}
+            width={70}
+          />
+        )}
+        {!minimal && (
+          <Tooltip
+            content={({ active, payload }) => {
+              if (active && payload && payload.length) {
+                const data = payload[0].payload;
+                return (
+                  <div className="tooltip-content">
+                    <p className="text-xs text-[var(--foreground-muted)] mb-1">
+                      {format(new Date(data.date), 'MMM d, yyyy')}
+                    </p>
+                    <p className="font-semibold">
+                      {formatCurrency(data.value)}
+                    </p>
+                  </div>
+                );
+              }
+              return null;
+            }}
+          />
+        )}
         <Area
           type="monotone"
           dataKey="value"
-          stroke="#8B7355"
+          stroke="#22D3EE"
           strokeWidth={2}
           fill="url(#colorValue)"
         />

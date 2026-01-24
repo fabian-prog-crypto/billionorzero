@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Poppins } from "next/font/google";
 import "./globals.css";
-import Sidebar from "@/components/Sidebar";
+import AppShell from "@/components/AppShell";
 import PortfolioProvider from "@/components/PortfolioProvider";
 import AuthProvider from "@/components/AuthProvider";
 
@@ -13,6 +13,12 @@ const geistSans = Geist({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+});
+
+const poppins = Poppins({
+  variable: "--font-poppins",
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700"],
 });
 
 export const metadata: Metadata = {
@@ -28,16 +34,13 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} ${poppins.variable} antialiased`}
       >
         <PortfolioProvider>
           <AuthProvider>
-            <div className="flex min-h-screen">
-              <Sidebar />
-              <main className="main-content flex-1 ml-0 lg:ml-[220px] p-4 lg:p-8 pt-16 lg:pt-8">
-                {children}
-              </main>
-            </div>
+            <AppShell>
+              {children}
+            </AppShell>
           </AuthProvider>
         </PortfolioProvider>
       </body>
