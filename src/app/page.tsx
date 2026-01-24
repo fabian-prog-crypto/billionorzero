@@ -142,12 +142,8 @@ export default function OverviewPage() {
                       <div className="text-[var(--foreground-muted)]">Long Exposure:</div>
                       <div className="pl-2 space-y-0.5 text-xs">
                         <div className="flex justify-between">
-                          <span>Spot Long</span>
+                          <span>Spot Long (excl. stables)</span>
                           <span>{formatCurrency(spotDerivatives.spotLong)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>- Cash Equivalents</span>
-                          <span>-{formatCurrency(exposureMetrics.cashPosition)}</span>
                         </div>
                         <div className="flex justify-between">
                           <span>+ Perps Long</span>
@@ -182,9 +178,9 @@ export default function OverviewPage() {
                     </div>
                     <div className="text-xs text-[var(--foreground-muted)] pt-2 border-t border-[var(--border)] space-y-1">
                       <div className="font-medium text-[var(--foreground)]">What counts as exposure:</div>
-                      <div><span className="text-[var(--positive)]">Long:</span> Crypto holdings, stocks, perp longs</div>
-                      <div><span className="text-[var(--negative)]">Short:</span> Borrowed ETH/BTC (Morpho/Aave), perp shorts</div>
-                      <div><span className="text-[var(--foreground-muted)]">Excluded:</span> Stablecoins, borrowed USD (just leverage)</div>
+                      <div><span className="text-[var(--positive)]">Long:</span> Crypto, stocks, perp longs</div>
+                      <div><span className="text-[var(--negative)]">Short:</span> Borrowed crypto (ETH/BTC), perp shorts</div>
+                      <div><span className="text-[var(--foreground-muted)]">Excluded:</span> Stablecoins (held or borrowed)</div>
                     </div>
                   </div>
                 }
