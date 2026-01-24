@@ -10,6 +10,7 @@ import { AssetType } from '@/types';
 interface AddPositionModalProps {
   isOpen: boolean;
   onClose: () => void;
+  defaultTab?: 'crypto' | 'stock' | 'cash' | 'manual';
 }
 
 type Tab = 'crypto' | 'stock' | 'cash' | 'manual';
@@ -17,14 +18,16 @@ type Tab = 'crypto' | 'stock' | 'cash' | 'manual';
 export default function AddPositionModal({
   isOpen,
   onClose,
+  defaultTab,
 }: AddPositionModalProps) {
-  const [tab, setTab] = useState<Tab>('crypto');
+  const [tab, setTab] = useState<Tab>(defaultTab || 'crypto');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState<any | null>(null);
   const [amount, setAmount] = useState('');
   const [costBasis, setCostBasis] = useState('');
+  const [purchaseDate, setPurchaseDate] = useState('');
   const [manualSymbol, setManualSymbol] = useState('');
   const [manualName, setManualName] = useState('');
   const [manualPrice, setManualPrice] = useState('');
@@ -38,11 +41,13 @@ export default function AddPositionModal({
   // Reset form when modal opens
   useEffect(() => {
     if (isOpen) {
+      setTab(defaultTab || 'crypto');
       setSearchQuery('');
       setSearchResults([]);
       setSelectedAsset(null);
       setAmount('');
       setCostBasis('');
+      setPurchaseDate('');
       setManualSymbol('');
       setManualName('');
       setManualPrice('');
@@ -50,7 +55,7 @@ export default function AddPositionModal({
       setCashCurrency('USD');
       setCashBalance('');
     }
-  }, [isOpen]);
+  }, [isOpen, defaultTab]);
 
   // Search debounce
   useEffect(() => {
@@ -111,6 +116,7 @@ export default function AddPositionModal({
         name: manualName,
         amount: parseFloat(amount),
         costBasis: costBasis ? parseFloat(costBasis) : undefined,
+        purchaseDate: purchaseDate || undefined,
       });
 
       // Set price for manual asset
@@ -134,6 +140,7 @@ export default function AddPositionModal({
         name,
         amount: parseFloat(amount),
         costBasis: costBasis ? parseFloat(costBasis) : undefined,
+        purchaseDate: purchaseDate || undefined,
       });
 
       // Trigger refresh to fetch price for the new position
@@ -345,35 +352,49 @@ export default function AddPositionModal({
             </>
           )}
 
-          {/* Amount and cost basis - not shown for cash */}
+          {/* Amount, cost basis, and purchase date - not shown for cash */}
           {tab !== 'cash' && (
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Amount</label>
-                <input
-                  type="number"
-                  step="any"
-                  placeholder="0.00"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  className="w-full"
-                  required
-                />
+            <>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Amount</label>
+                  <input
+                    type="number"
+                    step="any"
+                    placeholder="0.00"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    className="w-full"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    Cost basis (optional)
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    placeholder="Total cost in USD"
+                    value={costBasis}
+                    onChange={(e) => setCostBasis(e.target.value)}
+                    className="w-full"
+                  />
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">
-                  Cost basis (optional)
+                  Purchase date (optional)
                 </label>
                 <input
-                  type="number"
-                  step="any"
-                  placeholder="Total cost in USD"
-                  value={costBasis}
-                  onChange={(e) => setCostBasis(e.target.value)}
+                  type="date"
+                  value={purchaseDate}
+                  onChange={(e) => setPurchaseDate(e.target.value)}
                   className="w-full"
+                  max={new Date().toISOString().split('T')[0]}
                 />
               </div>
-            </div>
+            </>
           )}
 
           {/* Submit button */}

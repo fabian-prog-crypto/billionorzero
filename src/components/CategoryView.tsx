@@ -1,7 +1,9 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Edit2, Trash2, ArrowUpDown } from 'lucide-react';
+import { Edit2, Trash2, ArrowUpDown, ArrowUpRight } from 'lucide-react';
+import Link from 'next/link';
+import ExposureChart from '@/components/charts/ExposureChart';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import { calculateAllPositionsWithPrices, calculateExposureData, getCategoryService } from '@/services';
 import { MainCategory } from '@/services/domain/category-service';
@@ -157,28 +159,94 @@ export default function CategoryView({
         </div>
       </div>
 
-      {/* Subcategory Breakdown */}
-      {subcategoryBreakdown.length > 0 && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {subcategoryBreakdown.map((sub) => (
-            <div key={sub.category} className="metric-card">
-              <div className="flex items-center gap-2 mb-2">
-                <div
-                  className="w-2.5 h-2.5 rounded-full"
-                  style={{ backgroundColor: sub.color }}
-                />
-                <p className="stat-label">{sub.label}</p>
-              </div>
-              <p className="text-xl font-semibold">
-                {hideBalances ? '••••' : formatCurrency(sub.value)}
-              </p>
-              <p className="text-xs text-[var(--foreground-muted)] mt-1">
-                {sub.percentage.toFixed(1)}% of {title.toLowerCase()}
-              </p>
+      {/* Allocation & Exposure Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Allocation Breakdown */}
+        <div className="lg:col-span-2 card">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="font-semibold">{title} Allocation</h3>
+            <Link href={`/${category}/exposure`} className="text-sm text-[var(--accent-primary)] flex items-center gap-1 hover:underline">
+              Details <ArrowUpRight className="w-3 h-3" />
+            </Link>
+          </div>
+
+          {subcategoryBreakdown.length > 0 ? (
+            <div className="space-y-4">
+              {subcategoryBreakdown.map((sub) => (
+                <div key={sub.category}>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-3 h-3 rounded-full"
+                        style={{ backgroundColor: sub.color }}
+                      />
+                      <span className="font-medium">{sub.label}</span>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <span className="text-[var(--foreground-muted)]">
+                        {sub.percentage.toFixed(1)}%
+                      </span>
+                      <span className="font-mono font-medium w-28 text-right">
+                        {hideBalances ? '••••' : formatCurrency(sub.value)}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="progress-bar">
+                    <div
+                      className="progress-bar-fill"
+                      style={{
+                        width: `${Math.max(0, Math.min(100, sub.percentage))}%`,
+                        backgroundColor: sub.color,
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
+          ) : (
+            // Show individual positions if no subcategories
+            <div className="space-y-4">
+              {sortedPositions.slice(0, 5).map((pos) => {
+                const percentage = totalGrossAssets > 0 ? (Math.abs(pos.value) / totalGrossAssets) * 100 : 0;
+                return (
+                  <div key={pos.id}>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-3">
+                        <div className="w-3 h-3 rounded-full bg-[var(--accent-primary)]" />
+                        <span className="font-medium">{pos.symbol.toUpperCase()}</span>
+                        {pos.isDebt && <span className="text-xs text-[var(--negative)]">DEBT</span>}
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <span className="text-[var(--foreground-muted)]">
+                          {percentage.toFixed(1)}%
+                        </span>
+                        <span className={`font-mono font-medium w-28 text-right ${pos.value < 0 ? 'text-[var(--negative)]' : ''}`}>
+                          {hideBalances ? '••••' : formatCurrency(pos.value)}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="progress-bar">
+                      <div
+                        className="progress-bar-fill"
+                        style={{
+                          width: `${Math.max(0, Math.min(100, percentage))}%`,
+                          backgroundColor: pos.value < 0 ? 'var(--negative)' : 'var(--accent-primary)',
+                        }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
-      )}
+
+        {/* Exposure Chart */}
+        <div className="card">
+          <h3 className="font-semibold mb-4">{title} Exposure</h3>
+          <ExposureChart assets={categoryPositions} size={180} />
+        </div>
+      </div>
 
       {/* Positions Table */}
       <div className="card">

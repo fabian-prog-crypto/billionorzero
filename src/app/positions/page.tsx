@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Plus, Trash2, Search, Wallet, RefreshCw, Eye, EyeOff, ArrowUpDown, Download, Layers, Grid3X3, Edit2 } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
-import { calculateAllPositionsWithPrices, calculatePortfolioSummary, aggregatePositionsBySymbol } from '@/services';
+import { calculateAllPositionsWithPrices, calculatePortfolioSummary, aggregatePositionsBySymbol, calculateUnrealizedPnL } from '@/services';
 import Header from '@/components/Header';
 import AddPositionModal from '@/components/modals/AddPositionModal';
 import CustomPriceModal from '@/components/modals/CustomPriceModal';
@@ -239,13 +239,16 @@ export default function PositionsPage() {
   const exportCSV = () => {
     const data = viewMode === 'assets' ? aggregatedAssets : filteredPositions;
     const headers = viewMode === 'assets'
-      ? ['Symbol', 'Name', 'Type', 'Amount', 'Price', 'Value', '24h Change', 'Allocation']
-      : ['Symbol', 'Name', 'Type', 'Source', 'Chain', 'Amount', 'Price', 'Value', '24h Change', 'Allocation'];
+      ? ['Symbol', 'Name', 'Type', 'Amount', 'Price', 'Value', 'Cost Basis', 'Unrealized PnL', 'PnL %', '24h Change', 'Allocation']
+      : ['Symbol', 'Name', 'Type', 'Source', 'Chain', 'Amount', 'Price', 'Value', 'Cost Basis', 'Unrealized PnL', 'PnL %', '24h Change', 'Allocation'];
 
-    const rows = data.map((a) => viewMode === 'assets'
-      ? [a.symbol.toUpperCase(), a.name, a.type, a.amount, a.currentPrice, a.value, a.changePercent24h, a.allocation]
-      : [a.symbol.toUpperCase(), a.name, a.type, a.walletAddress || 'Manual', a.chain || '', a.amount, a.currentPrice, a.value, a.changePercent24h, a.allocation]
-    );
+    const rows = data.map((a) => {
+      const pnl = a.costBasis ? a.value - a.costBasis : '';
+      const pnlPercent = a.costBasis ? ((a.value - a.costBasis) / a.costBasis * 100).toFixed(2) : '';
+      return viewMode === 'assets'
+        ? [a.symbol.toUpperCase(), a.name, a.type, a.amount, a.currentPrice, a.value, a.costBasis || '', pnl, pnlPercent, a.changePercent24h, a.allocation]
+        : [a.symbol.toUpperCase(), a.name, a.type, a.walletAddress || 'Manual', a.chain || '', a.amount, a.currentPrice, a.value, a.costBasis || '', pnl, pnlPercent, a.changePercent24h, a.allocation];
+    });
 
     const csv = [headers, ...rows].map((row) => row.join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -474,6 +477,7 @@ export default function PositionsPage() {
                       {sortField === 'value' && <ArrowUpDown className="w-3 h-3" />}
                     </span>
                   </th>
+                  <th className="table-header text-right pb-3">P&L</th>
                   <th className="table-header text-right pb-3 cursor-pointer" onClick={() => toggleSort('change')}>
                     <span className="flex items-center justify-end gap-1">
                       24h
@@ -554,6 +558,29 @@ export default function PositionsPage() {
                       </td>
                       <td className={`py-3 text-right font-semibold ${isDebt ? 'text-[var(--negative)]' : ''}`}>
                         {hideBalances ? '****' : position.value !== 0 ? formatCurrency(position.value) : '-'}
+                      </td>
+                      <td className="py-3 text-right">
+                        {(() => {
+                          if (hideBalances || !position.costBasis) return <span className="text-[var(--foreground-muted)]">--</span>;
+                          const pnlData = calculateUnrealizedPnL(position.value, position.costBasis, position.purchaseDate);
+                          return (
+                            <div className="group relative">
+                              <span className={getChangeColor(pnlData.pnl)}>
+                                {pnlData.pnl >= 0 ? '+' : ''}{formatCurrency(pnlData.pnl)}
+                              </span>
+                              <span className={`text-xs ml-1 ${getChangeColor(pnlData.pnlPercent)}`}>
+                                ({pnlData.pnlPercent >= 0 ? '+' : ''}{pnlData.pnlPercent.toFixed(1)}%)
+                              </span>
+                              {pnlData.holdingDays > 0 && pnlData.annualizedReturn !== 0 && (
+                                <div className="tooltip whitespace-nowrap">
+                                  <div>Cost basis: {formatCurrency(position.costBasis)}</div>
+                                  <div>Holding: {pnlData.holdingDays} days</div>
+                                  <div>Annualized: {pnlData.annualizedReturn >= 0 ? '+' : ''}{pnlData.annualizedReturn.toFixed(1)}%</div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className={`py-3 text-right ${getChangeColor(position.changePercent24h)}`}>
                         {position.currentPrice > 0 ? formatPercent(position.changePercent24h) : '-'}

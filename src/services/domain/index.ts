@@ -9,3 +9,4 @@ export * from './portfolio-calculator';
 export * from './snapshot-manager';
 export * from './category-service';
 export * from './perp-exchange-service';
+export * from './performance-metrics';

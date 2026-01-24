@@ -22,6 +22,9 @@ interface PortfolioState {
   isRefreshing: boolean;
   hideBalances: boolean;
 
+  // Settings
+  riskFreeRate: number;  // Annual risk-free rate for Sharpe ratio (e.g., 0.05 = 5%)
+
   // Position actions
   addPosition: (position: Omit<Position, 'id' | 'addedAt' | 'updatedAt'>) => void;
   removePosition: (id: string) => void;
@@ -61,6 +64,9 @@ interface PortfolioState {
   // UI state
   toggleHideBalances: () => void;
 
+  // Settings
+  setRiskFreeRate: (rate: number) => void;
+
   // Clear all data
   clearAll: () => void;
 }
@@ -77,6 +83,7 @@ export const usePortfolioStore = create<PortfolioState>()(
       lastRefresh: null,
       isRefreshing: false,
       hideBalances: false,
+      riskFreeRate: 0.05,  // Default 5% (US Treasury rate)
 
       // Add a manual position
       addPosition: (position) => {
@@ -267,6 +274,11 @@ export const usePortfolioStore = create<PortfolioState>()(
       // Toggle hide balances
       toggleHideBalances: () => {
         set((state) => ({ hideBalances: !state.hideBalances }));
+      },
+
+      // Settings
+      setRiskFreeRate: (rate) => {
+        set({ riskFreeRate: rate });
       },
 
       // Clear all data

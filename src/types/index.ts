@@ -23,7 +23,8 @@ export interface Position {
   symbol: string;
   name: string;
   amount: number;
-  costBasis?: number;
+  costBasis?: number;       // Total cost in USD when position was acquired
+  purchaseDate?: string;    // ISO date when position was acquired (for CAGR/returns)
   walletAddress?: string;
   chain?: string;
   debankPriceKey?: string; // Key to look up DeBank price (more accurate for wallet tokens)

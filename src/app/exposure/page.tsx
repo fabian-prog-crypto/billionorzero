@@ -6,6 +6,7 @@ import { calculateAllPositionsWithPrices, calculateExposureData, aggregatePositi
 import Header from '@/components/Header';
 import { useRefresh } from '@/components/PortfolioProvider';
 import { formatCurrency } from '@/lib/utils';
+import { Info } from 'lucide-react';
 
 export default function ExposurePage() {
   const { positions, prices, customPrices } = usePortfolioStore();
@@ -319,15 +320,21 @@ export default function ExposurePage() {
               </p>
               <p className="text-xs text-[var(--foreground-muted)]">{perpsMetrics.netNotional >= 0 ? 'Net Long' : 'Net Short'}</p>
             </div>
-            <div className="p-4 bg-[var(--background-secondary)] rounded-lg">
-              <p className="text-sm text-[var(--foreground-muted)] mb-1">Utilization</p>
+            <div className="p-4 bg-[var(--background-secondary)] rounded-lg relative group">
+              <p className="text-sm text-[var(--foreground-muted)] mb-1 flex items-center gap-1">
+                Est. Utilization
+                <Info className="w-3 h-3 text-amber-500" />
+              </p>
               <p className={`text-lg font-semibold ${
                 perpsMetrics.utilizationRate > 80 ? 'text-[var(--negative)]' :
-                perpsMetrics.utilizationRate > 60 ? 'text-[var(--warning)]' : ''
+                perpsMetrics.utilizationRate > 60 ? 'text-[var(--warning)]' : 'text-amber-600'
               }`}>
-                {perpsMetrics.utilizationRate.toFixed(1)}%
+                ~{perpsMetrics.utilizationRate.toFixed(0)}%
               </p>
-              <p className="text-xs text-[var(--foreground-muted)]">Margin used</p>
+              <p className="text-xs text-[var(--foreground-muted)]">Based on 5x leverage</p>
+              <div className="tooltip whitespace-normal max-w-[200px]">
+                Estimated margin utilization. Actual rates depend on exchange-specific leverage limits.
+              </div>
             </div>
           </div>
           {/* Detailed Breakdown */}
@@ -340,16 +347,39 @@ export default function ExposurePage() {
               <span className="text-[var(--foreground-muted)]">Short Notional</span>
               <span className="text-[var(--negative)]">{formatCurrency(perpsMetrics.shortNotional)}</span>
             </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-[var(--foreground-muted)]">Est. Margin Used (~5x)</span>
-              <span>{formatCurrency(perpsMetrics.marginUsed)}</span>
+            <div className="flex justify-between text-sm group relative">
+              <span className="text-[var(--foreground-muted)] flex items-center gap-1">
+                Est. Margin Used
+                <Info className="w-3 h-3 text-amber-500" />
+              </span>
+              <span className="text-amber-600">{formatCurrency(perpsMetrics.marginUsed)}</span>
+              <div className="tooltip whitespace-normal max-w-[250px]">
+                <p className="font-medium mb-1">Estimated at 5x average leverage</p>
+                <p className="text-xs">Actual margin requirements vary by exchange, asset, and position size. This is a conservative estimate assuming 20% margin requirement.</p>
+              </div>
             </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-[var(--foreground-muted)]">Margin Available</span>
-              <span className={perpsMetrics.marginAvailable < perpsMetrics.collateral * 0.2 ? 'text-[var(--warning)]' : ''}>
+            <div className="flex justify-between text-sm group relative">
+              <span className="text-[var(--foreground-muted)] flex items-center gap-1">
+                Est. Available
+                <Info className="w-3 h-3 text-amber-500" />
+              </span>
+              <span className={`${perpsMetrics.marginAvailable < perpsMetrics.collateral * 0.2 ? 'text-[var(--warning)]' : 'text-amber-600'}`}>
                 {formatCurrency(perpsMetrics.marginAvailable)}
               </span>
+              <div className="tooltip whitespace-normal max-w-[250px]">
+                <p className="text-xs">Collateral minus estimated margin used. Check your exchange for actual available margin.</p>
+              </div>
             </div>
+          </div>
+
+          {/* Estimation Notice */}
+          <div className="mt-4 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg flex items-start gap-2">
+            <Info className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
+            <p className="text-xs text-amber-700 dark:text-amber-400">
+              Margin calculations are <strong>estimates</strong> based on 5x average leverage (20% margin).
+              Actual requirements vary by exchange (Hyperliquid, Lighter, Ethereal), asset type, and position size.
+              Always check your exchange for accurate margin information.
+            </p>
           </div>
         </div>
       )}

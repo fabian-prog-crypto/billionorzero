@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Save, Key, RefreshCw, Trash2, Download, Upload, Fingerprint, LogOut, Shield } from 'lucide-react';
+import { Save, Key, RefreshCw, Trash2, Download, Upload, Fingerprint, LogOut, Shield, Sun, Moon, Monitor, TrendingUp } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import { useAuthStore } from '@/store/authStore';
+import { useThemeStore, applyTheme } from '@/store/themeStore';
 import Header from '@/components/Header';
 import {
   isPasskeySupported,
@@ -21,8 +22,14 @@ export default function SettingsPage() {
   const [passkeyLoading, setPasskeyLoading] = useState(false);
   const [passkeyError, setPasskeyError] = useState<string | null>(null);
 
-  const { positions, wallets, snapshots } = usePortfolioStore();
+  const { positions, wallets, snapshots, riskFreeRate, setRiskFreeRate } = usePortfolioStore();
   const { logout, setPasskeyEnabled } = useAuthStore();
+  const { theme, setTheme } = useThemeStore();
+
+  const handleThemeChange = (newTheme: 'light' | 'dark' | 'system') => {
+    setTheme(newTheme);
+    applyTheme(newTheme);
+  };
 
   // Load saved API keys and check passkey status
   useEffect(() => {
@@ -138,12 +145,12 @@ export default function SettingsPage() {
           </p>
 
           {!passkeySupported ? (
-            <div className="p-3 bg-[var(--background-secondary)] rounded-lg text-sm text-[var(--foreground-muted)]">
+            <div className="p-3 bg-[var(--background-secondary)]  text-sm text-[var(--foreground-muted)]">
               Passkeys are not supported in this browser.
             </div>
           ) : hasPasskey ? (
             <div className="space-y-4">
-              <div className="flex items-center justify-between p-3 bg-[var(--positive-light)] rounded-lg">
+              <div className="flex items-center justify-between p-3 bg-[var(--positive-light)] ">
                 <div className="flex items-center gap-2">
                   <Fingerprint className="w-5 h-5 text-[var(--positive)]" />
                   <span className="text-sm font-medium text-[var(--positive)]">Passkey enabled</span>
@@ -164,7 +171,7 @@ export default function SettingsPage() {
           ) : (
             <div className="space-y-4">
               {passkeyError && (
-                <div className="p-3 bg-[var(--negative-light)] text-[var(--negative)] rounded-lg text-sm">
+                <div className="p-3 bg-[var(--negative-light)] text-[var(--negative)]  text-sm">
                   {passkeyError}
                 </div>
               )}
@@ -188,6 +195,94 @@ export default function SettingsPage() {
               </button>
             </div>
           )}
+        </div>
+
+        {/* Appearance */}
+        <div className="card">
+          <h3 className="font-semibold mb-4 flex items-center gap-2">
+            <Sun className="w-5 h-5" />
+            Appearance
+          </h3>
+          <p className="text-sm text-[var(--foreground-muted)] mb-4">
+            Choose your preferred color theme.
+          </p>
+
+          <div className="grid grid-cols-3 gap-3">
+            <button
+              onClick={() => handleThemeChange('light')}
+              className={`p-4 border-2 transition-all ${
+                theme === 'light'
+                  ? 'border-[var(--accent-primary)] bg-[var(--accent-glow)]'
+                  : 'border-[var(--border)] hover:border-[var(--border-light)]'
+              }`}
+            >
+              <Sun className={`w-6 h-6 mx-auto mb-2 ${theme === 'light' ? 'text-[var(--accent-primary)]' : ''}`} />
+              <span className="text-sm font-medium">Light</span>
+            </button>
+
+            <button
+              onClick={() => handleThemeChange('dark')}
+              className={`p-4 border-2 transition-all ${
+                theme === 'dark'
+                  ? 'border-[var(--accent-primary)] bg-[var(--accent-glow)]'
+                  : 'border-[var(--border)] hover:border-[var(--border-light)]'
+              }`}
+            >
+              <Moon className={`w-6 h-6 mx-auto mb-2 ${theme === 'dark' ? 'text-[var(--accent-primary)]' : ''}`} />
+              <span className="text-sm font-medium">Dark</span>
+            </button>
+
+            <button
+              onClick={() => handleThemeChange('system')}
+              className={`p-4 border-2 transition-all ${
+                theme === 'system'
+                  ? 'border-[var(--accent-primary)] bg-[var(--accent-glow)]'
+                  : 'border-[var(--border)] hover:border-[var(--border-light)]'
+              }`}
+            >
+              <Monitor className={`w-6 h-6 mx-auto mb-2 ${theme === 'system' ? 'text-[var(--accent-primary)]' : ''}`} />
+              <span className="text-sm font-medium">System</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Performance Metrics */}
+        <div className="card">
+          <h3 className="font-semibold mb-4 flex items-center gap-2">
+            <TrendingUp className="w-5 h-5" />
+            Performance Metrics
+          </h3>
+          <p className="text-sm text-[var(--foreground-muted)] mb-4">
+            Configure parameters used in performance calculations.
+          </p>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                Risk-Free Rate (for Sharpe Ratio)
+              </label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  max="20"
+                  value={(riskFreeRate * 100).toFixed(1)}
+                  onChange={(e) => {
+                    const value = parseFloat(e.target.value);
+                    if (!isNaN(value) && value >= 0 && value <= 20) {
+                      setRiskFreeRate(value / 100);
+                    }
+                  }}
+                  className="w-24"
+                />
+                <span className="text-sm text-[var(--foreground-muted)]">%</span>
+              </div>
+              <p className="text-xs text-[var(--foreground-muted)] mt-1">
+                Annual risk-free rate used to calculate Sharpe ratio. Default is 5% (approximate US Treasury rate).
+              </p>
+            </div>
+          </div>
         </div>
 
         {/* API Keys */}
@@ -280,7 +375,7 @@ export default function SettingsPage() {
           <p className="text-sm text-[var(--foreground-muted)] mb-4">
             A snapshot of your portfolio value is taken once per day to track historical performance.
           </p>
-          <div className="flex items-center justify-between p-3 bg-[var(--background-secondary)] rounded-lg">
+          <div className="flex items-center justify-between p-3 bg-[var(--background-secondary)] ">
             <span className="text-sm">Total snapshots recorded</span>
             <span className="font-semibold">{snapshots.length}</span>
           </div>

@@ -2,12 +2,13 @@
 
 import { useState, useMemo } from 'react';
 import { usePortfolioStore } from '@/store/portfolioStore';
-import { calculatePortfolioSummary } from '@/services';
+import { calculatePortfolioSummary, calculatePerformanceMetrics, getSharpeInterpretation, getDrawdownInterpretation } from '@/services';
 import Header from '@/components/Header';
 import NetWorthChart from '@/components/charts/NetWorthChart';
 import { useRefresh } from '@/components/PortfolioProvider';
 import { formatCurrency, formatPercent, getChangeColor } from '@/lib/utils';
 import { subDays, subMonths, subYears, format, isAfter } from 'date-fns';
+import { TrendingUp, TrendingDown, Activity, Target, AlertTriangle, Info } from 'lucide-react';
 
 type TimePeriod = '1w' | '1mon' | '3mon' | '1year' | 'ytd' | 'all';
 type ViewMode = 'value' | 'assets' | 'pnl';
@@ -16,7 +17,7 @@ export default function PerformancePage() {
   const [period, setPeriod] = useState<TimePeriod>('1mon');
   const [viewMode, setViewMode] = useState<ViewMode>('value');
 
-  const { positions, prices, customPrices, snapshots } = usePortfolioStore();
+  const { positions, prices, customPrices, snapshots, riskFreeRate } = usePortfolioStore();
   const { refresh } = useRefresh();
 
   const summary = useMemo(() => {
@@ -52,7 +53,7 @@ export default function PerformancePage() {
     return snapshots.filter((s) => isAfter(new Date(s.date), startDate));
   }, [snapshots, period]);
 
-  // Calculate performance metrics
+  // Calculate basic performance metrics
   const performanceMetrics = useMemo(() => {
     if (filteredSnapshots.length < 2) {
       return {
@@ -70,6 +71,14 @@ export default function PerformancePage() {
 
     return { startValue, endValue, change, changePercent };
   }, [filteredSnapshots, summary.totalValue]);
+
+  // Calculate professional metrics (CAGR, Sharpe, Drawdown)
+  const professionalMetrics = useMemo(() => {
+    return calculatePerformanceMetrics(filteredSnapshots, riskFreeRate);
+  }, [filteredSnapshots, riskFreeRate]);
+
+  const sharpeInterp = getSharpeInterpretation(professionalMetrics.sharpeRatio);
+  const drawdownInterp = getDrawdownInterpretation(professionalMetrics.maxDrawdown);
 
   // Calculate per-asset performance
   const assetPerformance = useMemo(() => {
@@ -156,6 +165,108 @@ export default function PerformancePage() {
           <NetWorthChart snapshots={filteredSnapshots} height={300} />
         </div>
       </div>
+
+      {/* Professional Metrics Grid */}
+      {professionalMetrics.dataPoints >= 2 && (
+        <div className="grid grid-cols-4 gap-4 mb-6">
+          {/* CAGR */}
+          <div className="card relative group">
+            <div className="flex items-center gap-2 mb-2">
+              <TrendingUp className="w-4 h-4 text-[var(--foreground-muted)]" />
+              <span className="text-sm text-[var(--foreground-muted)]">CAGR</span>
+              {professionalMetrics.dataQuality.cagrWarning && (
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+              )}
+            </div>
+            <div className={`text-2xl font-bold ${getChangeColor(professionalMetrics.cagr)}`}>
+              {professionalMetrics.cagr >= 0 ? '+' : ''}{professionalMetrics.cagr.toFixed(1)}%
+            </div>
+            <div className="text-xs text-[var(--foreground-muted)] mt-1">
+              Annualized from {professionalMetrics.periodDays} days
+            </div>
+            {professionalMetrics.dataQuality.cagrWarning && (
+              <div className="tooltip whitespace-normal max-w-[200px]">
+                {professionalMetrics.dataQuality.cagrWarning}
+              </div>
+            )}
+          </div>
+
+          {/* Sharpe Ratio */}
+          <div className="card relative group">
+            <div className="flex items-center gap-2 mb-2">
+              <Target className="w-4 h-4 text-[var(--foreground-muted)]" />
+              <span className="text-sm text-[var(--foreground-muted)]">Sharpe Ratio</span>
+              {professionalMetrics.dataQuality.sharpeWarning && (
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+              )}
+            </div>
+            <div className="text-2xl font-bold" style={{ color: sharpeInterp.color }}>
+              {professionalMetrics.sharpeRatio.toFixed(2)}
+            </div>
+            <div className="text-xs mt-1" style={{ color: sharpeInterp.color }}>
+              {sharpeInterp.label}
+            </div>
+            <div className="tooltip whitespace-normal max-w-[200px]">
+              <div>Risk-free rate: {(professionalMetrics.riskFreeRateUsed * 100).toFixed(1)}%</div>
+              {professionalMetrics.dataQuality.sharpeWarning && (
+                <div className="mt-1 text-amber-400">{professionalMetrics.dataQuality.sharpeWarning}</div>
+              )}
+            </div>
+          </div>
+
+          {/* Max Drawdown */}
+          <div className="card relative group">
+            <div className="flex items-center gap-2 mb-2">
+              <TrendingDown className="w-4 h-4 text-[var(--foreground-muted)]" />
+              <span className="text-sm text-[var(--foreground-muted)]">Max Drawdown</span>
+            </div>
+            <div className="text-2xl font-bold text-[var(--negative)]">
+              -{professionalMetrics.maxDrawdown.toFixed(1)}%
+            </div>
+            <div className="text-xs mt-1" style={{ color: drawdownInterp.color }}>
+              {drawdownInterp.label}
+              {professionalMetrics.maxDrawdownDate && (
+                <span className="text-[var(--foreground-muted)]"> ({format(new Date(professionalMetrics.maxDrawdownDate), 'MMM dd')})</span>
+              )}
+            </div>
+          </div>
+
+          {/* Volatility */}
+          <div className="card relative group">
+            <div className="flex items-center gap-2 mb-2">
+              <Activity className="w-4 h-4 text-[var(--foreground-muted)]" />
+              <span className="text-sm text-[var(--foreground-muted)]">Volatility</span>
+              {professionalMetrics.dataQuality.volatilityWarning && (
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+              )}
+            </div>
+            <div className="text-2xl font-bold">
+              {professionalMetrics.volatility.toFixed(1)}%
+            </div>
+            <div className="text-xs text-[var(--foreground-muted)] mt-1">
+              Based on {professionalMetrics.dataPoints} days
+            </div>
+            {professionalMetrics.dataQuality.volatilityWarning && (
+              <div className="tooltip whitespace-normal max-w-[200px]">
+                {professionalMetrics.dataQuality.volatilityWarning}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* No data message */}
+      {professionalMetrics.dataPoints < 2 && (
+        <div className="card mb-6 text-center py-8">
+          <Activity className="w-8 h-8 mx-auto mb-2 text-[var(--foreground-muted)]" />
+          <p className="text-[var(--foreground-muted)]">
+            Not enough data for advanced metrics. Keep tracking to see CAGR, Sharpe ratio, and max drawdown.
+          </p>
+          <p className="text-xs text-[var(--foreground-subtle)] mt-1">
+            {professionalMetrics.dataPoints} snapshot(s) available, need at least 2
+          </p>
+        </div>
+      )}
 
       {/* Asset performance tables */}
       <div className="grid grid-cols-2 gap-6">

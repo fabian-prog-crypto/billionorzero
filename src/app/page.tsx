@@ -5,7 +5,6 @@ import { TrendingUp, TrendingDown, ArrowUpRight, Info } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import { calculatePortfolioSummary, calculateAllPositionsWithPrices, calculateExposureData } from '@/services';
 import NetWorthChart from '@/components/charts/NetWorthChart';
-import ExposureChart from '@/components/charts/ExposureChart';
 import Tooltip from '@/components/ui/Tooltip';
 import Link from 'next/link';
 import {
@@ -164,58 +163,6 @@ export default function OverviewPage() {
           <p className="text-xs text-[var(--foreground-muted)] mt-1">
             Top 5 positions
           </p>
-        </div>
-      </div>
-
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Allocation Breakdown */}
-        <div className="lg:col-span-2 card">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="font-semibold">Allocation</h3>
-            <Link href="/exposure" className="text-sm text-[var(--accent-primary)] flex items-center gap-1 hover:underline">
-              Details <ArrowUpRight className="w-3 h-3" />
-            </Link>
-          </div>
-
-          <div className="space-y-4">
-            {simpleBreakdown.map((item) => (
-              <div key={item.id}>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="w-3 h-3 rounded-full"
-                      style={{ backgroundColor: item.color }}
-                    />
-                    <span className="font-medium">{item.label}</span>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <span className="text-[var(--foreground-muted)]">
-                      {item.percentage.toFixed(1)}%
-                    </span>
-                    <span className="font-mono font-medium w-28 text-right">
-                      {hideBalances ? '••••' : formatCurrency(item.value)}
-                    </span>
-                  </div>
-                </div>
-                <div className="progress-bar">
-                  <div
-                    className="progress-bar-fill"
-                    style={{
-                      width: `${Math.max(0, Math.min(100, item.percentage))}%`,
-                      backgroundColor: item.color,
-                    }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Exposure Chart */}
-        <div className="card">
-          <h3 className="font-semibold mb-4">Exposure</h3>
-          <ExposureChart assets={allAssetsWithPrices} size={180} />
         </div>
       </div>
 

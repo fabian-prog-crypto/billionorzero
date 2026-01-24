@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Plus, RefreshCw, Eye, EyeOff, Settings, Wallet, Sun, Moon, Menu, X, PieChart, TrendingUp, Layers, CandlestickChart, Building2 } from 'lucide-react';
+import { Plus, RefreshCw, Eye, EyeOff, Settings, Wallet, Sun, Moon, Menu, X, PieChart, TrendingUp, Layers, CandlestickChart, Building2, LayoutDashboard } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import { useThemeStore, applyTheme } from '@/store/themeStore';
 import { useRefresh } from '@/components/PortfolioProvider';
@@ -13,22 +13,52 @@ import AddWalletModal from '@/components/modals/AddWalletModal';
 type MainTab = 'portfolio' | 'insights';
 type SubTab = 'overview' | 'crypto' | 'stocks' | 'cash' | 'other';
 
-const sidebarItems = [
-  { href: '/positions', icon: Layers, label: 'Positions' },
-  { href: '/exposure', icon: PieChart, label: 'Exposure' },
-  { href: '/perps', icon: CandlestickChart, label: 'Perps' },
-  { href: '/performance', icon: TrendingUp, label: 'Performance' },
-  { href: '/wallets', icon: Wallet, label: 'Wallets' },
-  { href: '/accounts', icon: Building2, label: 'Accounts' },
-  { href: '/settings', icon: Settings, label: 'Settings' },
-];
+// Sidebar items per category (paths are relative, will be prefixed with category)
+// Empty path '' means category root (e.g., /crypto for crypto category)
+const sidebarItemsByCategory: Record<SubTab, { path: string; icon: typeof Layers; label: string }[]> = {
+  overview: [
+    { path: '', icon: LayoutDashboard, label: 'Overview' },
+    { path: 'positions', icon: Layers, label: 'Positions' },
+    { path: 'exposure', icon: PieChart, label: 'Exposure' },
+    { path: 'performance', icon: TrendingUp, label: 'Performance' },
+  ],
+  crypto: [
+    { path: '', icon: LayoutDashboard, label: 'Overview' },
+    { path: 'positions', icon: Layers, label: 'Positions' },
+    { path: 'exposure', icon: PieChart, label: 'Exposure' },
+    { path: 'perps', icon: CandlestickChart, label: 'Perps' },
+    { path: 'wallets', icon: Wallet, label: 'Wallets' },
+    { path: 'accounts', icon: Building2, label: 'Accounts' },
+  ],
+  stocks: [
+    { path: '', icon: LayoutDashboard, label: 'Overview' },
+    { path: 'positions', icon: Layers, label: 'Positions' },
+    { path: 'exposure', icon: PieChart, label: 'Exposure' },
+  ],
+  cash: [
+    { path: '', icon: LayoutDashboard, label: 'Overview' },
+    { path: 'positions', icon: Layers, label: 'Positions' },
+  ],
+  other: [
+    { path: '', icon: LayoutDashboard, label: 'Overview' },
+    { path: 'positions', icon: Layers, label: 'Positions' },
+  ],
+};
+
+// Helper to build full href based on category
+const buildHref = (category: SubTab, path: string): string => {
+  if (category === 'overview') {
+    return path ? `/${path}` : '/';
+  }
+  return path ? `/${category}/${path}` : `/${category}`;
+};
 
 const subTabs: { id: SubTab; label: string }[] = [
-  { id: 'overview', label: 'OVERVIEW' },
-  { id: 'crypto', label: 'CRYPTO' },
-  { id: 'stocks', label: 'STOCKS' },
-  { id: 'cash', label: 'CASH' },
-  { id: 'other', label: 'OTHERS' },
+  { id: 'overview', label: 'All' },
+  { id: 'crypto', label: 'Crypto' },
+  { id: 'stocks', label: 'Stocks' },
+  { id: 'cash', label: 'Cash' },
+  { id: 'other', label: 'Others' },
 ];
 
 interface AppShellProps {
@@ -43,9 +73,16 @@ export default function AppShell({ children }: AppShellProps) {
   const [showAddWallet, setShowAddWallet] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const { hideBalances, toggleHideBalances } = usePortfolioStore();
+  const { hideBalances, toggleHideBalances, wallets } = usePortfolioStore();
   const { theme, setTheme } = useThemeStore();
   const { refresh, isRefreshing } = useRefresh();
+
+  // DeBank API cost constants
+  const UNITS_PER_WALLET = 18;
+  const COST_PER_UNIT = 0.0002;
+  const walletCount = wallets.length;
+  const estimatedUnits = walletCount * UNITS_PER_WALLET;
+  const estimatedCostPerSync = estimatedUnits * COST_PER_UNIT;
 
   // Apply theme on mount and when it changes
   useEffect(() => {
@@ -67,14 +104,28 @@ export default function AppShell({ children }: AppShellProps) {
 
   // Determine active sub-tab from pathname
   const getActiveSubTab = (): SubTab => {
-    if (pathname === '/crypto') return 'crypto';
-    if (pathname === '/stocks') return 'stocks';
-    if (pathname === '/cash') return 'cash';
-    if (pathname === '/other') return 'other';
+    if (pathname.startsWith('/crypto')) return 'crypto';
+    if (pathname.startsWith('/stocks')) return 'stocks';
+    if (pathname.startsWith('/cash')) return 'cash';
+    if (pathname.startsWith('/other')) return 'other';
     return 'overview';
   };
 
   const activeSubTab = getActiveSubTab();
+
+  // Get current sidebar page from pathname
+  // Returns '' for category root, or the sub-page name
+  const getCurrentSidebarPage = (): string => {
+    const parts = pathname.split('/').filter(Boolean);
+    if (activeSubTab === 'overview') {
+      // For overview: / -> '', /positions -> 'positions'
+      return parts[0] || '';
+    }
+    // For other categories: /crypto -> '', /crypto/positions -> 'positions'
+    return parts[1] || '';
+  };
+
+  const currentSidebarPage = getCurrentSidebarPage();
 
   const handleSubTabClick = (tab: SubTab) => {
     if (tab === 'overview') {
@@ -107,35 +158,16 @@ export default function AppShell({ children }: AppShellProps) {
 
   return (
     <div className="min-h-screen flex flex-col">
-      {/* Top Header with Main Tabs */}
-      <header className="border-b border-[var(--border)] bg-[var(--background)]">
-        <div className="flex items-center justify-between px-6 lg:px-8">
-          {/* Left: Logo + Main Tabs */}
-          <div className="flex items-center gap-8">
-            {/* Logo */}
-            <Link href="/" className="flex items-center py-4">
-              <span className="text-base tracking-tight font-semibold" style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}>
-                billionorzero
-              </span>
-            </Link>
-
-            {/* Main Tabs */}
-            <nav className="top-tabs border-none mb-0">
-              <button
-                className="top-tab active"
-                onClick={() => router.push('/')}
-              >
-                Portfolio
-              </button>
-              <button
-                className="top-tab disabled"
-                disabled
-              >
-                Market Insights
-                <span className="coming-soon">Soon</span>
-              </button>
-            </nav>
-          </div>
+      {/* Top Header */}
+      <header className="bg-[var(--background)]">
+        {/* Row 1: Main Navigation */}
+        <div className="flex items-center justify-between px-6 lg:px-8 border-b border-[var(--border)]">
+          {/* Logo */}
+          <Link href="/" className="flex items-center py-4">
+            <span className="text-xl tracking-tight" style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}>
+              billionorzero
+            </span>
+          </Link>
 
           {/* Right: Actions */}
           <div className="flex items-center gap-2">
@@ -155,14 +187,25 @@ export default function AppShell({ children }: AppShellProps) {
               {hideBalances ? <Eye className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
             </button>
 
-            <button
-              onClick={refresh}
-              disabled={isRefreshing}
-              className="btn-ghost"
-              title="Refresh"
-            >
-              <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
-            </button>
+            <div className="relative group">
+              <button
+                onClick={refresh}
+                disabled={isRefreshing}
+                className="btn-ghost"
+              >
+                <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
+              </button>
+              <div className="tooltip whitespace-nowrap">
+                {walletCount > 0 ? (
+                  <>
+                    <div>Per sync: {estimatedUnits} units (~${estimatedCostPerSync.toFixed(4)})</div>
+                    <div>Est. monthly: ~${(estimatedCostPerSync * 30).toFixed(2)} (1x/day)</div>
+                  </>
+                ) : (
+                  <div>Add wallets to track sync costs</div>
+                )}
+              </div>
+            </div>
 
             <button
               onClick={() => setShowAddWallet(true)}
@@ -172,13 +215,13 @@ export default function AppShell({ children }: AppShellProps) {
               <Wallet className="w-5 h-5" />
             </button>
 
-            <button
-              onClick={() => setShowAddPosition(true)}
-              className="btn btn-primary"
+            <Link
+              href="/settings"
+              className="btn-ghost"
+              title="Settings"
             >
-              <Plus className="w-4 h-4" />
-              <span className="hidden sm:inline">Add</span>
-            </button>
+              <Settings className="w-5 h-5" />
+            </Link>
 
             {/* Mobile menu button */}
             <button
@@ -191,19 +234,42 @@ export default function AppShell({ children }: AppShellProps) {
           </div>
         </div>
 
-        {/* Sub Tabs - Category Navigation */}
-        <div className="px-6 lg:px-8 border-t border-[var(--border)]">
-          <div className="sub-tabs">
+        {/* Row 2: Sub Tabs (Category Navigation) */}
+        <div className="flex items-center justify-between px-6 lg:px-8 py-5">
+          <div className="flex items-center gap-8">
             {subTabs.map((tab) => (
               <button
                 key={tab.id}
-                className={`sub-tab ${activeSubTab === tab.id ? 'active' : ''}`}
+                className={`text-4xl transition-colors relative pb-3 ${
+                  activeSubTab === tab.id
+                    ? 'text-[var(--foreground)]'
+                    : 'text-[var(--foreground-subtle)] hover:text-[var(--foreground-muted)]'
+                }`}
+                style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
                 onClick={() => handleSubTabClick(tab.id)}
               >
                 {tab.label}
+                {activeSubTab === tab.id && (
+                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[var(--foreground)]" />
+                )}
               </button>
             ))}
           </div>
+
+          {/* Contextual Add Button */}
+          <button
+            onClick={() => setShowAddPosition(true)}
+            className="btn btn-primary"
+          >
+            <Plus className="w-4 h-4" />
+            <span>
+              {activeSubTab === 'overview' ? 'Add Position' :
+               activeSubTab === 'crypto' ? 'Add Crypto' :
+               activeSubTab === 'stocks' ? 'Add Stock' :
+               activeSubTab === 'cash' ? 'Add Cash' :
+               'Add Other'}
+            </span>
+          </button>
         </div>
       </header>
 
@@ -232,14 +298,15 @@ export default function AppShell({ children }: AppShellProps) {
           {/* Navigation */}
           <nav className="flex-1 px-3 py-4">
             <div className="space-y-1">
-              {sidebarItems.map((item) => {
-                const isActive = pathname.startsWith(item.href);
+              {sidebarItemsByCategory[activeSubTab].map((item) => {
+                const href = buildHref(activeSubTab, item.path);
+                const isActive = currentSidebarPage === item.path;
                 const Icon = item.icon;
 
                 return (
                   <Link
-                    key={item.href}
-                    href={item.href}
+                    key={item.path}
+                    href={href}
                     className={`nav-item ${isActive ? 'active' : ''}`}
                   >
                     <Icon className="w-[18px] h-[18px]" />
@@ -269,6 +336,13 @@ export default function AppShell({ children }: AppShellProps) {
       <AddPositionModal
         isOpen={showAddPosition}
         onClose={() => setShowAddPosition(false)}
+        defaultTab={
+          activeSubTab === 'crypto' ? 'crypto' :
+          activeSubTab === 'stocks' ? 'stock' :
+          activeSubTab === 'cash' ? 'cash' :
+          activeSubTab === 'other' ? 'manual' :
+          undefined
+        }
       />
       <AddWalletModal
         isOpen={showAddWallet}
