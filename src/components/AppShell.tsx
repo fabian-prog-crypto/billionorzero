@@ -1,15 +1,35 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { Plus, RefreshCw, Eye, EyeOff, Settings, Wallet } from 'lucide-react';
+import Link from 'next/link';
+import { Plus, RefreshCw, Eye, EyeOff, Settings, Wallet, Sun, Moon, Menu, X, PieChart, TrendingUp, Layers, CandlestickChart, Building2 } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
+import { useThemeStore, applyTheme } from '@/store/themeStore';
 import { useRefresh } from '@/components/PortfolioProvider';
 import AddPositionModal from '@/components/modals/AddPositionModal';
 import AddWalletModal from '@/components/modals/AddWalletModal';
 
-type TopTab = 'portfolio' | 'market' | 'insights';
+type MainTab = 'portfolio' | 'insights';
 type SubTab = 'overview' | 'crypto' | 'stocks' | 'cash' | 'other';
+
+const sidebarItems = [
+  { href: '/positions', icon: Layers, label: 'Positions' },
+  { href: '/exposure', icon: PieChart, label: 'Exposure' },
+  { href: '/perps', icon: CandlestickChart, label: 'Perps' },
+  { href: '/performance', icon: TrendingUp, label: 'Performance' },
+  { href: '/wallets', icon: Wallet, label: 'Wallets' },
+  { href: '/accounts', icon: Building2, label: 'Accounts' },
+  { href: '/settings', icon: Settings, label: 'Settings' },
+];
+
+const subTabs: { id: SubTab; label: string }[] = [
+  { id: 'overview', label: 'OVERVIEW' },
+  { id: 'crypto', label: 'CRYPTO' },
+  { id: 'stocks', label: 'STOCKS' },
+  { id: 'cash', label: 'CASH' },
+  { id: 'other', label: 'OTHERS' },
+];
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -19,12 +39,31 @@ export default function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
 
-  const [activeTopTab, setActiveTopTab] = useState<TopTab>('portfolio');
   const [showAddPosition, setShowAddPosition] = useState(false);
   const [showAddWallet, setShowAddWallet] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const { hideBalances, toggleHideBalances } = usePortfolioStore();
+  const { theme, setTheme } = useThemeStore();
   const { refresh, isRefreshing } = useRefresh();
+
+  // Apply theme on mount and when it changes
+  useEffect(() => {
+    applyTheme(theme);
+
+    // Listen for system theme changes
+    if (theme === 'system') {
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      const handler = () => applyTheme('system');
+      mediaQuery.addEventListener('change', handler);
+      return () => mediaQuery.removeEventListener('change', handler);
+    }
+  }, [theme]);
+
+  // Close sidebar on route change (mobile)
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [pathname]);
 
   // Determine active sub-tab from pathname
   const getActiveSubTab = (): SubTab => {
@@ -45,34 +84,72 @@ export default function AppShell({ children }: AppShellProps) {
     }
   };
 
-  const handleTopTabClick = (tab: TopTab) => {
-    if (tab === 'portfolio') {
-      setActiveTopTab('portfolio');
-      router.push('/');
+  // Get effective theme (resolves 'system' to actual theme)
+  const getEffectiveTheme = () => {
+    if (theme === 'system') {
+      return typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
     }
-    // market and insights are disabled for now
+    return theme;
   };
 
+  const effectiveTheme = getEffectiveTheme();
+
+  const toggleTheme = () => {
+    if (effectiveTheme === 'dark') {
+      setTheme('light');
+    } else {
+      setTheme('dark');
+    }
+  };
+
+  // Check if current path is a portfolio sub-tab page
+  const isPortfolioPage = pathname === '/' || pathname === '/crypto' || pathname === '/stocks' || pathname === '/cash' || pathname === '/other';
+
   return (
-    <div className="min-h-screen">
-      {/* Header */}
-      <header className="px-6 lg:px-10 pt-6 lg:pt-8">
-        {/* Top row with logo and actions */}
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[var(--accent-primary)] to-[var(--accent-secondary)] flex items-center justify-center">
-              <span className="text-white font-bold text-lg">B</span>
-            </div>
-            <div>
-              <h1 className="font-bold text-lg">Billion or Zero</h1>
-              <p className="text-xs text-[var(--foreground-muted)]">Portfolio Tracker</p>
-            </div>
+    <div className="min-h-screen flex flex-col">
+      {/* Top Header with Main Tabs */}
+      <header className="border-b border-[var(--border)] bg-[var(--background)]">
+        <div className="flex items-center justify-between px-6 lg:px-8">
+          {/* Left: Logo + Main Tabs */}
+          <div className="flex items-center gap-8">
+            {/* Logo */}
+            <Link href="/" className="flex items-center py-4">
+              <span className="text-base tracking-tight font-semibold" style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}>
+                billionorzero
+              </span>
+            </Link>
+
+            {/* Main Tabs */}
+            <nav className="top-tabs border-none mb-0">
+              <button
+                className="top-tab active"
+                onClick={() => router.push('/')}
+              >
+                Portfolio
+              </button>
+              <button
+                className="top-tab disabled"
+                disabled
+              >
+                Market Insights
+                <span className="coming-soon">Soon</span>
+              </button>
+            </nav>
           </div>
 
-          <div className="flex items-center gap-3">
+          {/* Right: Actions */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={toggleTheme}
+              className="btn-ghost"
+              title={effectiveTheme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              {effectiveTheme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            </button>
+
             <button
               onClick={toggleHideBalances}
-              className="btn-ghost rounded-lg"
+              className="btn-ghost"
               title={hideBalances ? 'Show balances' : 'Hide balances'}
             >
               {hideBalances ? <Eye className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
@@ -81,7 +158,7 @@ export default function AppShell({ children }: AppShellProps) {
             <button
               onClick={refresh}
               disabled={isRefreshing}
-              className="btn-ghost rounded-lg"
+              className="btn-ghost"
               title="Refresh"
             >
               <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
@@ -89,18 +166,10 @@ export default function AppShell({ children }: AppShellProps) {
 
             <button
               onClick={() => setShowAddWallet(true)}
-              className="btn-ghost rounded-lg"
+              className="btn-ghost"
               title="Add Wallet"
             >
               <Wallet className="w-5 h-5" />
-            </button>
-
-            <button
-              onClick={() => router.push('/settings')}
-              className="btn-ghost rounded-lg"
-              title="Settings"
-            >
-              <Settings className="w-5 h-5" />
             </button>
 
             <button
@@ -108,82 +177,93 @@ export default function AppShell({ children }: AppShellProps) {
               className="btn btn-primary"
             >
               <Plus className="w-4 h-4" />
-              <span className="hidden sm:inline">Add Position</span>
+              <span className="hidden sm:inline">Add</span>
+            </button>
+
+            {/* Mobile menu button */}
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="lg:hidden btn-ghost"
+              aria-label="Open menu"
+            >
+              <Menu className="w-5 h-5" />
             </button>
           </div>
         </div>
 
-        {/* Top tabs */}
-        <div className="top-tabs">
-          <button
-            onClick={() => handleTopTabClick('portfolio')}
-            className={`top-tab ${activeTopTab === 'portfolio' ? 'active' : ''}`}
-          >
-            PORTFOLIO
-          </button>
-
-          <div className="group relative">
-            <button
-              className="top-tab disabled"
-              title="Coming Soon"
-            >
-              MARKET
-              <span className="coming-soon">Soon</span>
-            </button>
-          </div>
-
-          <div className="group relative">
-            <button
-              className="top-tab disabled"
-              title="Coming Soon"
-            >
-              INSIGHTS
-              <span className="coming-soon">Soon</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Sub tabs - only show for portfolio */}
-        {activeTopTab === 'portfolio' && (
+        {/* Sub Tabs - Category Navigation */}
+        <div className="px-6 lg:px-8 border-t border-[var(--border)]">
           <div className="sub-tabs">
-            <button
-              onClick={() => handleSubTabClick('overview')}
-              className={`sub-tab ${activeSubTab === 'overview' ? 'active' : ''}`}
-            >
-              Overview
-            </button>
-            <button
-              onClick={() => handleSubTabClick('crypto')}
-              className={`sub-tab ${activeSubTab === 'crypto' ? 'active' : ''}`}
-            >
-              Crypto
-            </button>
-            <button
-              onClick={() => handleSubTabClick('stocks')}
-              className={`sub-tab ${activeSubTab === 'stocks' ? 'active' : ''}`}
-            >
-              Stocks
-            </button>
-            <button
-              onClick={() => handleSubTabClick('cash')}
-              className={`sub-tab ${activeSubTab === 'cash' ? 'active' : ''}`}
-            >
-              Cash
-            </button>
-            <button
-              onClick={() => handleSubTabClick('other')}
-              className={`sub-tab ${activeSubTab === 'other' ? 'active' : ''}`}
-            >
-              Other
-            </button>
+            {subTabs.map((tab) => (
+              <button
+                key={tab.id}
+                className={`sub-tab ${activeSubTab === tab.id ? 'active' : ''}`}
+                onClick={() => handleSubTabClick(tab.id)}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
-        )}
+        </div>
       </header>
 
-      {/* Main content */}
-      <main className="px-6 lg:px-10 pb-10">
-        {children}
-      </main>
+      {/* Main Layout: Sidebar + Content */}
+      <div className="flex-1 flex">
+        {/* Sidebar overlay (mobile) */}
+        <div
+          className={`sidebar-overlay ${sidebarOpen ? 'visible' : ''}`}
+          onClick={() => setSidebarOpen(false)}
+        />
+
+        {/* Sidebar */}
+        <aside className={`sidebar fixed lg:static left-0 top-0 lg:top-auto h-screen lg:h-auto w-[200px] bg-[var(--sidebar-bg)] border-r border-[var(--border)] flex flex-col z-40 ${sidebarOpen ? 'open' : ''}`}>
+          {/* Mobile close button */}
+          <div className="lg:hidden p-4 border-b border-[var(--border)] flex items-center justify-between">
+            <span className="text-sm font-medium">Menu</span>
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="p-2 hover:bg-[var(--background-secondary)]"
+              aria-label="Close menu"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Navigation */}
+          <nav className="flex-1 px-3 py-4">
+            <div className="space-y-1">
+              {sidebarItems.map((item) => {
+                const isActive = pathname.startsWith(item.href);
+                const Icon = item.icon;
+
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={`nav-item ${isActive ? 'active' : ''}`}
+                  >
+                    <Icon className="w-[18px] h-[18px]" />
+                    <span>{item.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </nav>
+
+          {/* Footer */}
+          <div className="p-4 border-t border-[var(--border)]">
+            <div className="flex items-center gap-2 text-xs text-[var(--foreground-muted)]">
+              <div className="w-2 h-2 bg-[var(--positive)] animate-pulse"></div>
+              <span>Auto-refresh</span>
+            </div>
+          </div>
+        </aside>
+
+        {/* Main content area */}
+        <main className="flex-1 px-6 lg:px-8 py-6">
+          {children}
+        </main>
+      </div>
 
       {/* Modals */}
       <AddPositionModal
