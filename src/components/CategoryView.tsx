@@ -1,14 +1,14 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Edit2, Trash2, ArrowUpDown, ArrowUpRight } from 'lucide-react';
+import { Edit2, Trash2, ArrowUpDown, ArrowUpRight, Layers, Grid3X3 } from 'lucide-react';
 import Link from 'next/link';
 import ExposureChart from '@/components/charts/ExposureChart';
 import { usePortfolioStore } from '@/store/portfolioStore';
-import { calculateAllPositionsWithPrices, calculateExposureData, getCategoryService } from '@/services';
+import { calculateAllPositionsWithPrices, calculateExposureData, getCategoryService, aggregatePositionsBySymbol } from '@/services';
 import { MainCategory } from '@/services/domain/category-service';
 import CustomPriceModal from '@/components/modals/CustomPriceModal';
-import { formatCurrency, formatPercent, formatNumber, getChangeColor } from '@/lib/utils';
+import { formatCurrency, formatPercent, formatNumber, getChangeColor, getAssetTypeLabel } from '@/lib/utils';
 import { AssetWithPrice } from '@/types';
 
 interface CategoryViewProps {
@@ -19,6 +19,7 @@ interface CategoryViewProps {
   emptyMessage: string;
 }
 
+type ViewMode = 'positions' | 'assets';
 type SortField = 'value' | 'amount' | 'price' | 'change';
 type SortDirection = 'asc' | 'desc';
 
@@ -30,6 +31,7 @@ export default function CategoryView({
   emptyMessage,
 }: CategoryViewProps) {
   const { positions, prices, customPrices, removePosition, hideBalances } = usePortfolioStore();
+  const [viewMode, setViewMode] = useState<ViewMode>('positions');
   const [sortField, setSortField] = useState<SortField>('value');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [customPriceModal, setCustomPriceModal] = useState<{
@@ -83,6 +85,30 @@ export default function CategoryView({
       }
       return sortDirection === 'asc' ? -comparison : comparison;
     });
+  }, [categoryPositions, sortField, sortDirection]);
+
+  // Aggregate assets by symbol
+  const aggregatedAssets = useMemo(() => {
+    const assets = aggregatePositionsBySymbol(categoryPositions);
+    assets.sort((a, b) => {
+      let comparison = 0;
+      switch (sortField) {
+        case 'value':
+          comparison = Math.abs(b.value) - Math.abs(a.value);
+          break;
+        case 'amount':
+          comparison = b.amount - a.amount;
+          break;
+        case 'price':
+          comparison = b.currentPrice - a.currentPrice;
+          break;
+        case 'change':
+          comparison = b.changePercent24h - a.changePercent24h;
+          break;
+      }
+      return sortDirection === 'asc' ? -comparison : comparison;
+    });
+    return assets;
   }, [categoryPositions, sortField, sortDirection]);
 
   const toggleSort = (field: SortField) => {
@@ -248,10 +274,41 @@ export default function CategoryView({
         </div>
       </div>
 
-      {/* Positions Table */}
+      {/* Positions/Assets Table */}
       <div className="card">
-        <h3 className="font-semibold mb-6">All Positions</h3>
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="font-semibold">
+            {viewMode === 'positions' ? 'All Positions' : 'All Assets'}
+          </h3>
 
+          {/* View Mode Toggle */}
+          <div className="flex gap-1 p-1 bg-[var(--background-secondary)] rounded-lg">
+            <button
+              onClick={() => setViewMode('positions')}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors flex items-center gap-1.5 ${
+                viewMode === 'positions'
+                  ? 'bg-[var(--card-bg)] text-[var(--foreground)] shadow-sm'
+                  : 'text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              Positions
+            </button>
+            <button
+              onClick={() => setViewMode('assets')}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors flex items-center gap-1.5 ${
+                viewMode === 'assets'
+                  ? 'bg-[var(--card-bg)] text-[var(--foreground)] shadow-sm'
+                  : 'text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
+              }`}
+            >
+              <Grid3X3 className="w-3.5 h-3.5" />
+              Assets
+            </button>
+          </div>
+        </div>
+
+        {viewMode === 'positions' ? (
         <div className="table-scroll">
           <table className="w-full">
             <thead>
@@ -361,6 +418,105 @@ export default function CategoryView({
             </tbody>
           </table>
         </div>
+        ) : (
+          /* Assets View */
+          <div className="table-scroll">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-[var(--border)]">
+                  <th className="table-header text-left pb-3">Asset</th>
+                  <th className="table-header text-left pb-3">Type</th>
+                  <th className="table-header text-right pb-3">
+                    <button
+                      onClick={() => toggleSort('amount')}
+                      className="inline-flex items-center gap-1 hover:text-[var(--foreground)]"
+                    >
+                      Amount
+                      <ArrowUpDown className="w-3 h-3" />
+                    </button>
+                  </th>
+                  <th className="table-header text-right pb-3">
+                    <button
+                      onClick={() => toggleSort('price')}
+                      className="inline-flex items-center gap-1 hover:text-[var(--foreground)]"
+                    >
+                      Price
+                      <ArrowUpDown className="w-3 h-3" />
+                    </button>
+                  </th>
+                  <th className="table-header text-right pb-3">
+                    <button
+                      onClick={() => toggleSort('value')}
+                      className="inline-flex items-center gap-1 hover:text-[var(--foreground)]"
+                    >
+                      Value
+                      <ArrowUpDown className="w-3 h-3" />
+                    </button>
+                  </th>
+                  <th className="table-header text-right pb-3">
+                    <button
+                      onClick={() => toggleSort('change')}
+                      className="inline-flex items-center gap-1 hover:text-[var(--foreground)]"
+                    >
+                      24h
+                      <ArrowUpDown className="w-3 h-3" />
+                    </button>
+                  </th>
+                  <th className="table-header text-right pb-3">%</th>
+                </tr>
+              </thead>
+              <tbody>
+                {aggregatedAssets.map((asset, index) => (
+                  <tr
+                    key={`${asset.symbol}-${index}`}
+                    className="hover-row border-b border-[var(--border)] last:border-0"
+                  >
+                    <td className="py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-[var(--background-tertiary)] flex items-center justify-center text-sm font-bold">
+                          {asset.symbol.slice(0, 2).toUpperCase()}
+                        </div>
+                        <div>
+                          <p className="font-medium">{asset.symbol.toUpperCase()}</p>
+                          <p className="text-xs text-[var(--foreground-muted)]">{asset.name}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-4">
+                      <span className="text-sm text-[var(--foreground-muted)]">
+                        {getAssetTypeLabel(asset.type)}
+                      </span>
+                    </td>
+                    <td className="py-4 text-right font-mono text-sm">
+                      {hideBalances ? '•••' : formatNumber(asset.amount)}
+                    </td>
+                    <td className="py-4 text-right">
+                      <button
+                        onClick={() => openCustomPriceModal(asset)}
+                        className="group inline-flex items-center gap-1 font-mono text-sm hover:text-[var(--accent-primary)] transition-colors"
+                      >
+                        {formatCurrency(asset.currentPrice)}
+                        {asset.hasCustomPrice && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]" />
+                        )}
+                        <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity" />
+                      </button>
+                    </td>
+                    <td className="py-4 text-right font-mono font-medium">
+                      {hideBalances ? '••••' : formatCurrency(asset.value)}
+                    </td>
+                    <td className={`py-4 text-right font-mono text-sm ${getChangeColor(asset.changePercent24h)}`}>
+                      {formatPercent(asset.changePercent24h)}
+                    </td>
+                    <td className="py-4 text-right text-[var(--foreground-muted)]">
+                      {asset.allocation?.toFixed(1) || '0.0'}%
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* Custom Price Modal */}
