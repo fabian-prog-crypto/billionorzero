@@ -267,7 +267,7 @@ export default function PositionsPage() {
 
   return (
     <div>
-      <Header title="Portfolio" onSync={refresh} />
+      <Header title="Portfolio" />
 
       {/* NAV Summary Card */}
       <div className="card mb-6">
@@ -373,7 +373,7 @@ export default function PositionsPage() {
               onClick={() => setViewMode('positions')}
               className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors flex items-center gap-1.5 ${
                 viewMode === 'positions'
-                  ? 'bg-white text-[var(--foreground)] shadow-sm'
+                  ? 'bg-[var(--card-bg)] text-[var(--foreground)] shadow-sm'
                   : 'text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
               }`}
             >
@@ -384,7 +384,7 @@ export default function PositionsPage() {
               onClick={() => setViewMode('assets')}
               className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors flex items-center gap-1.5 ${
                 viewMode === 'assets'
-                  ? 'bg-white text-[var(--foreground)] shadow-sm'
+                  ? 'bg-[var(--card-bg)] text-[var(--foreground)] shadow-sm'
                   : 'text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
               }`}
             >

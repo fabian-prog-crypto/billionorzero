@@ -100,7 +100,7 @@ export default function PerformancePage() {
 
   return (
     <div>
-      <Header title="Performance" onSync={refresh} />
+      <Header title="Performance" />
 
       {/* Time period selector */}
       <div className="flex items-center justify-between mb-6">
@@ -148,10 +148,10 @@ export default function PerformancePage() {
               <button
                 key={mode}
                 onClick={() => setViewMode(mode)}
-                className={`px-4 py-1.5 rounded text-sm font-medium transition-colors ${
+                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
                   viewMode === mode
-                    ? 'bg-[var(--accent-primary)] text-white'
-                    : 'text-[var(--foreground-muted)]'
+                    ? 'bg-[var(--card-bg)] text-[var(--foreground)] shadow-sm'
+                    : 'text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
                 }`}
               >
                 {mode === 'value' ? 'Value' : mode === 'assets' ? 'Assets' : 'PnL'}

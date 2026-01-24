@@ -48,7 +48,7 @@ export default function ExposurePage() {
 
   return (
     <div>
-      <Header title="Portfolio Exposure" onSync={refresh} />
+      <Header title="Portfolio Exposure" />
 
       {/* Professional Exposure Metrics */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">

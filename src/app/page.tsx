@@ -6,6 +6,7 @@ import { usePortfolioStore } from '@/store/portfolioStore';
 import { calculatePortfolioSummary, calculateAllPositionsWithPrices, calculateExposureData } from '@/services';
 import NetWorthChart from '@/components/charts/NetWorthChart';
 import Tooltip from '@/components/ui/Tooltip';
+import Header from '@/components/Header';
 import Link from 'next/link';
 import {
   formatCurrency,
@@ -38,20 +39,25 @@ export default function OverviewPage() {
 
   if (!hasData) {
     return (
-      <div className="flex flex-col items-center justify-center py-32">
-        <div className="w-20 h-20 rounded-2xl bg-[var(--background-tertiary)] flex items-center justify-center mb-6">
-          <TrendingUp className="w-10 h-10 text-[var(--foreground-muted)]" />
+      <div>
+        <Header title="Overview" />
+        <div className="flex flex-col items-center justify-center py-32">
+          <div className="w-20 h-20 rounded-2xl bg-[var(--background-tertiary)] flex items-center justify-center mb-6">
+            <TrendingUp className="w-10 h-10 text-[var(--foreground-muted)]" />
+          </div>
+          <h2 className="text-xl font-semibold mb-2">No positions yet</h2>
+          <p className="text-[var(--foreground-muted)] text-center max-w-md">
+            Add your first position to start tracking your portfolio.
+          </p>
         </div>
-        <h2 className="text-xl font-semibold mb-2">No positions yet</h2>
-        <p className="text-[var(--foreground-muted)] text-center max-w-md">
-          Add your first position to start tracking your portfolio.
-        </p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-8">
+    <div>
+      <Header title="Overview" />
+      <div className="space-y-8">
       {/* Hero Stats */}
       <div className="card-glow">
         <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
@@ -281,6 +287,7 @@ export default function OverviewPage() {
             </tbody>
           </table>
         </div>
+      </div>
       </div>
     </div>
   );

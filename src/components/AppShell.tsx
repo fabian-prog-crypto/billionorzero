@@ -9,6 +9,7 @@ import { useThemeStore, applyTheme } from '@/store/themeStore';
 import { useRefresh } from '@/components/PortfolioProvider';
 import AddPositionModal from '@/components/modals/AddPositionModal';
 import AddWalletModal from '@/components/modals/AddWalletModal';
+import { calculateSyncCost } from '@/lib/constants';
 
 type MainTab = 'portfolio' | 'insights';
 type SubTab = 'overview' | 'crypto' | 'stocks' | 'cash' | 'other';
@@ -77,12 +78,9 @@ export default function AppShell({ children }: AppShellProps) {
   const { theme, setTheme } = useThemeStore();
   const { refresh, isRefreshing } = useRefresh();
 
-  // DeBank API cost constants
-  const UNITS_PER_WALLET = 18;
-  const COST_PER_UNIT = 0.0002;
+  // Calculate sync costs
   const walletCount = wallets.length;
-  const estimatedUnits = walletCount * UNITS_PER_WALLET;
-  const estimatedCostPerSync = estimatedUnits * COST_PER_UNIT;
+  const syncCost = calculateSyncCost(walletCount);
 
   // Apply theme on mount and when it changes
   useEffect(() => {
@@ -198,8 +196,8 @@ export default function AppShell({ children }: AppShellProps) {
               <div className="tooltip whitespace-nowrap">
                 {walletCount > 0 ? (
                   <>
-                    <div>Per sync: {estimatedUnits} units (~${estimatedCostPerSync.toFixed(4)})</div>
-                    <div>Est. monthly: ~${(estimatedCostPerSync * 30).toFixed(2)} (1x/day)</div>
+                    <div>Per sync: {syncCost.units} units (~${syncCost.costPerSync.toFixed(4)})</div>
+                    <div>Est. monthly: ~${syncCost.monthlyCost.toFixed(2)} (1x/day)</div>
                   </>
                 ) : (
                   <div>Add wallets to track sync costs</div>
