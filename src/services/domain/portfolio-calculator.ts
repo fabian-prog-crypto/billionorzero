@@ -661,7 +661,8 @@ export function calculateExposureData(assets: AssetWithPrice[]): ExposureData {
         spotShortValue += absValue;
         break;
       case 'cash':
-        spotLongValue += absValue;
+        // Stablecoins and PTs do NOT count as spot long exposure
+        // They have no market risk - only count towards cash equivalents
         cashEquivalentsForLeverage += absValue;
         break;
       case 'borrowed-cash':
@@ -800,14 +801,15 @@ export function calculateExposureData(assets: AssetWithPrice[]): ExposureData {
   // (Values already calculated in single pass above)
 
   // Exposure Metrics
+  // spotLongValue already excludes cash/stablecoins/PTs (they go to cashEquivalentsForLeverage)
   const spotLong = spotLongValue;
   const spotShort = spotShortValue;
 
-  // Risk-adjusted exposure: excludes cash equivalents that don't have market risk
-  const riskAdjustedSpotLong = spotLong - cashEquivalentsForLeverage;
-  const longExposure = riskAdjustedSpotLong + perpsLongs;  // Market-exposed long positions
-  const shortExposure = spotShort + perpsShorts; // All short positions (including borrowed)
-  const grossExposure = longExposure + shortExposure;
+  // Long exposure = spot positions with market risk + perp longs
+  // Cash/stablecoins are already excluded from spotLongValue
+  const longExposure = Math.max(0, spotLong + perpsLongs);  // Market-exposed long positions
+  const shortExposure = Math.max(0, spotShort + perpsShorts); // All short positions (borrowed crypto + perp shorts)
+  const grossExposure = longExposure + shortExposure; // Always positive (|Long| + |Short|)
   const netExposure = longExposure - shortExposure;
 
   // Leverage = Gross Exposure / Net Worth
@@ -818,7 +820,6 @@ export function calculateExposureData(assets: AssetWithPrice[]): ExposureData {
     spotLong: spotLong.toFixed(2),
     spotShort: spotShort.toFixed(2),
     cashEquivalents: cashEquivalentsForLeverage.toFixed(2),
-    riskAdjustedSpotLong: riskAdjustedSpotLong.toFixed(2),
     perpsLongs: perpsLongs.toFixed(2),
     perpsShorts: perpsShorts.toFixed(2),
     perpsMargin: perpsMargin.toFixed(2),
@@ -829,6 +830,7 @@ export function calculateExposureData(assets: AssetWithPrice[]): ExposureData {
     netWorth: totalValue.toFixed(2),
     leverage: leverage.toFixed(2),
   });
+  console.log('[EXPOSURE] Classifications:', classificationCounts);
 
   // Log assets contributing to short exposure to help debug
   if (spotShort > 0 || perpsShorts > 0) {
