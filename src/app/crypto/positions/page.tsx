@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Trash2, Search, Wallet, ArrowUpDown, Download, Layers, Grid3X3, Edit2 } from 'lucide-react';
+import { Trash2, Wallet, ArrowUpDown, Layers, Grid3X3, Edit2 } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import { calculateAllPositionsWithPrices, aggregatePositionsBySymbol, getCategoryService } from '@/services';
 import Header from '@/components/Header';
+import PageHeader, { FilterOption } from '@/components/ui/PageHeader';
 import CustomPriceModal from '@/components/modals/CustomPriceModal';
 import {
   formatCurrency,
@@ -15,16 +16,29 @@ import {
   formatAddress,
 } from '@/lib/utils';
 import { AssetWithPrice } from '@/types';
+import { CryptoSubCategory } from '@/lib/assetCategories';
 
 type ViewMode = 'positions' | 'assets';
 type SortField = 'symbol' | 'value' | 'amount' | 'change';
 type SortDirection = 'asc' | 'desc';
 
+const CRYPTO_FILTER_OPTIONS: FilterOption<CryptoSubCategory>[] = [
+  { value: 'btc', label: 'BTC', color: '#F7931A' },
+  { value: 'eth', label: 'ETH', color: '#627EEA' },
+  { value: 'sol', label: 'SOL', color: '#9945FF' },
+  { value: 'stablecoins', label: 'Stables', color: '#4CAF50' },
+  { value: 'tokens', label: 'Tokens', color: '#00BCD4' },
+  { value: 'perps', label: 'Perps', color: '#FF5722' },
+];
+
 export default function CryptoPositionsPage() {
-  const [viewMode, setViewMode] = useState<ViewMode>('positions');
+  const [viewMode, setViewMode] = useState<ViewMode>('assets');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortField, setSortField] = useState<SortField>('value');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [selectedCategories, setSelectedCategories] = useState<Set<CryptoSubCategory>>(
+    new Set(CRYPTO_FILTER_OPTIONS.map(opt => opt.value))
+  );
 
   const [customPriceModal, setCustomPriceModal] = useState<{
     isOpen: boolean;
@@ -47,16 +61,30 @@ export default function CryptoPositionsPage() {
     });
   }, [allPositionsWithPrices, categoryService]);
 
-  // Filter by search
+  // Filter by category and search
   const filteredPositions = useMemo(() => {
-    if (!searchQuery) return cryptoPositions;
-    const query = searchQuery.toLowerCase();
-    return cryptoPositions.filter(
-      (p) =>
-        p.symbol.toLowerCase().includes(query) ||
-        p.name.toLowerCase().includes(query)
-    );
-  }, [cryptoPositions, searchQuery]);
+    let filtered = cryptoPositions;
+
+    // Filter by category
+    if (selectedCategories.size < CRYPTO_FILTER_OPTIONS.length) {
+      filtered = filtered.filter((p) => {
+        const subCat = categoryService.getSubCategory(p.symbol, p.type);
+        return selectedCategories.has(subCat as CryptoSubCategory);
+      });
+    }
+
+    // Filter by search
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (p) =>
+          p.symbol.toLowerCase().includes(query) ||
+          p.name.toLowerCase().includes(query)
+      );
+    }
+
+    return filtered;
+  }, [cryptoPositions, searchQuery, selectedCategories, categoryService]);
 
   // Sort positions
   const sortedPositions = useMemo(() => {
@@ -106,8 +134,27 @@ export default function CryptoPositionsPage() {
 
   // Calculate totals
   const totalValue = cryptoPositions.reduce((sum, p) => sum + p.value, 0);
+  const filteredValue = filteredPositions.reduce((sum, p) => sum + p.value, 0);
   const totalPositions = cryptoPositions.length;
   const uniqueAssets = new Set(cryptoPositions.map(p => p.symbol.toLowerCase())).size;
+
+  // Category filter handlers
+  const toggleCategory = (category: string) => {
+    const cat = category as CryptoSubCategory;
+    setSelectedCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(cat)) {
+        next.delete(cat);
+      } else {
+        next.add(cat);
+      }
+      return next;
+    });
+  };
+
+  const clearFilters = () => {
+    setSelectedCategories(new Set(CRYPTO_FILTER_OPTIONS.map(opt => opt.value)));
+  };
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
@@ -161,70 +208,31 @@ export default function CryptoPositionsPage() {
 
   return (
     <div>
-      <Header title="Crypto Positions" />
+      <Header title="Crypto Assets" />
 
-      {/* Summary Card */}
-      <div className="card mb-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="stat-label mb-1">Total Crypto Value</p>
-            <p className="stat-value">{hideBalances ? '••••••••' : formatCurrency(totalValue)}</p>
-          </div>
-          <div className="text-right text-sm text-[var(--foreground-muted)]">
-            <p>{totalPositions} positions</p>
-            <p>{uniqueAssets} assets</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Filter Bar */}
-      <div className="card mb-4 p-3">
-        <div className="flex flex-wrap items-center gap-3">
-          {/* View Mode Toggle */}
-          <div className="flex gap-1 p-1 bg-[var(--background-secondary)] rounded-lg">
-            <button
-              onClick={() => setViewMode('positions')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors flex items-center gap-1.5 ${
-                viewMode === 'positions'
-                  ? 'bg-[var(--card-bg)] text-[var(--foreground)] shadow-sm'
-                  : 'text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
-              }`}
-            >
-              <Layers className="w-3.5 h-3.5" />
-              Positions
-            </button>
-            <button
-              onClick={() => setViewMode('assets')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors flex items-center gap-1.5 ${
-                viewMode === 'assets'
-                  ? 'bg-[var(--card-bg)] text-[var(--foreground)] shadow-sm'
-                  : 'text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
-              }`}
-            >
-              <Grid3X3 className="w-3.5 h-3.5" />
-              Assets
-            </button>
-          </div>
-
-          <div className="flex-1" />
-
-          {/* Search */}
-          <div className="relative min-w-[160px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--foreground-muted)]" />
-            <input
-              type="text"
-              placeholder="Search..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 w-full text-sm py-2"
-            />
-          </div>
-
-          <button onClick={exportCSV} className="btn btn-secondary p-2" title="Export CSV">
-            <Download className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title="Total Crypto Value"
+        value={totalValue}
+        hideBalances={hideBalances}
+        secondaryStats={[
+          { label: 'Positions', value: String(totalPositions) },
+          { label: 'Assets', value: String(uniqueAssets) },
+        ]}
+        tabs={[
+          { id: 'assets', label: 'Assets', icon: <Grid3X3 className="w-3.5 h-3.5" />, count: aggregatedAssets.length },
+          { id: 'positions', label: 'Positions', icon: <Layers className="w-3.5 h-3.5" />, count: sortedPositions.length },
+        ]}
+        activeTab={viewMode}
+        onTabChange={(id) => setViewMode(id as ViewMode)}
+        filterOptions={CRYPTO_FILTER_OPTIONS as FilterOption<string>[]}
+        selectedFilters={selectedCategories as Set<string>}
+        onFilterToggle={toggleCategory}
+        onFilterClear={clearFilters}
+        filteredTotal={filteredValue}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        onExport={exportCSV}
+      />
 
       {/* Table */}
       <div className="card">
@@ -453,16 +461,6 @@ export default function CryptoPositionsPage() {
             </table>
           </div>
         )}
-      </div>
-
-      {/* Summary footer */}
-      <div className="mt-4 flex items-center justify-between text-sm text-[var(--foreground-muted)]">
-        <span>
-          {displayData.length} {viewMode === 'assets' ? 'assets' : 'positions'}
-        </span>
-        <span>
-          Total: <span className="font-semibold text-[var(--foreground)]">{hideBalances ? '••••••••' : formatCurrency(totalValue)}</span>
-        </span>
       </div>
 
       {/* Custom Price Modal */}

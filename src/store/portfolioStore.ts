@@ -297,6 +297,12 @@ export const usePortfolioStore = create<PortfolioState>()(
     }),
     {
       name: 'portfolio-storage',
+      version: 2,
+      migrate: (persistedState: unknown, version: number) => {
+        // Handle migration from any version - just return the state as-is
+        // This ensures data saved with version: 2 can still be read
+        return persistedState as unknown as PortfolioState;
+      },
     }
   )
 );
