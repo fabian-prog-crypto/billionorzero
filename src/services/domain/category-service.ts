@@ -3,22 +3,22 @@
  * Hierarchical asset categorization for portfolio exposure analysis
  *
  * Structure:
- * - Main Categories: crypto, stocks, cash, other
- * - Sub Categories: crypto (btc, eth, sol, stablecoins, tokens, perps), stocks (tech, ai, other)
+ * - Main Categories: crypto, equities, cash, other
+ * - Sub Categories: crypto (btc, eth, sol, stablecoins, tokens, perps), equities (stocks, etfs)
  */
 
 // Main category types
-export type MainCategory = 'crypto' | 'stocks' | 'cash' | 'other';
+export type MainCategory = 'crypto' | 'equities' | 'cash' | 'other';
 
 // Sub-category types
 export type CryptoSubCategory = 'btc' | 'eth' | 'sol' | 'stablecoins' | 'tokens' | 'perps';
-export type StockSubCategory = 'tech' | 'ai' | 'other';
-export type SubCategory = CryptoSubCategory | StockSubCategory | 'none';
+export type EquitiesSubCategory = 'stocks' | 'etfs';
+export type SubCategory = CryptoSubCategory | EquitiesSubCategory | 'none';
 
 // Combined category for compatibility (main_sub format)
 export type AssetCategory =
   | 'crypto' | 'crypto_btc' | 'crypto_eth' | 'crypto_sol' | 'crypto_stablecoins' | 'crypto_tokens' | 'crypto_perps'
-  | 'stocks' | 'stocks_tech' | 'stocks_ai' | 'stocks_other'
+  | 'equities' | 'equities_stocks' | 'equities_etfs'
   | 'cash' | 'other';
 
 // Category hierarchy structure
@@ -73,25 +73,35 @@ export class CategoryService {
     'lighter exchange', 'ethereal exchange',
   ]);
 
-  // Tech stocks (by symbol)
-  private techStocks = new Set([
-    'aapl', 'msft', 'googl', 'goog', 'meta', 'amzn', 'nflx', 'tsla',
-    'crm', 'adbe', 'orcl', 'csco', 'intc', 'amd', 'qcom', 'txn',
-    'ibm', 'now', 'shop', 'sq', 'pypl', 'spot', 'uber', 'lyft',
-    'docu', 'twlo', 'zm', 'okta', 'crwd', 'zs', 'net', 'ddog',
-    'snow', 'pltr', 'coin', 'hood', 'afrm', 'sofi',
-  ]);
-
-  // AI stocks (by symbol)
-  private aiStocks = new Set([
-    'nvda', 'ai', 'upst', 'path', 'c3ai', 'soun', 'bbai',
-    'prct', 'amba', 'irbt', 'splk', 'veev', 'smci',
+  // Common ETFs (by symbol)
+  private etfs = new Set([
+    // Broad market ETFs
+    'spy', 'spx', 'voo', 'ivv', 'qqq', 'qqqm', 'dia', 'iwm', 'vti', 'vtv', 'vug',
+    'schd', 'schx', 'schb', 'splg', 'sptm', 'itot',
+    // Sector ETFs
+    'xlk', 'xlf', 'xle', 'xlv', 'xli', 'xlp', 'xly', 'xlb', 'xlu', 'xlre',
+    'vgt', 'vht', 'vde', 'vnq', 'vfh', 'vis', 'vox', 'vpu', 'vaw', 'vdc',
+    // International ETFs
+    'vxus', 'vea', 'vwo', 'efa', 'eem', 'iefa', 'iemg', 'vgk', 'vpl', 'fxi',
+    // Bond ETFs
+    'bnd', 'agg', 'lqd', 'tlt', 'ief', 'shy', 'tip', 'vcit', 'vcsh', 'bndx',
+    // Thematic ETFs
+    'arkk', 'arkw', 'arkg', 'arkf', 'arkq', 'soxx', 'smh', 'botz', 'robo', 'hack',
+    'kweb', 'cqqq', 'mchi', 'gld', 'slv', 'gdx', 'gldm', 'iau', 'uso', 'ung',
+    // Leveraged/Inverse ETFs
+    'tqqq', 'sqqq', 'upro', 'spxu', 'soxl', 'soxs', 'fngu', 'fngd',
+    // Crypto ETFs
+    'gbtc', 'ethe', 'bito', 'bitq', 'blok', 'ibit', 'fbtc', 'btco', 'arkb',
+    // European ETFs / Index trackers
+    'dax', 'dax.pa', 'cac40', 'cac.pa', 'ftse', 'eurostoxx', 'stoxx50',
+    'vgk', 'ewg', 'ewq', 'ewu', 'ezu', 'hedj', 'dbeu', 'ieur', 'fez',
+    'veur.as', 'meud.pa', 'lyxdax.de', 'exs1.de', 'c40.pa',
   ]);
 
   // Main category colors
   private mainCategoryColors: Record<MainCategory, string> = {
     crypto: '#627EEA',     // Ethereum blue as main crypto color
-    stocks: '#E91E63',     // Pink for stocks
+    equities: '#E91E63',   // Pink for equities
     cash: '#4CAF50',       // Green for cash
     other: '#8B7355',      // Neutral brown
   };
@@ -105,16 +115,15 @@ export class CategoryService {
     crypto_stablecoins: '#4CAF50', // Green for stable
     crypto_tokens: '#00BCD4',      // Cyan for tokens
     crypto_perps: '#FF5722',       // Deep orange for perps
-    // Stock sub-categories
-    stocks_tech: '#2196F3',        // Blue for tech
-    stocks_ai: '#00BCD4',          // Cyan for AI
-    stocks_other: '#607D8B',       // Blue grey for other stocks
+    // Equities sub-categories
+    equities_stocks: '#E91E63',    // Pink for individual stocks
+    equities_etfs: '#9C27B0',      // Purple for ETFs
   };
 
   // Category labels
   private mainCategoryLabels: Record<MainCategory, string> = {
     crypto: 'Crypto',
-    stocks: 'Stocks',
+    equities: 'Equities',
     cash: 'Cash',
     other: 'Other',
   };
@@ -126,9 +135,8 @@ export class CategoryService {
     crypto_stablecoins: 'Stablecoins',
     crypto_tokens: 'Tokens',
     crypto_perps: 'Perps',
-    stocks_tech: 'Tech',
-    stocks_ai: 'AI',
-    stocks_other: 'Other',
+    equities_stocks: 'Stocks',
+    equities_etfs: 'ETFs',
   };
 
   /**
@@ -144,6 +152,22 @@ export class CategoryService {
   }
 
   /**
+   * Check if a symbol is a known ETF (handles exchange suffixes like .PA, .DE, .AS)
+   */
+  private isKnownEtf(symbol: string): boolean {
+    const normalized = symbol.toLowerCase().trim();
+    // Direct match
+    if (this.etfs.has(normalized)) return true;
+    // Check base symbol without exchange suffix (e.g., dax.pa -> dax)
+    const dotIndex = normalized.lastIndexOf('.');
+    if (dotIndex > 0) {
+      const baseSymbol = normalized.substring(0, dotIndex);
+      if (this.etfs.has(baseSymbol)) return true;
+    }
+    return false;
+  }
+
+  /**
    * Get the main category for an asset
    */
   getMainCategory(symbol: string, assetType?: string): MainCategory {
@@ -152,9 +176,9 @@ export class CategoryService {
       return 'cash';
     }
 
-    // Stock positions
-    if (assetType === 'stock') {
-      return 'stocks';
+    // Stock/ETF positions (equities)
+    if (assetType === 'stock' || assetType === 'etf') {
+      return 'equities';
     }
 
     // Crypto positions
@@ -169,6 +193,11 @@ export class CategoryService {
         this.ethLike.has(normalizedSymbol) ||
         this.solLike.has(normalizedSymbol)) {
       return 'crypto';
+    }
+
+    // Check if it's an ETF
+    if (this.etfs.has(normalizedSymbol)) {
+      return 'equities';
     }
 
     return 'other';
@@ -214,11 +243,13 @@ export class CategoryService {
       return 'tokens'; // Default crypto sub-category
     }
 
-    // Stock sub-categories
-    if (assetType === 'stock') {
-      if (this.aiStocks.has(normalizedSymbol)) return 'ai';
-      if (this.techStocks.has(normalizedSymbol)) return 'tech';
-      return 'other';
+    // Equities sub-categories (stocks vs ETFs)
+    // Priority: explicit 'etf' assetType > known ETF symbols (overrides legacy 'stock' type) > default to stocks
+    if (assetType === 'stock' || assetType === 'etf' || this.getMainCategory(symbol, assetType) === 'equities') {
+      if (assetType === 'etf') return 'etfs';
+      // Check known ETF symbols - this overrides legacy positions that were added as 'stock' before ETF selection existed
+      if (this.isKnownEtf(normalizedSymbol)) return 'etfs';
+      return 'stocks';
     }
 
     return 'none';
@@ -295,7 +326,7 @@ export class CategoryService {
    * Get all main categories
    */
   getMainCategories(): MainCategory[] {
-    return ['crypto', 'stocks', 'cash', 'other'];
+    return ['crypto', 'equities', 'cash', 'other'];
   }
 
   /**
@@ -305,8 +336,8 @@ export class CategoryService {
     switch (main) {
       case 'crypto':
         return ['btc', 'eth', 'sol', 'stablecoins', 'tokens', 'perps'];
-      case 'stocks':
-        return ['tech', 'ai', 'other'];
+      case 'equities':
+        return ['stocks', 'etfs'];
       default:
         return [];
     }
@@ -316,7 +347,7 @@ export class CategoryService {
    * Get all display categories (main categories for overview)
    */
   getDisplayCategories(): MainCategory[] {
-    return ['crypto', 'stocks', 'cash', 'other'];
+    return ['crypto', 'equities', 'cash', 'other'];
   }
 
   /**
@@ -325,7 +356,7 @@ export class CategoryService {
   getAllSubCategories(): AssetCategory[] {
     return [
       'crypto_btc', 'crypto_eth', 'crypto_sol', 'crypto_stablecoins', 'crypto_tokens', 'crypto_perps',
-      'stocks_tech', 'stocks_ai', 'stocks_other',
+      'equities_stocks', 'equities_etfs',
     ];
   }
 

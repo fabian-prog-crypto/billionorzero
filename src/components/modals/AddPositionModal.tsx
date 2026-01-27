@@ -14,6 +14,7 @@ interface AddPositionModalProps {
 }
 
 type Tab = 'crypto' | 'stock' | 'cash' | 'manual';
+type EquityType = 'stock' | 'etf';
 
 export default function AddPositionModal({
   isOpen,
@@ -21,6 +22,7 @@ export default function AddPositionModal({
   defaultTab,
 }: AddPositionModalProps) {
   const [tab, setTab] = useState<Tab>(defaultTab || 'crypto');
+  const [equityType, setEquityType] = useState<EquityType>('stock');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -42,6 +44,7 @@ export default function AddPositionModal({
   useEffect(() => {
     if (isOpen) {
       setTab(defaultTab || 'crypto');
+      setEquityType('stock');
       setSearchQuery('');
       setSearchResults([]);
       setSelectedAsset(null);
@@ -130,7 +133,8 @@ export default function AddPositionModal({
     } else {
       if (!selectedAsset || !amount) return;
 
-      const type: AssetType = tab;
+      // For stock tab, use the equityType (stock or etf)
+      const type: AssetType = tab === 'stock' ? equityType : tab;
       const symbol = tab === 'crypto' ? selectedAsset.symbol : selectedAsset.symbol;
       const name = tab === 'crypto' ? selectedAsset.name : selectedAsset.description;
 
@@ -166,7 +170,7 @@ export default function AddPositionModal({
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-2 mb-6">
+        <div className="flex gap-2 mb-4">
           {(['crypto', 'stock', 'cash', 'manual'] as Tab[]).map((t) => (
             <button
               key={t}
@@ -182,10 +186,38 @@ export default function AddPositionModal({
                   : 'bg-[var(--tag-bg)] text-[var(--tag-text)] hover:bg-[var(--border)]'
               }`}
             >
-              {t.charAt(0).toUpperCase() + t.slice(1)}
+              {t === 'stock' ? 'Equity' : t.charAt(0).toUpperCase() + t.slice(1)}
             </button>
           ))}
         </div>
+
+        {/* Stock vs ETF toggle - only show when stock tab is selected */}
+        {tab === 'stock' && (
+          <div className="flex gap-2 mb-6">
+            <button
+              type="button"
+              onClick={() => setEquityType('stock')}
+              className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                equityType === 'stock'
+                  ? 'bg-[#E91E63] text-white'
+                  : 'bg-[var(--background-secondary)] text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
+              }`}
+            >
+              Stock
+            </button>
+            <button
+              type="button"
+              onClick={() => setEquityType('etf')}
+              className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                equityType === 'etf'
+                  ? 'bg-[#9C27B0] text-white'
+                  : 'bg-[var(--background-secondary)] text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
+              }`}
+            >
+              ETF
+            </button>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {tab === 'cash' ? (
@@ -240,7 +272,7 @@ export default function AddPositionModal({
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--foreground-muted)]" />
                 <input
                   type="text"
-                  placeholder={`Search ${tab === 'crypto' ? 'cryptocurrencies' : 'stocks'}...`}
+                  placeholder={`Search ${tab === 'crypto' ? 'cryptocurrencies' : equityType === 'etf' ? 'ETFs' : 'stocks'}...`}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full pl-10"

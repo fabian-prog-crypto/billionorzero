@@ -1,17 +1,20 @@
 'use client';
 
 import { useMemo } from 'react';
-import { TrendingUp, TrendingDown, ArrowUpRight, Info } from 'lucide-react';
+import { TrendingUp, TrendingDown, AlertTriangle } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
-import { calculatePortfolioSummary, calculateAllPositionsWithPrices, calculateExposureData } from '@/services';
+import {
+  calculatePortfolioSummary,
+  calculateAllPositionsWithPrices,
+  calculateExposureData,
+  calculateCustodyBreakdown,
+  getCategoryService,
+} from '@/services';
 import NetWorthChart from '@/components/charts/NetWorthChart';
-import Tooltip from '@/components/ui/Tooltip';
-import Header from '@/components/Header';
-import Link from 'next/link';
+import DonutChart from '@/components/charts/DonutChart';
 import {
   formatCurrency,
   formatPercent,
-  formatNumber,
   getChangeColor,
 } from '@/lib/utils';
 
@@ -33,14 +36,177 @@ export default function OverviewPage() {
     return calculateExposureData(allAssetsWithPrices);
   }, [allAssetsWithPrices]);
 
-  const { simpleBreakdown, exposureMetrics, perpsMetrics, concentrationMetrics, spotDerivatives } = exposureData;
+  const { exposureMetrics, concentrationMetrics } = exposureData;
+
+  // Calculate custody breakdown for all assets (with Banks & Brokers added)
+  const custodyBreakdown = useMemo(() => {
+    const custodyMap: Record<string, { value: number; color: string }> = {
+      'DeFi': { value: 0, color: '#9C27B0' },
+      'Banks & Brokers': { value: 0, color: '#2196F3' },
+      'Self-Custody': { value: 0, color: '#4CAF50' },
+      'Manual': { value: 0, color: '#607D8B' },
+      'CEX': { value: 0, color: '#FF9800' },
+    };
+
+    allAssetsWithPrices.forEach((asset) => {
+      const value = Math.abs(asset.value);
+
+      if (asset.protocol?.startsWith('cex:')) {
+        custodyMap['CEX'].value += value;
+      } else if (asset.type === 'stock' || asset.type === 'cash') {
+        // Stocks and cash typically held at banks/brokers
+        custodyMap['Banks & Brokers'].value += value;
+      } else if (asset.walletAddress) {
+        if (asset.protocol && asset.protocol !== 'wallet') {
+          custodyMap['DeFi'].value += value;
+        } else {
+          custodyMap['Self-Custody'].value += value;
+        }
+      } else {
+        custodyMap['Manual'].value += value;
+      }
+    });
+
+    const total = Object.values(custodyMap).reduce((sum, item) => sum + item.value, 0);
+
+    return Object.entries(custodyMap)
+      .filter(([_, item]) => item.value > 0)
+      .map(([label, item]) => ({
+        label,
+        value: item.value,
+        percentage: total > 0 ? (item.value / total) * 100 : 0,
+        color: item.color,
+      }))
+      .sort((a, b) => b.value - a.value);
+  }, [allAssetsWithPrices]);
+
+  // Calculate allocation breakdown (Cash & Equivalents, Crypto, Equities)
+  const allocationBreakdown = useMemo(() => {
+    const categoryService = getCategoryService();
+    const allocationMap: Record<string, { value: number; color: string }> = {
+      'Cash & Equivalents': { value: 0, color: '#4CAF50' },
+      'Crypto': { value: 0, color: '#FF9800' },
+      'Equities': { value: 0, color: '#F44336' },
+    };
+
+    allAssetsWithPrices.forEach((asset) => {
+      const value = Math.abs(asset.value);
+      const mainCat = categoryService.getMainCategory(asset.symbol, asset.type);
+
+      if (mainCat === 'cash') {
+        allocationMap['Cash & Equivalents'].value += value;
+      } else if (mainCat === 'crypto') {
+        // Check if stablecoin
+        const subCat = categoryService.getSubCategory(asset.symbol, asset.type);
+        if (subCat === 'stablecoins') {
+          allocationMap['Cash & Equivalents'].value += value;
+        } else {
+          allocationMap['Crypto'].value += value;
+        }
+      } else if (mainCat === 'equities') {
+        allocationMap['Equities'].value += value;
+      }
+    });
+
+    const total = Object.values(allocationMap).reduce((sum, item) => sum + item.value, 0);
+
+    return Object.entries(allocationMap)
+      .filter(([_, item]) => item.value > 0)
+      .map(([label, item]) => ({
+        label,
+        value: item.value,
+        percentage: total > 0 ? (item.value / total) * 100 : 0,
+        color: item.color,
+      }))
+      .sort((a, b) => b.value - a.value);
+  }, [allAssetsWithPrices]);
+
+  // Calculate risk profile breakdown
+  const riskProfileBreakdown = useMemo(() => {
+    const categoryService = getCategoryService();
+    const riskMap: Record<string, { value: number; color: string }> = {
+      'Conservative': { value: 0, color: '#4CAF50' },
+      'Moderate': { value: 0, color: '#2196F3' },
+      'Aggressive': { value: 0, color: '#F44336' },
+    };
+
+    allAssetsWithPrices.forEach((asset) => {
+      const value = Math.abs(asset.value);
+      const mainCat = categoryService.getMainCategory(asset.symbol, asset.type);
+      const subCat = categoryService.getSubCategory(asset.symbol, asset.type);
+
+      // Conservative: Cash, stablecoins, bonds
+      if (mainCat === 'cash' || subCat === 'stablecoins') {
+        riskMap['Conservative'].value += value;
+      }
+      // Moderate: Large cap crypto (BTC, ETH), blue chip stocks
+      else if (subCat === 'btc' || subCat === 'eth' || mainCat === 'equities') {
+        riskMap['Moderate'].value += value;
+      }
+      // Aggressive: Altcoins, DeFi, perps
+      else {
+        riskMap['Aggressive'].value += value;
+      }
+    });
+
+    const total = Object.values(riskMap).reduce((sum, item) => sum + item.value, 0);
+
+    return Object.entries(riskMap)
+      .filter(([_, item]) => item.value > 0)
+      .map(([label, item]) => ({
+        label,
+        value: item.value,
+        percentage: total > 0 ? (item.value / total) * 100 : 0,
+        color: item.color,
+      }))
+      .sort((a, b) => b.value - a.value);
+  }, [allAssetsWithPrices]);
+
+  // Calculate debt ratio
+  const debtRatio = useMemo(() => {
+    const totalDebts = allAssetsWithPrices
+      .filter(a => a.value < 0)
+      .reduce((sum, a) => sum + Math.abs(a.value), 0);
+    const grossAssets = allAssetsWithPrices
+      .filter(a => a.value > 0)
+      .reduce((sum, a) => sum + a.value, 0);
+    return grossAssets > 0 ? (totalDebts / grossAssets) * 100 : 0;
+  }, [allAssetsWithPrices]);
+
+  // Count unique assets
+  const uniqueAssetCount = useMemo(() => {
+    const symbols = new Set(allAssetsWithPrices.map(a => a.symbol.toLowerCase()));
+    return symbols.size;
+  }, [allAssetsWithPrices]);
+
+  // Calculate HHI Index (Herfindahl-Hirschman Index)
+  const hhiIndex = useMemo(() => {
+    const totalValue = allAssetsWithPrices.reduce((sum, a) => sum + Math.abs(a.value), 0);
+    if (totalValue === 0) return 0;
+
+    // Group by symbol and calculate market shares
+    const symbolValues: Record<string, number> = {};
+    allAssetsWithPrices.forEach(a => {
+      const symbol = a.symbol.toLowerCase();
+      symbolValues[symbol] = (symbolValues[symbol] || 0) + Math.abs(a.value);
+    });
+
+    // HHI = sum of squared market shares (in percentage)
+    let hhi = 0;
+    Object.values(symbolValues).forEach(value => {
+      const share = (value / totalValue) * 100;
+      hhi += share * share;
+    });
+
+    return Math.round(hhi);
+  }, [allAssetsWithPrices]);
 
   const hasData = positions.length > 0;
 
   if (!hasData) {
     return (
-      <div>
-        <Header title="Overview" />
+      <div className="space-y-8">
+        <h1 className="text-2xl font-semibold">Overview</h1>
         <div className="flex flex-col items-center justify-center py-32">
           <div className="w-20 h-20 rounded-2xl bg-[var(--background-tertiary)] flex items-center justify-center mb-6">
             <TrendingUp className="w-10 h-10 text-[var(--foreground-muted)]" />
@@ -55,239 +221,153 @@ export default function OverviewPage() {
   }
 
   return (
-    <div>
-      <Header title="Overview" />
-      <div className="space-y-8">
-      {/* Hero Stats */}
-      <div className="card-glow">
-        <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
-          <div>
-            <p className="stat-label mb-2">Net Worth</p>
-            <h2 className="stat-value-lg">
-              {hideBalances ? '••••••••' : formatCurrency(summary.totalValue)}
-            </h2>
-            <div className="flex items-center gap-3 mt-3">
-              <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg ${
-                summary.changePercent24h >= 0 ? 'bg-[var(--positive-light)]' : 'bg-[var(--negative-light)]'
-              }`}>
-                {summary.changePercent24h >= 0 ? (
-                  <TrendingUp className="w-4 h-4 text-[var(--positive)]" />
-                ) : (
-                  <TrendingDown className="w-4 h-4 text-[var(--negative)]" />
-                )}
-                <span className={getChangeColor(summary.changePercent24h) + ' font-semibold'}>
-                  {formatPercent(summary.changePercent24h)}
-                </span>
-              </div>
-              <span className="text-[var(--foreground-muted)] text-sm">
-                {hideBalances ? '••••' : formatCurrency(Math.abs(summary.change24h))} today
+    <div className="space-y-8">
+      {/* Page Title */}
+      <h1 className="text-2xl font-semibold">Overview</h1>
+
+      {/* Hero Section: Net Worth + Chart */}
+      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-8">
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">NET WORTH</p>
+          <h2 className="text-3xl font-semibold mb-3">
+            {hideBalances ? '••••••••' : formatCurrency(summary.totalValue)}
+          </h2>
+          <div className="flex items-center gap-3">
+            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg ${
+              summary.changePercent24h >= 0 ? 'bg-[var(--positive-light)]' : 'bg-[var(--negative-light)]'
+            }`}>
+              {summary.changePercent24h >= 0 ? (
+                <TrendingUp className="w-4 h-4 text-[var(--positive)]" />
+              ) : (
+                <TrendingDown className="w-4 h-4 text-[var(--negative)]" />
+              )}
+              <span className={getChangeColor(summary.changePercent24h) + ' font-semibold'}>
+                {formatPercent(summary.changePercent24h)}
               </span>
             </div>
+            <span className="text-[var(--foreground-muted)] text-sm">
+              {hideBalances ? '••••' : formatCurrency(Math.abs(summary.change24h))} (24h)
+            </span>
           </div>
+        </div>
 
-          {/* Mini chart */}
-          <div className="w-full lg:w-[400px] h-[120px]">
-            <NetWorthChart snapshots={snapshots} height={120} minimal />
-          </div>
+        {/* Mini chart */}
+        <div className="w-full lg:w-[350px] h-[100px]">
+          <NetWorthChart snapshots={snapshots} height={100} minimal />
         </div>
       </div>
 
-      {/* Key Metrics Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Tooltip
-          content={
-            <div className="space-y-2 text-sm">
-              <div className="font-medium border-b border-[var(--border)] pb-2">Exposure Breakdown</div>
-              <div className="flex justify-between">
-                <span className="text-[var(--positive)]">Long</span>
-                <span>{formatCurrency(exposureMetrics.longExposure)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[var(--negative)]">Short</span>
-                <span>{formatCurrency(exposureMetrics.shortExposure)}</span>
-              </div>
-            </div>
-          }
-          position="bottom"
-        >
-          <div className="metric-card cursor-help">
-            <div className="flex items-center gap-1.5 mb-2">
-              <p className="stat-label">Gross Exposure</p>
-              <Info className="w-3.5 h-3.5 text-[var(--foreground-subtle)]" />
-            </div>
-            <p className="stat-value">
+      <hr className="border-[var(--border)]" />
+
+      {/* 3 Donut Charts Row */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        {/* Allocation Breakdown */}
+        <DonutChart
+          title="Allocation"
+          data={allocationBreakdown.map(item => ({
+            label: item.label,
+            value: item.value,
+            color: item.color,
+          }))}
+          hideValues={hideBalances}
+          maxItems={5}
+        />
+
+        {/* Custody Breakdown */}
+        <DonutChart
+          title="Custody"
+          data={custodyBreakdown.map(item => ({
+            label: item.label,
+            value: item.value,
+            color: item.color,
+          }))}
+          hideValues={hideBalances}
+          maxItems={5}
+        />
+
+        {/* Risk Profile */}
+        <DonutChart
+          title="Risk Profile"
+          data={riskProfileBreakdown.map(item => ({
+            label: item.label,
+            value: item.value,
+            color: item.color,
+          }))}
+          hideValues={hideBalances}
+          maxItems={5}
+        />
+      </div>
+
+      <hr className="border-[var(--border)]" />
+
+      {/* Risk Metrics Section */}
+      <div>
+        <h3 className="font-medium mb-4">Risk Metrics</h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">GROSS EXPOSURE</p>
+            <p className="text-xl font-semibold">
               {hideBalances ? '••••' : formatCurrency(exposureMetrics.grossExposure)}
             </p>
           </div>
-        </Tooltip>
-
-        <Tooltip
-          content={
-            <div className="text-sm">
-              <p className="mb-2">Gross Exposure / Net Worth</p>
-              <p className="text-[var(--foreground-muted)]">
-                {exposureMetrics.leverage <= 1 ? 'No leverage' :
-                 exposureMetrics.leverage <= 1.5 ? 'Low leverage' :
-                 exposureMetrics.leverage <= 2 ? 'Moderate leverage' : 'High leverage'}
-              </p>
-            </div>
-          }
-          position="bottom"
-        >
-          <div className="metric-card cursor-help">
-            <div className="flex items-center gap-1.5 mb-2">
-              <p className="stat-label">Leverage</p>
-              <Info className="w-3.5 h-3.5 text-[var(--foreground-subtle)]" />
-            </div>
-            <p className={`stat-value ${
-              exposureMetrics.leverage > 2 ? 'text-[var(--negative)]' :
-              exposureMetrics.leverage > 1.5 ? 'text-[var(--warning)]' : ''
-            }`}>
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">NET EXPOSURE</p>
+            <p className="text-xl font-semibold">
+              {hideBalances ? '••••' : formatCurrency(exposureMetrics.netExposure)}
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">LEVERAGE</p>
+            <p className="text-xl font-semibold">
               {exposureMetrics.leverage.toFixed(2)}x
             </p>
           </div>
-        </Tooltip>
-
-        <div className="metric-card">
-          <p className="stat-label mb-2">Cash & Stables</p>
-          <p className="stat-value text-[var(--positive)]">
-            {hideBalances ? '••••' : formatCurrency(exposureMetrics.cashPosition)}
-          </p>
-          <p className="text-xs text-[var(--foreground-muted)] mt-1">
-            {exposureMetrics.cashPercentage.toFixed(1)}% of portfolio
-          </p>
-        </div>
-
-        <div className="metric-card">
-          <p className="stat-label mb-2">Concentration</p>
-          <p className={`stat-value ${
-            concentrationMetrics.top5Percentage > 80 ? 'text-[var(--negative)]' :
-            concentrationMetrics.top5Percentage > 60 ? 'text-[var(--warning)]' : ''
-          }`}>
-            {concentrationMetrics.top5Percentage.toFixed(0)}%
-          </p>
-          <p className="text-xs text-[var(--foreground-muted)] mt-1">
-            Top 5 positions
-          </p>
-        </div>
-      </div>
-
-      {/* Spot vs Derivatives */}
-      {(spotDerivatives.derivativesLong > 0 || spotDerivatives.derivativesShort > 0) && (
-        <div className="card">
-          <h3 className="font-semibold mb-6">Spot vs Derivatives</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="p-5 bg-[var(--background-tertiary)] rounded-xl">
-              <p className="stat-label mb-3">Spot Positions</p>
-              <div className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-[var(--foreground-muted)]">Long</span>
-                  <span className="text-[var(--positive)] font-mono">
-                    {hideBalances ? '••••' : formatCurrency(spotDerivatives.spotLong)}
-                  </span>
-                </div>
-                {spotDerivatives.spotShort > 0 && (
-                  <div className="flex justify-between">
-                    <span className="text-[var(--foreground-muted)]">Short</span>
-                    <span className="text-[var(--negative)] font-mono">
-                      -{hideBalances ? '••••' : formatCurrency(spotDerivatives.spotShort)}
-                    </span>
-                  </div>
-                )}
-                <div className="divider !my-2" />
-                <div className="flex justify-between font-medium">
-                  <span>Net</span>
-                  <span className="font-mono">
-                    {hideBalances ? '••••' : formatCurrency(spotDerivatives.spotNet)}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-5 bg-[var(--background-tertiary)] rounded-xl">
-              <p className="stat-label mb-3">Derivatives</p>
-              <div className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-[var(--foreground-muted)]">Long</span>
-                  <span className="text-[var(--positive)] font-mono">
-                    {hideBalances ? '••••' : formatCurrency(spotDerivatives.derivativesLong)}
-                  </span>
-                </div>
-                {spotDerivatives.derivativesShort > 0 && (
-                  <div className="flex justify-between">
-                    <span className="text-[var(--foreground-muted)]">Short</span>
-                    <span className="text-[var(--negative)] font-mono">
-                      -{hideBalances ? '••••' : formatCurrency(spotDerivatives.derivativesShort)}
-                    </span>
-                  </div>
-                )}
-                <div className="flex justify-between">
-                  <span className="text-[var(--foreground-muted)]">Collateral</span>
-                  <span className="font-mono">
-                    {hideBalances ? '••••' : formatCurrency(spotDerivatives.derivativesCollateral)}
-                  </span>
-                </div>
-              </div>
-            </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2 flex items-center gap-1">
+              DEBT RATIO
+              {debtRatio > 20 && <AlertTriangle className="w-3.5 h-3.5 text-[var(--warning)]" />}
+            </p>
+            <p className={`text-xl font-semibold ${debtRatio > 20 ? 'text-[var(--warning)]' : ''}`}>
+              {debtRatio.toFixed(1)}%
+            </p>
           </div>
         </div>
-      )}
-
-      {/* Top Positions */}
-      <div className="card">
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="font-semibold">Top Positions</h3>
-          <Link href="/positions" className="text-sm text-[var(--accent-primary)] flex items-center gap-1 hover:underline">
-            View All <ArrowUpRight className="w-3 h-3" />
-          </Link>
-        </div>
-
-        <div className="table-scroll">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-[var(--border)]">
-                <th className="table-header text-left pb-3">Asset</th>
-                <th className="table-header text-right pb-3">Price</th>
-                <th className="table-header text-right pb-3">Holdings</th>
-                <th className="table-header text-right pb-3">Value</th>
-                <th className="table-header text-right pb-3">24h</th>
-              </tr>
-            </thead>
-            <tbody>
-              {summary.topAssets.slice(0, 8).map((asset) => (
-                <tr
-                  key={asset.id}
-                  className="hover-row border-b border-[var(--border)] last:border-0"
-                >
-                  <td className="py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-xl bg-[var(--background-tertiary)] flex items-center justify-center text-sm font-bold">
-                        {asset.symbol.slice(0, 2).toUpperCase()}
-                      </div>
-                      <div>
-                        <p className="font-medium">{asset.symbol.toUpperCase()}</p>
-                        <p className="text-xs text-[var(--foreground-muted)]">{asset.name}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="py-4 text-right font-mono text-sm">
-                    {formatCurrency(asset.currentPrice)}
-                  </td>
-                  <td className="py-4 text-right font-mono text-sm text-[var(--foreground-muted)]">
-                    {hideBalances ? '•••' : formatNumber(asset.amount)}
-                  </td>
-                  <td className="py-4 text-right font-mono font-medium">
-                    {hideBalances ? '••••' : formatCurrency(asset.value)}
-                  </td>
-                  <td className={`py-4 text-right font-mono text-sm ${getChangeColor(asset.changePercent24h)}`}>
-                    {formatPercent(asset.changePercent24h)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
       </div>
+
+      <hr className="border-[var(--border)]" />
+
+      {/* Concentration Risk Section */}
+      <div>
+        <h3 className="font-medium mb-4">Concentration Risk</h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">TOP POSITION</p>
+            <p className="text-xl font-semibold">
+              {concentrationMetrics.top1Percentage.toFixed(1)}%
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">TOP 5</p>
+            <p className="text-xl font-semibold">
+              {concentrationMetrics.top5Percentage.toFixed(1)}%
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">HHI INDEX</p>
+            <p className="text-xl font-semibold">
+              {hhiIndex}
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">ASSETS</p>
+            <p className="text-xl font-semibold">
+              {uniqueAssetCount}
+            </p>
+            <p className="text-xs text-[var(--foreground-muted)]">
+              across {positions.length} positions
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );

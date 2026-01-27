@@ -269,27 +269,33 @@ export default function PositionsPage() {
     <div>
       <Header title="Portfolio" />
 
-      {/* NAV Summary Card */}
-      <div className="card mb-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-[var(--foreground-muted)] mb-1">Net Asset Value</p>
-            <h2 className="text-3xl font-bold">{hideBalances ? '******' : formatCurrency(totalNAV)}</h2>
-            <div className="flex items-center gap-2 mt-1">
-              <span className={getChangeColor(totalChangePercent)}>
-                {formatPercent(totalChangePercent)}
-              </span>
-              <span className="text-sm text-[var(--foreground-muted)]">
-                ({hideBalances ? '****' : formatCurrency(Math.abs(totalChange24h))}) 24h
-              </span>
-            </div>
+      {/* NAV Summary */}
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">NET ASSET VALUE</p>
+          <h2 className="text-2xl font-semibold mb-1">{hideBalances ? '••••••••' : formatCurrency(totalNAV)}</h2>
+          <div className="flex items-center gap-2">
+            <span className={getChangeColor(totalChangePercent)}>
+              {formatPercent(totalChangePercent)}
+            </span>
+            <span className="text-[13px] text-[var(--foreground-muted)]">
+              ({hideBalances ? '••••' : formatCurrency(Math.abs(totalChange24h))}) 24h
+            </span>
           </div>
-          <div className="text-right text-sm text-[var(--foreground-muted)]">
-            <p>{totalPositionCount} positions</p>
-            <p>{uniqueAssetCount} assets</p>
+        </div>
+        <div className="flex gap-6 text-right">
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-0.5">Positions</p>
+            <p className="text-[13px] font-medium">{totalPositionCount}</p>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-0.5">Assets</p>
+            <p className="text-[13px] font-medium">{uniqueAssetCount}</p>
           </div>
         </div>
       </div>
+
+      <hr className="border-[var(--border)] mb-6" />
 
       {/* Quick Category Selectors */}
       <div className="flex flex-wrap gap-2 mb-3">
@@ -365,8 +371,7 @@ export default function PositionsPage() {
       })()}
 
       {/* Unified Filter Bar */}
-      <div className="card mb-4 p-3">
-        <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3 mb-4">
           {/* View Mode Toggle */}
           <div className="flex gap-1 p-1 bg-[var(--background-secondary)] rounded-lg">
             <button
@@ -429,10 +434,9 @@ export default function PositionsPage() {
             <span className="hidden sm:inline">Add</span>
           </button>
         </div>
-      </div>
 
       {/* Table */}
-      <div className="card">
+      <div>
         {displayData.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-[var(--foreground-muted)]">

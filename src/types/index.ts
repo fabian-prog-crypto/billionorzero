@@ -1,4 +1,4 @@
-export type AssetType = 'crypto' | 'stock' | 'cash' | 'manual';
+export type AssetType = 'crypto' | 'stock' | 'etf' | 'cash' | 'manual';
 
 // Supported perpetual futures exchanges (type only - use PerpExchangeService for metadata)
 export type PerpExchange = 'hyperliquid' | 'lighter' | 'ethereal';

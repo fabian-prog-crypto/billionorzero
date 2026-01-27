@@ -135,25 +135,25 @@ export default function SettingsPage() {
 
       <div className="max-w-2xl space-y-6">
         {/* Security */}
-        <div className="card">
-          <h3 className="font-semibold mb-4 flex items-center gap-2">
+        <div>
+          <h3 className="text-[15px] font-medium mb-4 flex items-center gap-2">
             <Shield className="w-5 h-5" />
             Security
           </h3>
-          <p className="text-sm text-[var(--foreground-muted)] mb-4">
+          <p className="text-[13px] text-[var(--foreground-muted)] mb-4">
             Protect your portfolio with a passkey (Face ID, Touch ID, or device PIN).
           </p>
 
           {!passkeySupported ? (
-            <div className="p-3 bg-[var(--background-secondary)]  text-sm text-[var(--foreground-muted)]">
+            <div className="p-3 bg-[var(--background-secondary)] rounded-lg text-[13px] text-[var(--foreground-muted)]">
               Passkeys are not supported in this browser.
             </div>
           ) : hasPasskey ? (
             <div className="space-y-4">
-              <div className="flex items-center justify-between p-3 bg-[var(--positive-light)] ">
+              <div className="flex items-center justify-between p-3 bg-[var(--positive-light)] rounded-lg">
                 <div className="flex items-center gap-2">
                   <Fingerprint className="w-5 h-5 text-[var(--positive)]" />
-                  <span className="text-sm font-medium text-[var(--positive)]">Passkey enabled</span>
+                  <span className="text-[13px] font-medium text-[var(--positive)]">Passkey enabled</span>
                 </div>
               </div>
 
@@ -171,7 +171,7 @@ export default function SettingsPage() {
           ) : (
             <div className="space-y-4">
               {passkeyError && (
-                <div className="p-3 bg-[var(--negative-light)] text-[var(--negative)]  text-sm">
+                <div className="p-3 bg-[var(--negative-light)] rounded-lg text-[var(--negative)] text-[13px]">
                   {passkeyError}
                 </div>
               )}
@@ -197,13 +197,15 @@ export default function SettingsPage() {
           )}
         </div>
 
+        <hr className="border-[var(--border)]" />
+
         {/* Appearance */}
-        <div className="card">
-          <h3 className="font-semibold mb-4 flex items-center gap-2">
+        <div>
+          <h3 className="text-[15px] font-medium mb-4 flex items-center gap-2">
             <Sun className="w-5 h-5" />
             Appearance
           </h3>
-          <p className="text-sm text-[var(--foreground-muted)] mb-4">
+          <p className="text-[13px] text-[var(--foreground-muted)] mb-4">
             Choose your preferred color theme.
           </p>
 
@@ -246,19 +248,21 @@ export default function SettingsPage() {
           </div>
         </div>
 
+        <hr className="border-[var(--border)]" />
+
         {/* Performance Metrics */}
-        <div className="card">
-          <h3 className="font-semibold mb-4 flex items-center gap-2">
+        <div>
+          <h3 className="text-[15px] font-medium mb-4 flex items-center gap-2">
             <TrendingUp className="w-5 h-5" />
             Performance Metrics
           </h3>
-          <p className="text-sm text-[var(--foreground-muted)] mb-4">
+          <p className="text-[13px] text-[var(--foreground-muted)] mb-4">
             Configure parameters used in performance calculations.
           </p>
 
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-1">
+              <label className="block text-[13px] font-medium mb-1">
                 Risk-Free Rate (for Sharpe Ratio)
               </label>
               <div className="flex items-center gap-3">
@@ -276,7 +280,7 @@ export default function SettingsPage() {
                   }}
                   className="w-24"
                 />
-                <span className="text-sm text-[var(--foreground-muted)]">%</span>
+                <span className="text-[13px] text-[var(--foreground-muted)]">%</span>
               </div>
               <p className="text-xs text-[var(--foreground-muted)] mt-1">
                 Annual risk-free rate used to calculate Sharpe ratio. Default is 5% (approximate US Treasury rate).
@@ -285,13 +289,15 @@ export default function SettingsPage() {
           </div>
         </div>
 
+        <hr className="border-[var(--border)]" />
+
         {/* API Keys */}
-        <div className="card">
-          <h3 className="font-semibold mb-4 flex items-center gap-2">
+        <div>
+          <h3 className="text-[15px] font-medium mb-4 flex items-center gap-2">
             <Key className="w-5 h-5" />
             API Keys
           </h3>
-          <p className="text-sm text-[var(--foreground-muted)] mb-4">
+          <p className="text-[13px] text-[var(--foreground-muted)] mb-4">
             Add your API keys to enable real-time data fetching. Without API keys, the app uses demo/simulated data.
           </p>
 
@@ -354,37 +360,43 @@ export default function SettingsPage() {
           </div>
         </div>
 
+        <hr className="border-[var(--border)]" />
+
         {/* Auto-refresh settings */}
-        <div className="card">
-          <h3 className="font-semibold mb-4 flex items-center gap-2">
+        <div>
+          <h3 className="text-[15px] font-medium mb-4 flex items-center gap-2">
             <RefreshCw className="w-5 h-5" />
             Auto-Refresh
           </h3>
-          <p className="text-sm text-[var(--foreground-muted)] mb-4">
+          <p className="text-[13px] text-[var(--foreground-muted)] mb-4">
             Portfolio data is automatically refreshed once per day.
           </p>
           <div className="flex items-center gap-3">
             <div className="w-2 h-2 bg-[var(--positive)] rounded-full animate-pulse"></div>
-            <span className="text-sm">Auto-refresh enabled (daily)</span>
+            <span className="text-[13px]">Auto-refresh enabled (daily)</span>
           </div>
         </div>
 
+        <hr className="border-[var(--border)]" />
+
         {/* Daily Snapshots */}
-        <div className="card">
-          <h3 className="font-semibold mb-4">Daily Snapshots</h3>
-          <p className="text-sm text-[var(--foreground-muted)] mb-4">
+        <div>
+          <h3 className="text-[15px] font-medium mb-4">Daily Snapshots</h3>
+          <p className="text-[13px] text-[var(--foreground-muted)] mb-4">
             A snapshot of your portfolio value is taken once per day to track historical performance.
           </p>
-          <div className="flex items-center justify-between p-3 bg-[var(--background-secondary)] ">
-            <span className="text-sm">Total snapshots recorded</span>
+          <div className="flex items-center justify-between p-3 bg-[var(--background-secondary)] rounded-lg">
+            <span className="text-[13px]">Total snapshots recorded</span>
             <span className="font-semibold">{snapshots.length}</span>
           </div>
         </div>
 
+        <hr className="border-[var(--border)]" />
+
         {/* Data Management */}
-        <div className="card">
-          <h3 className="font-semibold mb-4">Data Management</h3>
-          <p className="text-sm text-[var(--foreground-muted)] mb-4">
+        <div>
+          <h3 className="text-[15px] font-medium mb-4">Data Management</h3>
+          <p className="text-[13px] text-[var(--foreground-muted)] mb-4">
             Export your portfolio data for backup or import a previous backup.
           </p>
 
@@ -412,12 +424,14 @@ export default function SettingsPage() {
           </div>
         </div>
 
+        <hr className="border-[var(--border)]" />
+
         {/* About */}
-        <div className="card">
-          <h3 className="font-semibold mb-4">About</h3>
-          <div className="space-y-2 text-sm text-[var(--foreground-muted)]">
+        <div>
+          <h3 className="text-[15px] font-medium mb-4">About</h3>
+          <div className="space-y-2 text-[13px] text-[var(--foreground-muted)]">
             <p>
-              <strong>Portfolio Tracker</strong> - Track your investments across crypto and stocks.
+              <strong>Portfolio Tracker</strong> - Track your investments across crypto and equities.
             </p>
             <p>
               Crypto prices powered by <a href="https://www.coingecko.com/" target="_blank" rel="noopener noreferrer" className="text-[var(--accent-primary)]">CoinGecko</a>

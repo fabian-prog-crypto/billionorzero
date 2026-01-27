@@ -8,7 +8,7 @@ export default function OtherPage() {
     <CategoryView
       category="other"
       title="Other"
-      description="Other assets that don't fit into crypto, stocks, or cash categories"
+      description="Other assets that don't fit into crypto, equities, or cash categories"
       emptyIcon={<Package className="w-10 h-10 text-[var(--foreground-muted)]" />}
       emptyMessage="Add other asset types to track custom holdings."
     />

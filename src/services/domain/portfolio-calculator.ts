@@ -592,6 +592,349 @@ export function filterPerpPositions(assets: AssetWithPrice[]): AssetWithPrice[] 
  *
  * All components should use this function instead of calculating locally.
  */
+/**
+ * Custody breakdown item
+ */
+export interface CustodyBreakdownItem {
+  label: string;
+  value: number;
+  percentage: number;
+  color: string;
+}
+
+/**
+ * Chain breakdown item
+ */
+export interface ChainBreakdownItem {
+  chain: string;
+  label: string;
+  value: number;
+  percentage: number;
+  color: string;
+}
+
+/**
+ * Crypto metrics for display
+ */
+export interface CryptoMetrics {
+  stablecoinRatio: number;
+  btcDominance: number;
+  ethDominance: number;
+  defiExposure: number;
+}
+
+/**
+ * Crypto allocation item for horizontal bar display
+ */
+export interface CryptoAllocationItem {
+  category: string;
+  label: string;
+  value: number;
+  percentage: number;
+  color: string;
+}
+
+// Chain colors mapping
+const CHAIN_COLORS: Record<string, string> = {
+  eth: '#627EEA',
+  ethereum: '#627EEA',
+  arb: '#28A0F0',
+  arbitrum: '#28A0F0',
+  op: '#FF0420',
+  optimism: '#FF0420',
+  base: '#0052FF',
+  bsc: '#F0B90B',
+  matic: '#8247E5',
+  polygon: '#8247E5',
+  avax: '#E84142',
+  sol: '#9945FF',
+  solana: '#9945FF',
+  ftm: '#1969FF',
+  fantom: '#1969FF',
+  cro: '#002D74',
+  cronos: '#002D74',
+  gnosis: '#04795B',
+  linea: '#61DFFF',
+  scroll: '#FFEEDA',
+  zksync: '#8C8DFC',
+  manta: '#000000',
+  blast: '#FCFC03',
+  mode: '#DFFE00',
+  uni: '#FF007A',
+  unichain: '#FF007A',
+};
+
+// Custody type colors
+const CUSTODY_COLORS: Record<string, string> = {
+  'Self-Custody': '#4CAF50',
+  'DeFi': '#9C27B0',
+  'CEX': '#FF9800',
+  'Manual': '#607D8B',
+};
+
+/**
+ * Calculate custody breakdown (Self-Custody, DeFi, CEX, Manual)
+ */
+export function calculateCustodyBreakdown(assets: AssetWithPrice[]): CustodyBreakdownItem[] {
+  const custodyMap: Record<string, number> = {
+    'Self-Custody': 0,
+    'DeFi': 0,
+    'CEX': 0,
+    'Manual': 0,
+  };
+
+  assets.forEach((asset) => {
+    const value = Math.abs(asset.value);
+
+    if (asset.protocol?.startsWith('cex:')) {
+      // CEX positions
+      custodyMap['CEX'] += value;
+    } else if (asset.walletAddress) {
+      // Wallet positions
+      if (asset.protocol && asset.protocol !== 'wallet') {
+        // DeFi protocol (Aave, Morpho, etc.)
+        custodyMap['DeFi'] += value;
+      } else {
+        // Self-custody (plain wallet holdings)
+        custodyMap['Self-Custody'] += value;
+      }
+    } else {
+      // Manual positions
+      custodyMap['Manual'] += value;
+    }
+  });
+
+  const total = Object.values(custodyMap).reduce((sum, v) => sum + v, 0);
+
+  return Object.entries(custodyMap)
+    .filter(([_, value]) => value > 0)
+    .map(([label, value]) => ({
+      label,
+      value,
+      percentage: total > 0 ? (value / total) * 100 : 0,
+      color: CUSTODY_COLORS[label] || '#6B7280',
+    }))
+    .sort((a, b) => b.value - a.value);
+}
+
+/**
+ * Calculate chain breakdown
+ */
+export function calculateChainBreakdown(assets: AssetWithPrice[]): ChainBreakdownItem[] {
+  const chainMap: Record<string, number> = {};
+
+  assets.forEach((asset) => {
+    const value = Math.abs(asset.value);
+    let chain = 'Other';
+
+    if (asset.protocol?.startsWith('cex:')) {
+      // CEX positions - use exchange name
+      const exchange = asset.protocol.replace('cex:', '');
+      chain = exchange.charAt(0).toUpperCase() + exchange.slice(1);
+    } else if (asset.chain) {
+      // On-chain positions
+      chain = asset.chain.charAt(0).toUpperCase() + asset.chain.slice(1);
+    } else if (asset.protocol && isPerpProtocol(asset.protocol)) {
+      // Perp protocols
+      chain = asset.protocol.charAt(0).toUpperCase() + asset.protocol.slice(1);
+    }
+
+    chainMap[chain] = (chainMap[chain] || 0) + value;
+  });
+
+  const total = Object.values(chainMap).reduce((sum, v) => sum + v, 0);
+
+  return Object.entries(chainMap)
+    .filter(([_, value]) => value > 0)
+    .map(([chain, value]) => ({
+      chain: chain.toLowerCase(),
+      label: chain,
+      value,
+      percentage: total > 0 ? (value / total) * 100 : 0,
+      color: CHAIN_COLORS[chain.toLowerCase()] || '#6B7280',
+    }))
+    .sort((a, b) => b.value - a.value);
+}
+
+/**
+ * Calculate crypto-specific metrics
+ */
+export function calculateCryptoMetrics(assets: AssetWithPrice[]): CryptoMetrics {
+  const categoryService = getCategoryService();
+
+  // Filter to crypto only
+  const cryptoAssets = assets.filter((a) => {
+    const mainCat = categoryService.getMainCategory(a.symbol, a.type);
+    return mainCat === 'crypto';
+  });
+
+  const totalCryptoValue = cryptoAssets.reduce((sum, a) => sum + Math.abs(a.value), 0);
+
+  if (totalCryptoValue === 0) {
+    return { stablecoinRatio: 0, btcDominance: 0, ethDominance: 0, defiExposure: 0 };
+  }
+
+  // Calculate metrics
+  let stablecoinValue = 0;
+  let btcValue = 0;
+  let ethValue = 0;
+  let defiValue = 0;
+
+  cryptoAssets.forEach((asset) => {
+    const value = Math.abs(asset.value);
+    const subCat = categoryService.getSubCategory(asset.symbol, asset.type);
+
+    if (subCat === 'stablecoins') {
+      stablecoinValue += value;
+    }
+    if (subCat === 'btc') {
+      btcValue += value;
+    }
+    if (subCat === 'eth') {
+      ethValue += value;
+    }
+    if (asset.protocol && asset.protocol !== 'wallet' && !asset.protocol.startsWith('cex:')) {
+      defiValue += value;
+    }
+  });
+
+  return {
+    stablecoinRatio: (stablecoinValue / totalCryptoValue) * 100,
+    btcDominance: (btcValue / totalCryptoValue) * 100,
+    ethDominance: (ethValue / totalCryptoValue) * 100,
+    defiExposure: (defiValue / totalCryptoValue) * 100,
+  };
+}
+
+/**
+ * Calculate crypto allocation for horizontal bar display
+ */
+export function calculateCryptoAllocation(assets: AssetWithPrice[]): CryptoAllocationItem[] {
+  const categoryService = getCategoryService();
+
+  // Filter to crypto only
+  const cryptoAssets = assets.filter((a) => {
+    const mainCat = categoryService.getMainCategory(a.symbol, a.type);
+    return mainCat === 'crypto';
+  });
+
+  const allocationMap: Record<string, { value: number; color: string }> = {};
+
+  const categoryColors: Record<string, string> = {
+    btc: '#F7931A',
+    eth: '#627EEA',
+    sol: '#9945FF',
+    stablecoins: '#4CAF50',
+    tokens: '#00BCD4',
+    perps: '#FF5722',
+  };
+
+  const categoryLabels: Record<string, string> = {
+    btc: 'BTC',
+    eth: 'ETH',
+    sol: 'SOL',
+    stablecoins: 'Stablecoins',
+    tokens: 'Tokens',
+    perps: 'Perps',
+  };
+
+  cryptoAssets.forEach((asset) => {
+    const value = Math.abs(asset.value);
+    let subCat = categoryService.getSubCategory(asset.symbol, asset.type);
+
+    // Check if it's a perp position
+    if (asset.protocol && isPerpProtocol(asset.protocol)) {
+      const { isPerpTrade } = detectPerpTrade(asset.name);
+      if (isPerpTrade) {
+        subCat = 'perps';
+      }
+    }
+
+    if (!allocationMap[subCat]) {
+      allocationMap[subCat] = {
+        value: 0,
+        color: categoryColors[subCat] || '#6B7280',
+      };
+    }
+    allocationMap[subCat].value += value;
+  });
+
+  const totalValue = Object.values(allocationMap).reduce((sum, item) => sum + item.value, 0);
+
+  return Object.entries(allocationMap)
+    .filter(([_, item]) => item.value > 0)
+    .map(([category, item]) => ({
+      category,
+      label: categoryLabels[category] || category,
+      value: item.value,
+      percentage: totalValue > 0 ? (item.value / totalValue) * 100 : 0,
+      color: item.color,
+    }))
+    .sort((a, b) => b.value - a.value);
+}
+
+/**
+ * Calculate exposure breakdown for donut chart (Stablecoins, ETH, DeFi, BTC, etc.)
+ */
+export function calculateExposureBreakdown(assets: AssetWithPrice[]): CryptoAllocationItem[] {
+  const categoryService = getCategoryService();
+
+  // Filter to crypto only
+  const cryptoAssets = assets.filter((a) => {
+    const mainCat = categoryService.getMainCategory(a.symbol, a.type);
+    return mainCat === 'crypto';
+  });
+
+  const exposureMap: Record<string, { value: number; color: string; label: string }> = {};
+
+  const categoryConfig: Record<string, { color: string; label: string }> = {
+    stablecoins: { color: '#4CAF50', label: 'Stablecoins' },
+    eth: { color: '#627EEA', label: 'ETH' },
+    btc: { color: '#F7931A', label: 'BTC' },
+    sol: { color: '#9945FF', label: 'SOL' },
+    tokens: { color: '#00BCD4', label: 'Tokens' },
+    defi: { color: '#9C27B0', label: 'DeFi' },
+    rwa: { color: '#795548', label: 'RWA' },
+    privacy: { color: '#37474F', label: 'Privacy' },
+    ai: { color: '#2196F3', label: 'AI' },
+    other: { color: '#6B7280', label: 'Other' },
+  };
+
+  cryptoAssets.forEach((asset) => {
+    const value = Math.abs(asset.value);
+    const subCat = categoryService.getSubCategory(asset.symbol, asset.type);
+
+    // Map to exposure categories
+    let exposureCat: string = subCat;
+    if (!categoryConfig[exposureCat]) {
+      exposureCat = 'other';
+    }
+
+    if (!exposureMap[exposureCat]) {
+      const config = categoryConfig[exposureCat] || categoryConfig.other;
+      exposureMap[exposureCat] = {
+        value: 0,
+        color: config.color,
+        label: config.label,
+      };
+    }
+    exposureMap[exposureCat].value += value;
+  });
+
+  const totalValue = Object.values(exposureMap).reduce((sum, item) => sum + item.value, 0);
+
+  return Object.entries(exposureMap)
+    .filter(([_, item]) => item.value > 0)
+    .map(([category, item]) => ({
+      category,
+      label: item.label,
+      value: item.value,
+      percentage: totalValue > 0 ? (item.value / totalValue) * 100 : 0,
+      color: item.color,
+    }))
+    .sort((a, b) => b.value - a.value);
+}
+
 export function calculateExposureData(assets: AssetWithPrice[]): ExposureData {
   const categoryService = getCategoryService();
 

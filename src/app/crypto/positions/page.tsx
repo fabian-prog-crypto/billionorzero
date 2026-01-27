@@ -235,7 +235,7 @@ export default function CryptoPositionsPage() {
       />
 
       {/* Table */}
-      <div className="card">
+      <div>
         {displayData.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-[var(--foreground-muted)]">

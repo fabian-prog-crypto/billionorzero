@@ -12,9 +12,12 @@ export type {
   AssetCategory,
   SubCategory,
   CryptoSubCategory,
-  StockSubCategory,
+  EquitiesSubCategory,
   CategoryHierarchy,
 } from '@/services/domain/category-service';
+
+// Backward compatibility alias
+export type { EquitiesSubCategory as StockSubCategory } from '@/services/domain/category-service';
 
 export {
   CATEGORY_COLORS,

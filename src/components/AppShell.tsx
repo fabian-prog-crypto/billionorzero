@@ -12,37 +12,37 @@ import AddWalletModal from '@/components/modals/AddWalletModal';
 import { calculateSyncCost } from '@/lib/constants';
 
 type MainTab = 'portfolio' | 'insights';
-type SubTab = 'overview' | 'crypto' | 'stocks' | 'cash' | 'other';
+type SubTab = 'overview' | 'crypto' | 'equities' | 'cash' | 'other';
 
 // Sidebar items per category (paths are relative, will be prefixed with category)
 // Empty path '' means category root (e.g., /crypto for crypto category)
 const sidebarItemsByCategory: Record<SubTab, { path: string; icon: typeof Layers; label: string }[]> = {
   overview: [
     { path: '', icon: LayoutDashboard, label: 'Overview' },
-    { path: 'positions', icon: Layers, label: 'Positions' },
+    { path: 'positions', icon: Layers, label: 'Assets' },
     { path: 'exposure', icon: PieChart, label: 'Exposure' },
     { path: 'performance', icon: TrendingUp, label: 'Performance' },
   ],
   crypto: [
     { path: '', icon: LayoutDashboard, label: 'Overview' },
-    { path: 'positions', icon: Layers, label: 'Positions' },
+    { path: 'positions', icon: Layers, label: 'Assets' },
     { path: 'exposure', icon: PieChart, label: 'Exposure' },
     { path: 'perps', icon: CandlestickChart, label: 'Perps' },
     { path: 'wallets', icon: Wallet, label: 'Wallets' },
     { path: 'accounts', icon: Building2, label: 'Accounts' },
   ],
-  stocks: [
+  equities: [
     { path: '', icon: LayoutDashboard, label: 'Overview' },
-    { path: 'positions', icon: Layers, label: 'Positions' },
+    { path: 'positions', icon: Layers, label: 'Assets' },
     { path: 'exposure', icon: PieChart, label: 'Exposure' },
   ],
   cash: [
     { path: '', icon: LayoutDashboard, label: 'Overview' },
-    { path: 'positions', icon: Layers, label: 'Positions' },
+    { path: 'positions', icon: Layers, label: 'Assets' },
   ],
   other: [
     { path: '', icon: LayoutDashboard, label: 'Overview' },
-    { path: 'positions', icon: Layers, label: 'Positions' },
+    { path: 'positions', icon: Layers, label: 'Assets' },
   ],
 };
 
@@ -57,7 +57,7 @@ const buildHref = (category: SubTab, path: string): string => {
 const subTabs: { id: SubTab; label: string }[] = [
   { id: 'overview', label: 'All' },
   { id: 'crypto', label: 'Crypto' },
-  { id: 'stocks', label: 'Stocks' },
+  { id: 'equities', label: 'Equities' },
   { id: 'cash', label: 'Cash' },
   { id: 'other', label: 'Others' },
 ];
@@ -103,7 +103,7 @@ export default function AppShell({ children }: AppShellProps) {
   // Determine active sub-tab from pathname
   const getActiveSubTab = (): SubTab => {
     if (pathname.startsWith('/crypto')) return 'crypto';
-    if (pathname.startsWith('/stocks')) return 'stocks';
+    if (pathname.startsWith('/equities')) return 'equities';
     if (pathname.startsWith('/cash')) return 'cash';
     if (pathname.startsWith('/other')) return 'other';
     return 'overview';
@@ -152,7 +152,7 @@ export default function AppShell({ children }: AppShellProps) {
   };
 
   // Check if current path is a portfolio sub-tab page
-  const isPortfolioPage = pathname === '/' || pathname === '/crypto' || pathname === '/stocks' || pathname === '/cash' || pathname === '/other';
+  const isPortfolioPage = pathname === '/' || pathname === '/crypto' || pathname === '/equities' || pathname === '/cash' || pathname === '/other';
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -263,7 +263,7 @@ export default function AppShell({ children }: AppShellProps) {
             <span>
               {activeSubTab === 'overview' ? 'Add Position' :
                activeSubTab === 'crypto' ? 'Add Crypto' :
-               activeSubTab === 'stocks' ? 'Add Stock' :
+               activeSubTab === 'equities' ? 'Add Equity' :
                activeSubTab === 'cash' ? 'Add Cash' :
                'Add Other'}
             </span>
@@ -336,7 +336,7 @@ export default function AppShell({ children }: AppShellProps) {
         onClose={() => setShowAddPosition(false)}
         defaultTab={
           activeSubTab === 'crypto' ? 'crypto' :
-          activeSubTab === 'stocks' ? 'stock' :
+          activeSubTab === 'equities' ? 'stock' :
           activeSubTab === 'cash' ? 'cash' :
           activeSubTab === 'other' ? 'manual' :
           undefined

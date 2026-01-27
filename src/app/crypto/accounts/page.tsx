@@ -76,45 +76,45 @@ export default function AccountsPage() {
     <div>
       <Header title="CEX Accounts" />
 
-      {/* Summary Card */}
-      <div className="card mb-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-[var(--foreground-muted)] mb-1">Total CEX Holdings</p>
-            <h2 className="text-3xl font-bold">{hideBalances ? '******' : formatCurrency(totalCexValue)}</h2>
-            <p className="text-sm text-[var(--foreground-muted)] mt-1">
-              {accounts.length} account{accounts.length !== 1 ? 's' : ''} connected
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={toggleHideBalances}
-              className="btn btn-secondary"
-              title={hideBalances ? 'Show balances' : 'Hide balances'}
-            >
-              {hideBalances ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-            </button>
-            <button
-              onClick={handleSync}
-              className="btn btn-secondary"
-              disabled={isSyncing || accounts.length === 0}
-            >
-              <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
-              Sync All
-            </button>
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="btn btn-primary"
-            >
-              <Plus className="w-4 h-4" />
-              Add Account
-            </button>
-          </div>
+      {/* Summary */}
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">TOTAL CEX HOLDINGS</p>
+          <h2 className="text-2xl font-semibold">{hideBalances ? '••••••••' : formatCurrency(totalCexValue)}</h2>
+          <p className="text-[13px] text-[var(--foreground-muted)] mt-1">
+            {accounts.length} account{accounts.length !== 1 ? 's' : ''} connected
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={toggleHideBalances}
+            className="btn btn-secondary"
+            title={hideBalances ? 'Show balances' : 'Hide balances'}
+          >
+            {hideBalances ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+          </button>
+          <button
+            onClick={handleSync}
+            className="btn btn-secondary"
+            disabled={isSyncing || accounts.length === 0}
+          >
+            <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+            Sync All
+          </button>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="btn btn-primary"
+          >
+            <Plus className="w-4 h-4" />
+            Add Account
+          </button>
         </div>
       </div>
 
+      <hr className="border-[var(--border)] mb-6" />
+
       {syncError && (
-        <div className="card mb-6 bg-[var(--negative-light)] border-[var(--negative)]">
+        <div className="mb-6 p-4 bg-[var(--negative-light)] border border-[var(--negative)] rounded-lg">
           <div className="flex items-center gap-2 text-[var(--negative)]">
             <AlertCircle className="w-5 h-5" />
             <span>{syncError}</span>
@@ -124,9 +124,9 @@ export default function AccountsPage() {
 
       {/* Accounts List */}
       {accounts.length === 0 ? (
-        <div className="card text-center py-12">
+        <div className="text-center py-12">
           <p className="text-[var(--foreground-muted)] mb-2">No CEX accounts connected</p>
-          <p className="text-sm text-[var(--foreground-muted)] mb-4">
+          <p className="text-[13px] text-[var(--foreground-muted)] mb-4">
             Connect your Binance account to automatically track your holdings.
           </p>
           <button onClick={() => setShowAddModal(true)} className="btn btn-primary">
@@ -141,15 +141,15 @@ export default function AccountsPage() {
             const exchangeInfo = EXCHANGE_INFO[account.exchange];
 
             return (
-              <div key={account.id} className="card">
+              <div key={account.id} className="border-b border-[var(--border)] last:border-0 pb-6 mb-6 last:pb-0 last:mb-0">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-[var(--accent-primary)] rounded-full flex items-center justify-center text-white font-semibold">
                       {exchangeInfo.logo}
                     </div>
                     <div>
-                      <h3 className="font-semibold">{account.name}</h3>
-                      <p className="text-sm text-[var(--foreground-muted)]">{exchangeInfo.name}</p>
+                      <h3 className="text-[15px] font-medium">{account.name}</h3>
+                      <p className="text-[13px] text-[var(--foreground-muted)]">{exchangeInfo.name}</p>
                     </div>
                     {account.isActive ? (
                       <span className="flex items-center gap-1 text-xs text-[var(--positive)]">
@@ -163,7 +163,7 @@ export default function AccountsPage() {
                   </div>
                   <div className="flex items-center gap-4">
                     <div className="text-right">
-                      <p className="font-semibold">{hideBalances ? '****' : formatCurrency(accountValue)}</p>
+                      <p className="font-semibold">{hideBalances ? '••••' : formatCurrency(accountValue)}</p>
                       <p className="text-xs text-[var(--foreground-muted)]">
                         {accountPositions.length} asset{accountPositions.length !== 1 ? 's' : ''}
                       </p>

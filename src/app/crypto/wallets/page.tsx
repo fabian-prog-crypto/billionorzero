@@ -120,26 +120,24 @@ export default function WalletsPage() {
       </div>
 
       {wallets.length === 0 ? (
-        <div className="card">
-          <div className="flex flex-col items-center justify-center py-16">
-            <div className="w-16 h-16 bg-[var(--background-secondary)] rounded-full flex items-center justify-center mb-4">
-              <Wallet className="w-8 h-8 text-[var(--foreground-muted)]" />
-            </div>
-            <h3 className="text-lg font-semibold mb-2">No wallets connected</h3>
-            <p className="text-[var(--foreground-muted)] mb-4 text-center max-w-md">
-              Connect a wallet to automatically track your crypto holdings across multiple chains.
-            </p>
-            <button
-              onClick={() => setShowAddWallet(true)}
-              className="btn btn-primary"
-            >
-              <Plus className="w-4 h-4" />
-              Connect Wallet
-            </button>
+        <div className="flex flex-col items-center justify-center py-16">
+          <div className="w-16 h-16 bg-[var(--background-secondary)] rounded-full flex items-center justify-center mb-4">
+            <Wallet className="w-8 h-8 text-[var(--foreground-muted)]" />
           </div>
+          <h3 className="text-lg font-semibold mb-2">No wallets connected</h3>
+          <p className="text-[var(--foreground-muted)] mb-4 text-center max-w-md">
+            Connect a wallet to automatically track your crypto holdings across multiple chains.
+          </p>
+          <button
+            onClick={() => setShowAddWallet(true)}
+            className="btn btn-primary"
+          >
+            <Plus className="w-4 h-4" />
+            Connect Wallet
+          </button>
         </div>
       ) : (
-        <div className="card">
+        <div>
           <table className="w-full">
             <thead>
               <tr className="border-b border-[var(--border)]">
@@ -288,10 +286,12 @@ export default function WalletsPage() {
         </div>
       )}
 
+      <hr className="border-[var(--border)] my-6" />
+
       {/* Info note */}
-      <div className="mt-6 p-4 bg-[var(--background-secondary)] rounded-lg">
-        <h4 className="font-medium mb-2">About Wallet Tracking</h4>
-        <p className="text-sm text-[var(--foreground-muted)]">
+      <div className="p-4 bg-[var(--background-secondary)] rounded-lg">
+        <h4 className="text-[13px] font-medium mb-2">About Wallet Tracking</h4>
+        <p className="text-[13px] text-[var(--foreground-muted)]">
           Wallets are tracked using the DeBank API. For perp exchange positions (Hyperliquid, Lighter, Ethereal),
           click on a wallet to enable specific exchanges. Only enabled exchanges will be queried for positions.
         </p>
