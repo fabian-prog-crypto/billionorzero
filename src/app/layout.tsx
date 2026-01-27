@@ -22,7 +22,10 @@ const poppins = Poppins({
 });
 
 export const metadata: Metadata = {
-  title: "billionorzero",
+  title: {
+    default: "billionorzero",
+    template: "%s | billionorzero",
+  },
   description: "Track your crypto and stock portfolio to a billion or zero",
 };
 
