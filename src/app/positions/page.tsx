@@ -5,7 +5,6 @@ import { useSearchParams } from 'next/navigation';
 import { Plus, Trash2, Search, Wallet, RefreshCw, Eye, EyeOff, ArrowUpDown, Download, Layers, Grid3X3, Edit2 } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import { calculateAllPositionsWithPrices, calculatePortfolioSummary, aggregatePositionsBySymbol, calculateUnrealizedPnL } from '@/services';
-import Header from '@/components/Header';
 import AddPositionModal from '@/components/modals/AddPositionModal';
 import CustomPriceModal from '@/components/modals/CustomPriceModal';
 import { useRefresh } from '@/components/PortfolioProvider';
@@ -267,8 +266,6 @@ export default function PositionsPage() {
 
   return (
     <div>
-      <Header title="Portfolio" />
-
       {/* NAV Summary */}
       <div className="flex items-start justify-between mb-6">
         <div>

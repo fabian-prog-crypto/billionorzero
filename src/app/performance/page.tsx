@@ -3,7 +3,6 @@
 import { useState, useMemo } from 'react';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import { calculatePortfolioSummary, calculatePerformanceMetrics, getSharpeInterpretation, getDrawdownInterpretation } from '@/services';
-import Header from '@/components/Header';
 import NetWorthChart from '@/components/charts/NetWorthChart';
 import { formatCurrency, formatPercent, getChangeColor } from '@/lib/utils';
 import { subDays, subMonths, subYears, format, isAfter } from 'date-fns';
@@ -98,8 +97,6 @@ export default function PerformancePage() {
 
   return (
     <div className="space-y-6">
-      <Header title="Performance" />
-
       {/* Time period selector */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1 p-1 bg-[var(--background-secondary)] rounded-lg">

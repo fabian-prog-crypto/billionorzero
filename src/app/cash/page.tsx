@@ -2,15 +2,14 @@
 
 import { useMemo, useState } from 'react';
 import { Banknote, ArrowUpDown, ChevronDown, ChevronUp, Search, ToggleLeft, ToggleRight } from 'lucide-react';
-import DonutChart, { DonutChartItem } from '@/components/charts/DonutChart';
-import type { AssetWithPrice } from '@/types';
+import DonutChart from '@/components/charts/DonutChart';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import {
   calculateAllPositionsWithPrices,
+  calculateCashBreakdown,
   getCategoryService,
 } from '@/services';
 import { formatCurrency, formatNumber } from '@/lib/utils';
-import Header from '@/components/Header';
 
 type SortField = 'symbol' | 'value' | 'amount' | 'category';
 type SortDirection = 'asc' | 'desc';
@@ -29,112 +28,20 @@ export default function CashPage() {
     return calculateAllPositionsWithPrices(positions, prices, customPrices);
   }, [positions, prices, customPrices]);
 
-  // Filter to cash positions only (fiat)
-  const fiatPositions = useMemo(() => {
-    return allPositions.filter((p) => {
-      const mainCat = categoryService.getMainCategory(p.symbol, p.type);
-      return mainCat === 'cash';
-    });
-  }, [allPositions, categoryService]);
-
-  // Filter to stablecoin positions (crypto stablecoins)
-  const stablecoinPositions = useMemo(() => {
-    return allPositions.filter((p) => {
-      const mainCat = categoryService.getMainCategory(p.symbol, p.type);
-      const subCat = categoryService.getSubCategory(p.symbol, p.type);
-      return mainCat === 'crypto' && subCat === 'stablecoins';
-    });
-  }, [allPositions, categoryService]);
+  // Use centralized service for cash breakdown - SINGLE SOURCE OF TRUTH
+  const breakdownData = useMemo(() => {
+    return calculateCashBreakdown(allPositions, includeStablecoins);
+  }, [allPositions, includeStablecoins]);
 
   // Combined cash positions based on toggle
   const cashPositions = useMemo(() => {
     if (includeStablecoins) {
-      return [...fiatPositions, ...stablecoinPositions];
+      return [...breakdownData.fiatPositions, ...breakdownData.stablecoinPositions];
     }
-    return fiatPositions;
-  }, [fiatPositions, stablecoinPositions, includeStablecoins]);
+    return breakdownData.fiatPositions;
+  }, [breakdownData, includeStablecoins]);
 
-  // Calculate breakdown data
-  const breakdownData = useMemo(() => {
-    const fiat = { value: 0, count: 0 };
-    const stablecoins = { value: 0, count: 0 };
-
-    fiatPositions.forEach((p) => {
-      fiat.value += p.value;
-      fiat.count++;
-    });
-
-    stablecoinPositions.forEach((p) => {
-      stablecoins.value += p.value;
-      stablecoins.count++;
-    });
-
-    const total = includeStablecoins ? fiat.value + stablecoins.value : fiat.value;
-
-    // Calculate by currency for pie chart with breakdown by location
-    // Uses ASSETS only (positive values) - debt doesn't count toward allocation
-    const currencyMap: Record<string, { value: number; count: number; positions: AssetWithPrice[] }> = {};
-
-    const positionsToAnalyze = includeStablecoins
-      ? [...fiatPositions, ...stablecoinPositions]
-      : fiatPositions;
-
-    // Only process ASSETS (positive values)
-    positionsToAnalyze.filter(p => p.value > 0).forEach((p) => {
-      const currency = p.symbol.toUpperCase();
-      if (!currencyMap[currency]) {
-        currencyMap[currency] = { value: 0, count: 0, positions: [] };
-      }
-      currencyMap[currency].value += p.value;
-      currencyMap[currency].count++;
-      currencyMap[currency].positions.push(p);
-    });
-
-    // Define colors for common currencies
-    const currencyColors: Record<string, string> = {
-      'USD': '#4CAF50',
-      'EUR': '#2196F3',
-      'GBP': '#9C27B0',
-      'CHF': '#F44336',
-      'JPY': '#FF9800',
-      'USDT': '#26A17B',
-      'USDC': '#2775CA',
-      'DAI': '#F5AC37',
-      'BUSD': '#F0B90B',
-      'FRAX': '#000000',
-      'USDE': '#1E88E5',
-      'SUSDE': '#1565C0',
-    };
-
-    // Helper to get location label for a position
-    const getLocationLabel = (p: AssetWithPrice) => {
-      if (p.protocol?.startsWith('cex:')) return p.protocol.replace('cex:', '').toUpperCase();
-      if (p.protocol && p.protocol !== 'wallet') return p.protocol;
-      if (p.walletAddress) return `${p.walletAddress.slice(0, 6)}...${p.walletAddress.slice(-4)}`;
-      return 'Manual';
-    };
-
-    // Generate chartData sorted by value with breakdown
-    const chartData: DonutChartItem[] = Object.entries(currencyMap)
-      .map(([currency, data]) => ({
-        label: currency,
-        value: data.value,
-        color: currencyColors[currency] || '#6B7280',
-        breakdown: data.positions
-          .map(p => ({ label: getLocationLabel(p), value: p.value }))
-          .sort((a, b) => b.value - a.value),
-      }))
-      .sort((a, b) => b.value - a.value);
-
-    return {
-      fiat,
-      stablecoins,
-      total,
-      chartData,
-    };
-  }, [fiatPositions, stablecoinPositions, includeStablecoins]);
-
-  // Filter and sort positions
+  // Filter and sort positions (UI-only logic)
   const filteredPositions = useMemo(() => {
     let filtered = cashPositions;
 
@@ -196,10 +103,9 @@ export default function CashPage() {
     return mainCat === 'crypto';
   };
 
-  if (fiatPositions.length === 0 && stablecoinPositions.length === 0) {
+  if (breakdownData.fiatPositions.length === 0 && breakdownData.stablecoinPositions.length === 0) {
     return (
       <div>
-        <Header title="Cash" />
         <div className="flex flex-col items-center justify-center py-32">
           <div className="w-20 h-20 rounded-2xl bg-[var(--background-tertiary)] flex items-center justify-center mb-6">
             <Banknote className="w-10 h-10 text-[var(--foreground-muted)]" />
@@ -215,8 +121,6 @@ export default function CashPage() {
 
   return (
     <div>
-      <Header title="Cash" />
-
       {/* Header Stats */}
       <div className="flex items-start justify-between mb-6">
         <div>

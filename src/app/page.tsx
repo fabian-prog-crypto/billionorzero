@@ -74,8 +74,7 @@ export default function OverviewPage() {
 
   if (!hasData) {
     return (
-      <div className="space-y-8">
-        <h1 className="text-2xl font-semibold">Overview</h1>
+      <div>
         <div className="flex flex-col items-center justify-center py-32">
           <div className="w-20 h-20 rounded-2xl bg-[var(--background-tertiary)] flex items-center justify-center mb-6">
             <TrendingUp className="w-10 h-10 text-[var(--foreground-muted)]" />
@@ -91,9 +90,6 @@ export default function OverviewPage() {
 
   return (
     <div className="space-y-8">
-      {/* Page Title */}
-      <h1 className="text-2xl font-semibold">Overview</h1>
-
       {/* Hero Section: Net Worth + Chart */}
       <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-8">
         <div>

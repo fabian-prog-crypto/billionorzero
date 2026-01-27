@@ -2,15 +2,14 @@
 
 import { useMemo, useState } from 'react';
 import { TrendingUp, ArrowUpDown, ChevronDown, ChevronUp, Search } from 'lucide-react';
-import DonutChart, { DonutChartItem } from '@/components/charts/DonutChart';
-import type { AssetWithPrice } from '@/types';
+import DonutChart from '@/components/charts/DonutChart';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import {
   calculateAllPositionsWithPrices,
+  calculateEquitiesBreakdown,
   getCategoryService,
 } from '@/services';
 import { formatCurrency, formatNumber, formatPercent, getChangeColor } from '@/lib/utils';
-import Header from '@/components/Header';
 
 type SortField = 'symbol' | 'value' | 'amount' | 'price' | 'change';
 type SortDirection = 'asc' | 'desc';
@@ -28,75 +27,14 @@ export default function EquitiesPage() {
     return calculateAllPositionsWithPrices(positions, prices, customPrices);
   }, [positions, prices, customPrices]);
 
-  // Filter to equities only
-  const equityPositions = useMemo(() => {
-    return allPositions.filter((p) => {
-      const mainCat = categoryService.getMainCategory(p.symbol, p.type);
-      return mainCat === 'equities';
-    });
-  }, [allPositions, categoryService]);
-
-  // Helper to aggregate ASSETS (positive values only) by symbol
-  const aggregateBySymbol = (positions: AssetWithPrice[]) => {
-    const map = new Map<string, number>();
-    // Only count positive values (assets, not debt)
-    positions.filter(p => p.value > 0).forEach(p => {
-      const key = p.symbol.toUpperCase();
-      map.set(key, (map.get(key) || 0) + p.value);
-    });
-    return Array.from(map.entries())
-      .map(([label, value]) => ({ label, value }))
-      .sort((a, b) => b.value - a.value);
-  };
-
-  // Calculate stocks vs ETFs breakdown - ASSETS only (positive values)
+  // Use centralized service for equities breakdown - SINGLE SOURCE OF TRUTH
   const breakdownData = useMemo(() => {
-    const stockPositions: AssetWithPrice[] = [];
-    const etfPositions: AssetWithPrice[] = [];
+    return calculateEquitiesBreakdown(allPositions);
+  }, [allPositions]);
 
-    // Only process ASSETS (positive values)
-    equityPositions.filter(p => p.value > 0).forEach((p) => {
-      const subCat = categoryService.getSubCategory(p.symbol, p.type);
-      if (subCat === 'etfs') {
-        etfPositions.push(p);
-      } else {
-        stockPositions.push(p);
-      }
-    });
-
-    const stocksValue = stockPositions.reduce((sum, p) => sum + p.value, 0);
-    const etfsValue = etfPositions.reduce((sum, p) => sum + p.value, 0);
-    const total = stocksValue + etfsValue;
-
-    const chartData: DonutChartItem[] = [];
-    if (stocksValue > 0) {
-      chartData.push({
-        label: 'Stocks',
-        value: stocksValue,
-        color: '#E91E63',
-        breakdown: aggregateBySymbol(stockPositions),
-      });
-    }
-    if (etfsValue > 0) {
-      chartData.push({
-        label: 'ETFs',
-        value: etfsValue,
-        color: '#9C27B0',
-        breakdown: aggregateBySymbol(etfPositions),
-      });
-    }
-
-    return {
-      stocks: { value: stocksValue, count: stockPositions.length },
-      etfs: { value: etfsValue, count: etfPositions.length },
-      total,
-      chartData,
-    };
-  }, [equityPositions, categoryService]);
-
-  // Filter and sort positions
+  // Filter and sort positions (UI-only logic)
   const filteredPositions = useMemo(() => {
-    let filtered = equityPositions;
+    let filtered = breakdownData.equityPositions;
 
     // Apply search filter
     if (searchQuery) {
@@ -130,7 +68,7 @@ export default function EquitiesPage() {
       }
       return sortDirection === 'asc' ? comparison : -comparison;
     });
-  }, [equityPositions, searchQuery, sortField, sortDirection]);
+  }, [breakdownData.equityPositions, searchQuery, sortField, sortDirection]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -150,10 +88,9 @@ export default function EquitiesPage() {
     );
   };
 
-  if (equityPositions.length === 0) {
+  if (breakdownData.equityPositions.length === 0) {
     return (
       <div>
-        <Header title="Equities" />
         <div className="flex flex-col items-center justify-center py-32">
           <div className="w-20 h-20 rounded-2xl bg-[var(--background-tertiary)] flex items-center justify-center mb-6">
             <TrendingUp className="w-10 h-10 text-[var(--foreground-muted)]" />
@@ -169,8 +106,6 @@ export default function EquitiesPage() {
 
   return (
     <div>
-      <Header title="Equities" />
-
       {/* Header Stats */}
       <div className="flex items-start justify-between mb-6">
         <div>

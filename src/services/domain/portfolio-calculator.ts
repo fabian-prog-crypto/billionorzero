@@ -1333,6 +1333,7 @@ export function calculateAllocationBreakdown(assets: AssetWithPrice[]): Allocati
     'Cash & Equivalents': { value: 0, color: '#4CAF50', positions: new Map() },
     'Crypto': { value: 0, color: '#FF9800', positions: new Map() },
     'Equities': { value: 0, color: '#F44336', positions: new Map() },
+    'Other': { value: 0, color: '#8B7355', positions: new Map() },
   };
 
   // Only process ASSETS (positive values) - debt doesn't contribute to allocation
@@ -1369,6 +1370,13 @@ export function calculateAllocationBreakdown(assets: AssetWithPrice[]): Allocati
       allocationMap['Equities'].positions.set(
         symbolKey,
         (allocationMap['Equities'].positions.get(symbolKey) || 0) + value
+      );
+    } else {
+      // 'other' or any unhandled category
+      allocationMap['Other'].value += value;
+      allocationMap['Other'].positions.set(
+        symbolKey,
+        (allocationMap['Other'].positions.get(symbolKey) || 0) + value
       );
     }
   });
@@ -1448,4 +1456,201 @@ export function calculateRiskProfile(assets: AssetWithPrice[]): RiskProfileItem[
         .sort((a, b) => b.value - a.value),
     }))
     .sort((a, b) => b.value - a.value);
+}
+
+/**
+ * Cash breakdown result type
+ */
+export interface CashBreakdownResult {
+  fiat: { value: number; count: number };
+  stablecoins: { value: number; count: number };
+  total: number;
+  fiatPositions: AssetWithPrice[];
+  stablecoinPositions: AssetWithPrice[];
+  chartData: { label: string; value: number; color: string; breakdown: { label: string; value: number }[] }[];
+}
+
+/**
+ * Calculate cash breakdown - SINGLE SOURCE OF TRUTH
+ * Separates fiat cash from crypto stablecoins with option to combine
+ * Uses GROSS ASSETS only (positive values)
+ */
+export function calculateCashBreakdown(
+  assets: AssetWithPrice[],
+  includeStablecoins: boolean = true
+): CashBreakdownResult {
+  const categoryService = getCategoryService();
+
+  // Filter to fiat positions (mainCat === 'cash')
+  const fiatPositions = assets.filter((p) => {
+    const mainCat = categoryService.getMainCategory(p.symbol, p.type);
+    return mainCat === 'cash';
+  });
+
+  // Filter to stablecoin positions (crypto stablecoins)
+  const stablecoinPositions = assets.filter((p) => {
+    const mainCat = categoryService.getMainCategory(p.symbol, p.type);
+    const subCat = categoryService.getSubCategory(p.symbol, p.type);
+    return mainCat === 'crypto' && subCat === 'stablecoins';
+  });
+
+  // Calculate totals - ASSETS only (positive values)
+  const fiat = { value: 0, count: 0 };
+  const stablecoins = { value: 0, count: 0 };
+
+  fiatPositions.filter(p => p.value > 0).forEach((p) => {
+    fiat.value += p.value;
+    fiat.count++;
+  });
+
+  stablecoinPositions.filter(p => p.value > 0).forEach((p) => {
+    stablecoins.value += p.value;
+    stablecoins.count++;
+  });
+
+  const total = includeStablecoins ? fiat.value + stablecoins.value : fiat.value;
+
+  // Calculate by currency for pie chart
+  const currencyMap: Record<string, { value: number; count: number; positions: AssetWithPrice[] }> = {};
+  const positionsToAnalyze = includeStablecoins
+    ? [...fiatPositions, ...stablecoinPositions]
+    : fiatPositions;
+
+  // Only process ASSETS (positive values)
+  positionsToAnalyze.filter(p => p.value > 0).forEach((p) => {
+    const currency = p.symbol.toUpperCase();
+    if (!currencyMap[currency]) {
+      currencyMap[currency] = { value: 0, count: 0, positions: [] };
+    }
+    currencyMap[currency].value += p.value;
+    currencyMap[currency].count++;
+    currencyMap[currency].positions.push(p);
+  });
+
+  // Define colors for common currencies
+  const currencyColors: Record<string, string> = {
+    'USD': '#4CAF50',
+    'EUR': '#2196F3',
+    'GBP': '#9C27B0',
+    'CHF': '#F44336',
+    'JPY': '#FF9800',
+    'USDT': '#26A17B',
+    'USDC': '#2775CA',
+    'DAI': '#F5AC37',
+    'BUSD': '#F0B90B',
+    'FRAX': '#000000',
+    'USDE': '#1E88E5',
+    'SUSDE': '#1565C0',
+  };
+
+  // Helper to get location label for a position
+  const getLocationLabel = (p: AssetWithPrice) => {
+    if (p.protocol?.startsWith('cex:')) return p.protocol.replace('cex:', '').toUpperCase();
+    if (p.protocol && p.protocol !== 'wallet') return p.protocol;
+    if (p.walletAddress) return `${p.walletAddress.slice(0, 6)}...${p.walletAddress.slice(-4)}`;
+    return 'Manual';
+  };
+
+  // Generate chartData sorted by value with breakdown
+  const chartData = Object.entries(currencyMap)
+    .map(([currency, data]) => ({
+      label: currency,
+      value: data.value,
+      color: currencyColors[currency] || '#6B7280',
+      breakdown: data.positions
+        .map(p => ({ label: getLocationLabel(p), value: p.value }))
+        .sort((a, b) => b.value - a.value),
+    }))
+    .sort((a, b) => b.value - a.value);
+
+  return {
+    fiat,
+    stablecoins,
+    total,
+    fiatPositions,
+    stablecoinPositions,
+    chartData,
+  };
+}
+
+/**
+ * Equities breakdown result type
+ */
+export interface EquitiesBreakdownResult {
+  stocks: { value: number; count: number };
+  etfs: { value: number; count: number };
+  total: number;
+  equityPositions: AssetWithPrice[];
+  chartData: { label: string; value: number; color: string; breakdown: { label: string; value: number }[] }[];
+}
+
+/**
+ * Calculate equities breakdown - SINGLE SOURCE OF TRUTH
+ * Separates stocks from ETFs
+ * Uses GROSS ASSETS only (positive values)
+ */
+export function calculateEquitiesBreakdown(assets: AssetWithPrice[]): EquitiesBreakdownResult {
+  const categoryService = getCategoryService();
+
+  // Filter to equities only
+  const equityPositions = assets.filter((p) => {
+    const mainCat = categoryService.getMainCategory(p.symbol, p.type);
+    return mainCat === 'equities';
+  });
+
+  // Separate stocks and ETFs - ASSETS only (positive values)
+  const stockPositions: AssetWithPrice[] = [];
+  const etfPositions: AssetWithPrice[] = [];
+
+  equityPositions.filter(p => p.value > 0).forEach((p) => {
+    const subCat = categoryService.getSubCategory(p.symbol, p.type);
+    if (subCat === 'etfs') {
+      etfPositions.push(p);
+    } else {
+      stockPositions.push(p);
+    }
+  });
+
+  const stocksValue = stockPositions.reduce((sum, p) => sum + p.value, 0);
+  const etfsValue = etfPositions.reduce((sum, p) => sum + p.value, 0);
+  const total = stocksValue + etfsValue;
+
+  // Helper to aggregate by symbol
+  const aggregateBySymbol = (positions: AssetWithPrice[]) => {
+    const map = new Map<string, number>();
+    positions.forEach(p => {
+      const key = p.symbol.toUpperCase();
+      map.set(key, (map.get(key) || 0) + p.value);
+    });
+    return Array.from(map.entries())
+      .map(([label, value]) => ({ label, value }))
+      .sort((a, b) => b.value - a.value);
+  };
+
+  // Build chart data
+  const chartData: { label: string; value: number; color: string; breakdown: { label: string; value: number }[] }[] = [];
+  if (stocksValue > 0) {
+    chartData.push({
+      label: 'Stocks',
+      value: stocksValue,
+      color: '#E91E63',
+      breakdown: aggregateBySymbol(stockPositions),
+    });
+  }
+  if (etfsValue > 0) {
+    chartData.push({
+      label: 'ETFs',
+      value: etfsValue,
+      color: '#9C27B0',
+      breakdown: aggregateBySymbol(etfPositions),
+    });
+  }
+
+  return {
+    stocks: { value: stocksValue, count: stockPositions.length },
+    etfs: { value: etfsValue, count: etfPositions.length },
+    total,
+    equityPositions,
+    chartData,
+  };
 }

@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { Plus, Trash2, Wallet, ExternalLink, Copy, Check, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import { calculatePortfolioSummary } from '@/services';
-import Header from '@/components/Header';
 import AddWalletModal from '@/components/modals/AddWalletModal';
 import { formatAddress, formatCurrency } from '@/lib/utils';
 import { SUPPORTED_CHAINS, getPerpExchangeName } from '@/services';
@@ -103,8 +102,6 @@ export default function WalletsPage() {
 
   return (
     <div>
-      <Header title="Wallets" />
-
       {/* Actions */}
       <div className="flex items-center justify-between mb-6">
         <p className="text-sm text-[var(--foreground-muted)]">

@@ -6,7 +6,6 @@ import { ArrowLeft, Wallet, ExternalLink, Copy, Check } from 'lucide-react';
 import { useState } from 'react';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import { calculateAllPositionsWithPrices, calculatePortfolioSummary } from '@/services';
-import Header from '@/components/Header';
 import {
   formatCurrency,
   formatPercent,
@@ -82,7 +81,6 @@ export default function WalletDetailPage() {
   if (!wallet) {
     return (
       <div>
-        <Header title="Wallet Not Found" />
         <div className="card text-center py-12">
           <p className="text-[var(--foreground-muted)] mb-4">
             This wallet could not be found.
@@ -101,8 +99,6 @@ export default function WalletDetailPage() {
 
   return (
     <div>
-      <Header title="Wallet Details" />
-
       {/* Back button */}
       <button
         onClick={() => router.push('/wallets')}

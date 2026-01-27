@@ -5,7 +5,6 @@ import { Save, Key, RefreshCw, Trash2, Download, Upload, Fingerprint, LogOut, Sh
 import { usePortfolioStore } from '@/store/portfolioStore';
 import { useAuthStore } from '@/store/authStore';
 import { useThemeStore, applyTheme } from '@/store/themeStore';
-import Header from '@/components/Header';
 import {
   isPasskeySupported,
   isPasskeyRegistered,
@@ -134,8 +133,6 @@ export default function SettingsPage() {
 
   return (
     <div>
-      <Header title="Settings" />
-
       <div className="max-w-2xl space-y-6">
         {/* Security */}
         <div>

@@ -3,7 +3,6 @@
 import { useMemo } from 'react';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import { calculateAllPositionsWithPrices, calculateExposureData, filterPerpPositions, detectPerpTrade } from '@/services';
-import Header from '@/components/Header';
 import { formatCurrency, formatNumber, formatPercent, getChangeColor } from '@/lib/utils';
 import { getCategoryService } from '@/services';
 import { Wallet, TrendingUp } from 'lucide-react';
@@ -115,8 +114,6 @@ export default function PerpsPage() {
 
   return (
     <div>
-      <Header title="Perps Overview" />
-
       {!hasPerps ? (
         <div className="flex flex-col items-center justify-center py-16">
           <div className="w-16 h-16 bg-[var(--background-secondary)] rounded-full flex items-center justify-center mb-4">

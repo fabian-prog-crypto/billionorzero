@@ -4,7 +4,6 @@ import { useState, useMemo } from 'react';
 import { Trash2, Wallet, ArrowUpDown, Layers, Grid3X3, Edit2 } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import { calculateAllPositionsWithPrices, aggregatePositionsBySymbol, getCategoryService } from '@/services';
-import Header from '@/components/Header';
 import PageHeader, { FilterOption } from '@/components/ui/PageHeader';
 import CustomPriceModal from '@/components/modals/CustomPriceModal';
 import {
@@ -208,8 +207,6 @@ export default function CryptoPositionsPage() {
 
   return (
     <div>
-      <Header title="Crypto Assets" />
-
       <PageHeader
         title="Total Crypto Value"
         value={totalValue}

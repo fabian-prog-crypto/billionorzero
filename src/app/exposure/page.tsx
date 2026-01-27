@@ -3,7 +3,6 @@
 import { useMemo } from 'react';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import { calculateAllPositionsWithPrices, calculateExposureData, aggregatePositionsBySymbol } from '@/services';
-import Header from '@/components/Header';
 import { formatCurrency } from '@/lib/utils';
 import { Info } from 'lucide-react';
 
@@ -46,8 +45,6 @@ export default function ExposurePage() {
 
   return (
     <div className="space-y-6">
-      <Header title="Portfolio Exposure" />
-
       {/* Professional Exposure Metrics */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
         <div>

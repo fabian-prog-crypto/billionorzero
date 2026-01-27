@@ -320,7 +320,7 @@ export default function AppShell({ children }: AppShellProps) {
                     href={href}
                     className={`nav-item ${isActive ? 'active' : ''}`}
                   >
-                    <Icon className="w-[18px] h-[18px]" />
+                    <Icon className="w-4 h-4" />
                     <span>{item.label}</span>
                   </Link>
                 );

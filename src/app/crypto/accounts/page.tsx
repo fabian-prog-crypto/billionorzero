@@ -5,7 +5,6 @@ import { Plus, Trash2, RefreshCw, Eye, EyeOff, AlertCircle, CheckCircle } from '
 import { usePortfolioStore } from '@/store/portfolioStore';
 import { calculateAllPositionsWithPrices } from '@/services';
 import { fetchAllCexPositions } from '@/services/providers/cex-provider';
-import Header from '@/components/Header';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import { CexAccount, CexExchange } from '@/types';
 
@@ -74,8 +73,6 @@ export default function AccountsPage() {
 
   return (
     <div>
-      <Header title="CEX Accounts" />
-
       {/* Summary */}
       <div className="flex items-start justify-between mb-6">
         <div>
