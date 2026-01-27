@@ -135,12 +135,7 @@ export default function DonutChart({
 
   return (
     <div>
-      <div className="flex items-baseline justify-between mb-3">
-        <h4 className="text-[15px] font-medium">{title}</h4>
-        <span className="text-[13px] font-semibold">
-          {hideValues ? '••••••' : formatCurrency(total)}
-        </span>
-      </div>
+      <h4 className="text-[15px] font-medium mb-3">{title}</h4>
       <div className="flex items-start gap-5 relative">
         {/* Donut Chart SVG with center tooltip */}
         <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
