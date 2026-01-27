@@ -664,6 +664,7 @@ export interface CryptoAllocationItem {
   value: number;
   percentage: number;
   color: string;
+  breakdown?: { label: string; value: number }[]; // Individual assets within this category
 }
 
 // Chain colors mapping
@@ -700,6 +701,7 @@ const CHAIN_COLORS: Record<string, string> = {
 const CUSTODY_COLORS: Record<string, string> = {
   'Self-Custody': '#4CAF50',
   'DeFi': '#9C27B0',
+  'Perp DEX': '#00BCD4',
   'CEX': '#FF9800',
   'Banks & Brokers': '#2196F3',
   'Manual': '#607D8B',
@@ -952,9 +954,12 @@ export function calculateCryptoAllocation(assets: AssetWithPrice[]): CryptoAlloc
 }
 
 /**
- * Calculate exposure breakdown for donut chart (Stablecoins, ETH, DeFi, BTC, etc.)
+ * Calculate exposure breakdown for donut chart (Stablecoins, ETH, DeFi, BTC, RWA, SOL, Privacy, AI, etc.)
+ * Uses the centralized getExposureCategory() for granular token classification
  * Uses NET values - debt subtracts from the relevant category
- * Includes perps as a separate category for consistency with allocation
+ * Note: Perps are NOT a separate exposure category - perp positions are classified by their underlying asset
+ * (e.g., BTC perp -> BTC exposure, ETH perp -> ETH exposure)
+ * Includes breakdown of individual assets per category for tooltip display
  */
 export function calculateExposureBreakdown(assets: AssetWithPrice[]): CryptoAllocationItem[] {
   const categoryService = getCategoryService();
@@ -965,48 +970,42 @@ export function calculateExposureBreakdown(assets: AssetWithPrice[]): CryptoAllo
     return mainCat === 'crypto';
   });
 
-  const exposureMap: Record<string, { value: number; color: string; label: string }> = {};
+  // Get all exposure category configs from the centralized service
+  const allConfigs = categoryService.getAllExposureCategoryConfigs();
 
-  const categoryConfig: Record<string, { color: string; label: string }> = {
-    stablecoins: { color: '#4CAF50', label: 'Stablecoins' },
-    eth: { color: '#627EEA', label: 'ETH' },
-    btc: { color: '#F7931A', label: 'BTC' },
-    sol: { color: '#9945FF', label: 'SOL' },
-    tokens: { color: '#00BCD4', label: 'Tokens' },
-    perps: { color: '#FF5722', label: 'Perps' },
-    defi: { color: '#9C27B0', label: 'DeFi' },
-    rwa: { color: '#795548', label: 'RWA' },
-    privacy: { color: '#37474F', label: 'Privacy' },
-    ai: { color: '#2196F3', label: 'AI' },
-    other: { color: '#6B7280', label: 'Other' },
-  };
+  // Track both total value and individual assets per category
+  const exposureMap: Record<string, {
+    value: number;
+    color: string;
+    label: string;
+    assets: Map<string, number>; // symbol -> aggregated value
+  }> = {};
 
   cryptoAssets.forEach((asset) => {
     const value = asset.value; // Can be negative for debt
-    let exposureCat: string = categoryService.getSubCategory(asset.symbol, asset.type);
 
-    // Check if it's a perp position (same logic as allocation for consistency)
-    if (asset.protocol && isPerpProtocol(asset.protocol)) {
-      const { isPerpTrade } = detectPerpTrade(asset.name);
-      if (isPerpTrade) {
-        exposureCat = 'perps';
-      }
-    }
+    // For perp trades, classify by the underlying asset symbol (e.g., BTC-PERP -> btc)
+    // For collateral on perp protocols, classify normally (e.g., USDC collateral -> stablecoins)
+    // This gives true underlying exposure rather than treating perps as a separate category
+    const exposureCat = categoryService.getExposureCategory(asset.symbol, asset.type);
 
-    // Map to exposure categories
-    if (!categoryConfig[exposureCat]) {
-      exposureCat = 'other';
-    }
+    // Get config for this category
+    const config = allConfigs[exposureCat as keyof typeof allConfigs] || allConfigs.tokens;
 
     if (!exposureMap[exposureCat]) {
-      const config = categoryConfig[exposureCat] || categoryConfig.other;
       exposureMap[exposureCat] = {
         value: 0,
         color: config.color,
         label: config.label,
+        assets: new Map(),
       };
     }
     exposureMap[exposureCat].value += value;
+
+    // Track individual asset values (aggregate by symbol)
+    const symbolKey = asset.symbol.toUpperCase();
+    const currentAssetValue = exposureMap[exposureCat].assets.get(symbolKey) || 0;
+    exposureMap[exposureCat].assets.set(symbolKey, currentAssetValue + value);
   });
 
   // Use NET total (only positive category values)
@@ -1020,6 +1019,11 @@ export function calculateExposureBreakdown(assets: AssetWithPrice[]): CryptoAllo
       value: item.value,
       percentage: totalValue > 0 ? (item.value / totalValue) * 100 : 0,
       color: item.color,
+      // Convert assets map to sorted breakdown array (only positive values)
+      breakdown: Array.from(item.assets.entries())
+        .filter(([_, val]) => val > 0)
+        .map(([symbol, val]) => ({ label: symbol, value: val }))
+        .sort((a, b) => b.value - a.value),
     }))
     .sort((a, b) => b.value - a.value);
 }

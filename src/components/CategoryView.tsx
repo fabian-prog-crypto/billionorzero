@@ -150,7 +150,7 @@ export default function CategoryView({
           title="Exposure"
           data={exposureChartData}
           hideValues={hideBalances}
-          maxItems={8}
+          maxItems={6}
         />
 
         {/* Chain Breakdown */}

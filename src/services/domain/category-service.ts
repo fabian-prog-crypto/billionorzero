@@ -5,6 +5,7 @@
  * Structure:
  * - Main Categories: crypto, equities, cash, other
  * - Sub Categories: crypto (btc, eth, sol, stablecoins, tokens, perps), equities (stocks, etfs)
+ * - Exposure Categories: More granular breakdown for crypto exposure (stablecoins, eth, defi, btc, rwa, sol, privacy, ai, tokens)
  */
 
 // Main category types
@@ -14,6 +15,10 @@ export type MainCategory = 'crypto' | 'equities' | 'cash' | 'other';
 export type CryptoSubCategory = 'btc' | 'eth' | 'sol' | 'stablecoins' | 'tokens' | 'perps';
 export type EquitiesSubCategory = 'stocks' | 'etfs';
 export type SubCategory = CryptoSubCategory | EquitiesSubCategory | 'none';
+
+// Exposure category types (more granular than sub-categories for crypto exposure analysis)
+// Note: perps are NOT an exposure category - they represent leverage, not underlying asset exposure
+export type ExposureCategoryType = 'stablecoins' | 'eth' | 'defi' | 'btc' | 'rwa' | 'sol' | 'privacy' | 'ai' | 'meme' | 'tokens';
 
 // Combined category for compatibility (main_sub format)
 export type AssetCategory =
@@ -27,6 +32,12 @@ export interface CategoryHierarchy {
   sub?: SubCategory;
   label: string;
   color: string;
+}
+
+// Exposure category config
+export interface ExposureCategoryConfig {
+  color: string;
+  label: string;
 }
 
 /**
@@ -68,9 +79,88 @@ export class CategoryService {
 
   // Perpetual futures / derivatives protocols
   private perpProtocols = new Set([
-    'hyperliquid', 'lighter', 'ethereal',
+    'hyperliquid', 'lighter', 'ethereal', 'vertex', 'drift',
     'hyperliquid perp', 'hyperliquid perpetual',
     'lighter exchange', 'ethereal exchange',
+    'vertex protocol', 'vertex exchange',
+    'drift protocol', 'drift exchange',
+  ]);
+
+  // DeFi protocol tokens
+  private defiTokens = new Set([
+    // DEXs & AMMs
+    'uni', 'uniswap', 'sushi', 'cake', 'crv', 'bal', 'joe', 'velo', 'aero',
+    'gmx', 'dydx', 'perp', 'rune', 'osmo', 'ray', 'orca', 'jup', 'jupiter',
+    '1inch', 'dodo', 'bancor', 'bnt', 'kyber', 'knc', 'swapr', 'camelot',
+    'thena', 'solidly', 'velodrome', 'aerodrome', 'trader joe', 'quickswap',
+    // Lending & Borrowing
+    'aave', 'comp', 'compound', 'mkr', 'maker', 'ldo', 'lido', 'rpl', 'rocket pool',
+    'morpho', 'euler', 'radiant', 'rdnt', 'geist', 'benqi', 'qi', 'venus', 'xvs',
+    'cream', 'iron bank', 'maple', 'mpl', 'goldfinch', 'gfi', 'clearpool', 'cpool',
+    'frax', 'fxs', 'spell', 'mim', 'alchemix', 'alcx', 'abracadabra', 'liquity', 'lqty',
+    // Yield & Vaults
+    'yfi', 'yearn', 'cvx', 'convex', 'btrfly', 'redacted', 'ohm', 'olympus',
+    'pendle', 'ribbon', 'rbn', 'dopex', 'dpx', 'jones', 'jdao', 'umami',
+    'beefy', 'bifi', 'harvest', 'farm', 'pickle', 'stakedao', 'sdt',
+    // Derivatives & Options
+    'snx', 'synthetix', 'lyra', 'premia', 'hegic', 'opyn', 'pods',
+    // Bridges & Cross-chain
+    'stargate', 'stg', 'hop', 'across', 'acx', 'synapse', 'syn', 'celer', 'celr',
+    'multichain', 'multi', 'anyswap', 'any', 'wormhole', 'layer zero', 'lz',
+    // Other DeFi
+    'inst', 'instadapp', 'gns', 'gains', 'kwenta', 'pols', 'polkastarter',
+    'api3', 'band', 'uma', 'ren', 'keep', 'nu', 'nucypher', 'threshold', 't',
+    'egg', 'eigenlayer', 'eigen', 'ether.fi', 'ethfi',
+    'pendle', 'ena', 'ethena',
+  ]);
+
+  // RWA (Real World Assets) tokens
+  private rwaTokens = new Set([
+    // Tokenized treasuries & bonds
+    'ondo', 'maple', 'mpl', 'goldfinch', 'gfi', 'centrifuge', 'cfg',
+    'clearpool', 'cpool', 'truefi', 'tru', 'credix',
+    // Tokenized commodities
+    'paxg', 'xaut', 'tgold', 'dgld', 'pmgt', 'cache', 'cgo',
+    // Real estate tokens
+    'rwa', 'realtoken', 'realt', 'landshare', 'land', 'propy', 'pro',
+    'labs', 'labs group', 'parcl', 'lofty',
+    // RWA protocols
+    'maker rwa', 'centrifuge', 'backed', 'buidl', 'superstate',
+    'matrixdock', 'mstable', 'reserve', 'rsv', 'frax',
+    // Yield-bearing RWA
+    'usdy', 'usdm', 'mountain', 'stusdt', 'sdai', 'susds',
+  ]);
+
+  // Privacy tokens
+  private privacyTokens = new Set([
+    'xmr', 'monero', 'zec', 'zcash', 'dash', 'scrt', 'secret',
+    'rose', 'oasis', 'arrr', 'pirate', 'firo', 'beam', 'grin',
+    'nym', 'prcy', 'dero', 'haven', 'xhv', 'oxen', 'mask',
+    'tornado', 'torn', 'railgun', 'rail', 'aztec', 'iron fish', 'iron',
+    'penumbra', 'anoma', 'namada', 'zcn', 'zano',
+  ]);
+
+  // AI & Machine Learning tokens
+  private aiTokens = new Set([
+    'fet', 'fetch', 'agix', 'singularitynet', 'ocean', 'oceanprotocol',
+    'rndr', 'render', 'tao', 'bittensor', 'akt', 'akash', 'grt', 'thegraph',
+    'ar', 'arweave', 'fil', 'filecoin', 'storj', 'sia', 'sc',
+    'nmt', 'numer', 'numeraire', 'clv', 'cortex', 'ctxc', 'nmr',
+    'vana', 'prime', 'ai16z', 'virtual', 'virtuals', 'goat', 'act',
+    'arc', 'griffain', 'fartcoin', 'zerebro', 'aixbt', 'grass',
+    'io', 'io.net', 'worldcoin', 'wld', 'jasmy', 'phala', 'pha',
+    'nosana', 'nos', 'near', 'oort', 'gpu', 'exo', 'exabits',
+  ]);
+
+  // Meme coins
+  private memeTokens = new Set([
+    'doge', 'dogecoin', 'shib', 'shiba', 'pepe', 'floki', 'bonk',
+    'wif', 'dogwifhat', 'meme', 'wojak', 'turbo', 'bob', 'ladys',
+    'milady', 'brett', 'mog', 'popcat', 'pnut', 'neiro', 'goat',
+    'cate', 'cat', 'toshi', 'higher', 'degen', 'based', 'normie',
+    'ponke', 'wen', 'myro', 'slerf', 'bome', 'book of meme',
+    'trump', 'biden', 'tremp', 'boden', 'jeo', 'doland',
+    'mother', 'father', 'retardio', 'gigachad', 'chad', 'pork', 'ham',
   ]);
 
   // Common ETFs (by symbol)
@@ -139,6 +229,21 @@ export class CategoryService {
     equities_etfs: 'ETFs',
   };
 
+  // Exposure category configuration (more granular breakdown for crypto)
+  // Note: perps are excluded - they represent leverage/derivatives, not underlying exposure
+  private exposureCategoryConfig: Record<ExposureCategoryType, ExposureCategoryConfig> = {
+    stablecoins: { color: '#4CAF50', label: 'Stablecoins' },
+    eth: { color: '#627EEA', label: 'ETH' },
+    defi: { color: '#9C27B0', label: 'DeFi' },
+    btc: { color: '#F7931A', label: 'BTC' },
+    rwa: { color: '#43A047', label: 'RWA' },
+    sol: { color: '#9945FF', label: 'SOL' },
+    privacy: { color: '#37474F', label: 'Privacy' },
+    ai: { color: '#2196F3', label: 'AI' },
+    meme: { color: '#FF9800', label: 'Meme' },
+    tokens: { color: '#00BCD4', label: 'Tokens' },
+  };
+
   /**
    * Check if a protocol is a perps/derivatives protocol
    */
@@ -148,7 +253,9 @@ export class CategoryService {
     return this.perpProtocols.has(normalized) ||
            normalized.includes('hyperliquid') ||
            normalized.includes('lighter') ||
-           normalized.includes('ethereal');
+           normalized.includes('ethereal') ||
+           normalized.includes('vertex') ||
+           normalized.includes('drift');
   }
 
   /**
@@ -253,6 +360,77 @@ export class CategoryService {
     }
 
     return 'none';
+  }
+
+  /**
+   * Get exposure category for a crypto asset (more granular than sub-category)
+   * Used for the Exposure donut chart breakdown
+   * Priority: stablecoins > btc > eth > sol > defi > rwa > privacy > ai > meme > tokens
+   */
+  getExposureCategory(symbol: string, assetType?: string): ExposureCategoryType {
+    const normalizedSymbol = symbol.toLowerCase().trim();
+
+    // Only classify crypto assets
+    if (this.getMainCategory(symbol, assetType) !== 'crypto') {
+      return 'tokens'; // Non-crypto returns tokens as fallback
+    }
+
+    // Check core assets first (most common)
+    if (this.stablecoins.has(normalizedSymbol)) return 'stablecoins';
+    if (this.btcLike.has(normalizedSymbol)) return 'btc';
+    if (this.ethLike.has(normalizedSymbol)) return 'eth';
+    if (this.solLike.has(normalizedSymbol)) return 'sol';
+
+    // Check thematic categories
+    if (this.defiTokens.has(normalizedSymbol)) return 'defi';
+    if (this.rwaTokens.has(normalizedSymbol)) return 'rwa';
+    if (this.privacyTokens.has(normalizedSymbol)) return 'privacy';
+    if (this.aiTokens.has(normalizedSymbol)) return 'ai';
+    if (this.memeTokens.has(normalizedSymbol)) return 'meme';
+
+    // Check Pendle tokens (yield derivatives)
+    const isPendleToken = normalizedSymbol.startsWith('pt-') || normalizedSymbol.startsWith('yt-') ||
+      normalizedSymbol.includes('pt-') || normalizedSymbol.includes('yt-');
+    if (isPendleToken) {
+      // Pendle tokens inherit the underlying asset's category
+      if (normalizedSymbol.includes('usd') || normalizedSymbol.includes('dai') ||
+          normalizedSymbol.includes('eur') || normalizedSymbol.includes('frax') ||
+          normalizedSymbol.includes('gho') || normalizedSymbol.includes('lusd')) {
+        return 'stablecoins';
+      }
+      if (normalizedSymbol.includes('eth') || normalizedSymbol.includes('steth') ||
+          normalizedSymbol.includes('eeth') || normalizedSymbol.includes('reth') ||
+          normalizedSymbol.includes('wsteth') || normalizedSymbol.includes('weeth')) {
+        return 'eth';
+      }
+      if (normalizedSymbol.includes('btc') || normalizedSymbol.includes('wbtc') ||
+          normalizedSymbol.includes('lbtc') || normalizedSymbol.includes('ebtc')) {
+        return 'btc';
+      }
+      if (normalizedSymbol.includes('sol') || normalizedSymbol.includes('jsol') ||
+          normalizedSymbol.includes('msol') || normalizedSymbol.includes('jitosol')) {
+        return 'sol';
+      }
+      // Default Pendle tokens to DeFi
+      return 'defi';
+    }
+
+    // Default to tokens
+    return 'tokens';
+  }
+
+  /**
+   * Get exposure category config (color and label)
+   */
+  getExposureCategoryConfig(category: ExposureCategoryType): ExposureCategoryConfig {
+    return this.exposureCategoryConfig[category] || this.exposureCategoryConfig.tokens;
+  }
+
+  /**
+   * Get all exposure category configs
+   */
+  getAllExposureCategoryConfigs(): Record<ExposureCategoryType, ExposureCategoryConfig> {
+    return { ...this.exposureCategoryConfig };
   }
 
   /**
@@ -437,4 +615,16 @@ export function getMainCategory(symbol: string, assetType?: string): MainCategor
 
 export function getSubCategory(symbol: string, assetType?: string): SubCategory {
   return getCategoryService().getSubCategory(symbol, assetType);
+}
+
+export function getExposureCategory(symbol: string, assetType?: string): ExposureCategoryType {
+  return getCategoryService().getExposureCategory(symbol, assetType);
+}
+
+export function getExposureCategoryConfig(category: ExposureCategoryType): ExposureCategoryConfig {
+  return getCategoryService().getExposureCategoryConfig(category);
+}
+
+export function getAllExposureCategoryConfigs(): Record<ExposureCategoryType, ExposureCategoryConfig> {
+  return getCategoryService().getAllExposureCategoryConfigs();
 }
