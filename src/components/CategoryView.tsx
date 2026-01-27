@@ -12,6 +12,7 @@ import {
   calculateCustodyBreakdown,
   calculateChainBreakdown,
   calculateExposureBreakdown,
+  calculateExposureData,
   getCategoryService,
 } from '@/services';
 import { MainCategory } from '@/services/domain/category-service';
@@ -72,9 +73,13 @@ export default function CategoryView({
     return calculateCryptoAllocation(categoryPositions);
   }, [categoryPositions]);
 
-  // Calculate totals (centralized logic)
-  const totalGrossAssets = categoryPositions.filter(p => p.value > 0).reduce((sum, p) => sum + p.value, 0);
-  const totalDebt = categoryPositions.filter(p => p.value < 0).reduce((sum, p) => sum + Math.abs(p.value), 0);
+  // Use centralized exposure calculation for totals (SINGLE SOURCE OF TRUTH)
+  const exposureData = useMemo(() => {
+    return calculateExposureData(categoryPositions);
+  }, [categoryPositions]);
+
+  const totalGrossAssets = exposureData.grossAssets;
+  const totalDebt = exposureData.totalDebts;
   const totalValue = totalGrossAssets - totalDebt; // Net value
 
   if (categoryPositions.length === 0) {
