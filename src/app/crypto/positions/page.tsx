@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Trash2, Wallet, ArrowUpDown, Layers, Grid3X3, Edit2 } from 'lucide-react';
+import { Trash2, Wallet, ArrowUpDown, ChevronUp, ChevronDown, Layers, Grid3X3, Edit2, Search, Download, Coins } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
-import { calculateAllPositionsWithPrices, aggregatePositionsBySymbol, getCategoryService } from '@/services';
-import PageHeader, { FilterOption } from '@/components/ui/PageHeader';
+import { calculateAllPositionsWithPrices, aggregatePositionsBySymbol, calculateCryptoBreakdown, getCategoryService } from '@/services';
+import DonutChart from '@/components/charts/DonutChart';
+import CryptoIcon from '@/components/ui/CryptoIcon';
 import CustomPriceModal from '@/components/modals/CustomPriceModal';
 import {
   formatCurrency,
@@ -21,7 +22,7 @@ type ViewMode = 'positions' | 'assets';
 type SortField = 'symbol' | 'value' | 'amount' | 'change';
 type SortDirection = 'asc' | 'desc';
 
-const CRYPTO_FILTER_OPTIONS: FilterOption<CryptoSubCategory>[] = [
+const CRYPTO_FILTER_OPTIONS: { value: CryptoSubCategory; label: string; color: string }[] = [
   { value: 'btc', label: 'BTC', color: '#F7931A' },
   { value: 'eth', label: 'ETH', color: '#627EEA' },
   { value: 'sol', label: 'SOL', color: '#9945FF' },
@@ -52,17 +53,14 @@ export default function CryptoPositionsPage() {
     return calculateAllPositionsWithPrices(positions, prices, customPrices);
   }, [positions, prices, customPrices]);
 
-  // Filter to crypto only
-  const cryptoPositions = useMemo(() => {
-    return allPositionsWithPrices.filter((p) => {
-      const mainCat = categoryService.getMainCategory(p.symbol, p.type);
-      return mainCat === 'crypto';
-    });
-  }, [allPositionsWithPrices, categoryService]);
+  // Use centralized service for crypto breakdown - SINGLE SOURCE OF TRUTH
+  const breakdownData = useMemo(() => {
+    return calculateCryptoBreakdown(allPositionsWithPrices);
+  }, [allPositionsWithPrices]);
 
   // Filter by category and search
   const filteredPositions = useMemo(() => {
-    let filtered = cryptoPositions;
+    let filtered = breakdownData.cryptoPositions;
 
     // Filter by category
     if (selectedCategories.size < CRYPTO_FILTER_OPTIONS.length) {
@@ -83,7 +81,7 @@ export default function CryptoPositionsPage() {
     }
 
     return filtered;
-  }, [cryptoPositions, searchQuery, selectedCategories, categoryService]);
+  }, [breakdownData.cryptoPositions, searchQuery, selectedCategories, categoryService]);
 
   // Sort positions
   const sortedPositions = useMemo(() => {
@@ -131,21 +129,14 @@ export default function CryptoPositionsPage() {
     return assets;
   }, [filteredPositions, sortField, sortDirection]);
 
-  // Calculate totals
-  const totalValue = cryptoPositions.reduce((sum, p) => sum + p.value, 0);
-  const filteredValue = filteredPositions.reduce((sum, p) => sum + p.value, 0);
-  const totalPositions = cryptoPositions.length;
-  const uniqueAssets = new Set(cryptoPositions.map(p => p.symbol.toLowerCase())).size;
-
   // Category filter handlers
-  const toggleCategory = (category: string) => {
-    const cat = category as CryptoSubCategory;
+  const toggleCategory = (category: CryptoSubCategory) => {
     setSelectedCategories((prev) => {
       const next = new Set(prev);
-      if (next.has(cat)) {
-        next.delete(cat);
+      if (next.has(category)) {
+        next.delete(category);
       } else {
-        next.add(cat);
+        next.add(category);
       }
       return next;
     });
@@ -162,6 +153,15 @@ export default function CryptoPositionsPage() {
       setSortField(field);
       setSortDirection('desc');
     }
+  };
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) return <ArrowUpDown className="w-3 h-3 opacity-50" />;
+    return sortDirection === 'asc' ? (
+      <ChevronUp className="w-3 h-3" />
+    ) : (
+      <ChevronDown className="w-3 h-3" />
+    );
   };
 
   const openCustomPriceModal = (asset: AssetWithPrice) => {
@@ -204,261 +204,372 @@ export default function CryptoPositionsPage() {
   };
 
   const displayData = viewMode === 'assets' ? aggregatedAssets : sortedPositions;
+  const hasActiveFilter = selectedCategories.size < CRYPTO_FILTER_OPTIONS.length;
+  const filteredValue = filteredPositions.reduce((sum, p) => sum + p.value, 0);
+  const uniqueAssets = new Set(breakdownData.cryptoPositions.map(p => p.symbol.toLowerCase())).size;
+
+  // Empty state
+  if (breakdownData.cryptoPositions.length === 0) {
+    return (
+      <div>
+        <div className="flex flex-col items-center justify-center py-32">
+          <div className="w-20 h-20 rounded-2xl bg-[var(--background-tertiary)] flex items-center justify-center mb-6">
+            <Coins className="w-10 h-10 text-[var(--foreground-muted)]" />
+          </div>
+          <h2 className="text-xl font-semibold mb-2">No crypto positions</h2>
+          <p className="text-[var(--foreground-muted)] text-center max-w-md">
+            Add crypto positions or connect a wallet to track your holdings.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
-      <PageHeader
-        title="Total Crypto Value"
-        value={totalValue}
-        hideBalances={hideBalances}
-        secondaryStats={[
-          { label: 'Positions', value: String(totalPositions) },
-          { label: 'Assets', value: String(uniqueAssets) },
-        ]}
-        tabs={[
-          { id: 'assets', label: 'Assets', icon: <Grid3X3 className="w-3.5 h-3.5" />, count: aggregatedAssets.length },
-          { id: 'positions', label: 'Positions', icon: <Layers className="w-3.5 h-3.5" />, count: sortedPositions.length },
-        ]}
-        activeTab={viewMode}
-        onTabChange={(id) => setViewMode(id as ViewMode)}
-        filterOptions={CRYPTO_FILTER_OPTIONS as FilterOption<string>[]}
-        selectedFilters={selectedCategories as Set<string>}
-        onFilterToggle={toggleCategory}
-        onFilterClear={clearFilters}
-        filteredTotal={filteredValue}
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        onExport={exportCSV}
-      />
+      {/* Header Stats */}
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">TOTAL CRYPTO</p>
+          <h2 className="text-2xl font-semibold mb-1">
+            {hideBalances ? '••••••••' : formatCurrency(hasActiveFilter ? filteredValue : breakdownData.total)}
+          </h2>
+          {hasActiveFilter && (
+            <p className="text-[13px] text-[var(--foreground-muted)]">
+              of {formatCurrency(breakdownData.total)} total
+            </p>
+          )}
+        </div>
+
+        <div className="flex gap-6 text-right">
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-0.5">Positions</p>
+            <p className="text-[13px] font-medium">{breakdownData.cryptoPositions.length}</p>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-0.5">Assets</p>
+            <p className="text-[13px] font-medium">{uniqueAssets}</p>
+          </div>
+        </div>
+      </div>
+
+      <hr className="border-[var(--border)] mb-6" />
+
+      {/* Pie Chart - Category Breakdown */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+        <DonutChart
+          title="By Category"
+          data={breakdownData.chartData}
+          hideValues={hideBalances}
+          maxItems={6}
+        />
+
+        {/* Summary Stats */}
+        <div className="md:col-span-2">
+          <h3 className="text-[15px] font-medium mb-4">Breakdown</h3>
+          <div className="grid grid-cols-3 gap-4">
+            {breakdownData.chartData.slice(0, 6).map((item) => (
+              <div key={item.label}>
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: item.color }} />
+                  <span className="text-[13px] font-medium">{item.label}</span>
+                </div>
+                <p className="text-lg font-semibold mb-0.5">
+                  {hideBalances ? '••••' : formatCurrency(item.value)}
+                </p>
+                <p className="text-[12px] text-[var(--foreground-muted)]">
+                  {breakdownData.total > 0 ? ((item.value / breakdownData.total) * 100).toFixed(1) : 0}%
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <hr className="border-[var(--border)] mb-6" />
+
+      {/* Filter Chips */}
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        {CRYPTO_FILTER_OPTIONS.map((opt) => {
+          const isSelected = selectedCategories.has(opt.value);
+          return (
+            <button
+              key={opt.value}
+              onClick={() => toggleCategory(opt.value)}
+              className={`px-3 py-1.5 text-[12px] font-medium rounded-lg transition-all flex items-center gap-1.5 ${
+                isSelected
+                  ? 'bg-[var(--background-secondary)] text-[var(--foreground)]'
+                  : 'bg-transparent text-[var(--foreground-muted)] opacity-50'
+              }`}
+            >
+              <span
+                className="w-2 h-2 rounded-full"
+                style={{ backgroundColor: opt.color }}
+              />
+              {opt.label}
+            </button>
+          );
+        })}
+        {hasActiveFilter && (
+          <button
+            onClick={clearFilters}
+            className="px-2 py-1 text-[11px] text-[var(--foreground-muted)] hover:text-[var(--foreground)] transition-colors"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+
+      {/* Controls Row */}
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        {/* View Toggle */}
+        <div className="flex gap-1 p-1 bg-[var(--background-secondary)] rounded-lg">
+          <button
+            onClick={() => setViewMode('assets')}
+            className={`px-3 py-1.5 text-[12px] font-medium rounded-md transition-colors flex items-center gap-1.5 ${
+              viewMode === 'assets'
+                ? 'bg-[var(--background)] text-[var(--foreground)] shadow-sm'
+                : 'text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
+            }`}
+          >
+            <Grid3X3 className="w-3.5 h-3.5" />
+            Assets ({aggregatedAssets.length})
+          </button>
+          <button
+            onClick={() => setViewMode('positions')}
+            className={`px-3 py-1.5 text-[12px] font-medium rounded-md transition-colors flex items-center gap-1.5 ${
+              viewMode === 'positions'
+                ? 'bg-[var(--background)] text-[var(--foreground)] shadow-sm'
+                : 'text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
+            }`}
+          >
+            <Layers className="w-3.5 h-3.5" />
+            Positions ({sortedPositions.length})
+          </button>
+        </div>
+
+        <div className="flex-1" />
+
+        {/* Search */}
+        <div className="relative flex-1 max-w-xs">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--foreground-muted)]" />
+          <input
+            type="text"
+            placeholder="Search..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9 w-full"
+          />
+        </div>
+
+        {/* Export */}
+        <button onClick={exportCSV} className="btn btn-secondary p-2" title="Export CSV">
+          <Download className="w-4 h-4" />
+        </button>
+      </div>
 
       {/* Table */}
-      <div>
-        {displayData.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-[var(--foreground-muted)]">
-              {cryptoPositions.length === 0
-                ? 'No crypto positions yet.'
-                : 'No positions match your search.'}
-            </p>
-          </div>
-        ) : viewMode === 'positions' ? (
-          <div className="table-scroll">
-            <table className="w-full min-w-[700px]">
-              <thead>
-                <tr className="border-b border-[var(--border)]">
-                  <th className="table-header text-left pb-3 cursor-pointer" onClick={() => toggleSort('symbol')}>
-                    <span className="flex items-center gap-1">
-                      Asset
-                      {sortField === 'symbol' && <ArrowUpDown className="w-3 h-3" />}
-                    </span>
-                  </th>
-                  <th className="table-header text-left pb-3">Source</th>
-                  <th className="table-header text-right pb-3 cursor-pointer" onClick={() => toggleSort('amount')}>
-                    <span className="flex items-center justify-end gap-1">
-                      Amount
-                      {sortField === 'amount' && <ArrowUpDown className="w-3 h-3" />}
-                    </span>
-                  </th>
-                  <th className="table-header text-right pb-3">Price</th>
-                  <th className="table-header text-right pb-3 cursor-pointer" onClick={() => toggleSort('value')}>
-                    <span className="flex items-center justify-end gap-1">
-                      Value
-                      {sortField === 'value' && <ArrowUpDown className="w-3 h-3" />}
-                    </span>
-                  </th>
-                  <th className="table-header text-right pb-3 cursor-pointer" onClick={() => toggleSort('change')}>
-                    <span className="flex items-center justify-end gap-1">
-                      24h
-                      {sortField === 'change' && <ArrowUpDown className="w-3 h-3" />}
-                    </span>
-                  </th>
-                  <th className="table-header text-right pb-3">%</th>
-                  <th className="table-header text-right pb-3 w-10"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedPositions.map((position) => {
-                  const isWalletPosition = !!position.walletAddress;
-                  const isCexPosition = position.protocol?.startsWith('cex:');
-                  const isDebt = position.isDebt;
+      {displayData.length === 0 ? (
+        <div className="text-center py-12">
+          <p className="text-[var(--foreground-muted)]">No positions match your filters.</p>
+        </div>
+      ) : viewMode === 'positions' ? (
+        <div className="table-scroll">
+          <table className="w-full min-w-[700px]">
+            <thead>
+              <tr className="border-b border-[var(--border)]">
+                <th className="table-header text-left pb-3">
+                  <button onClick={() => toggleSort('symbol')} className="flex items-center gap-1 hover:text-[var(--foreground)] transition-colors">
+                    Asset <SortIcon field="symbol" />
+                  </button>
+                </th>
+                <th className="table-header text-left pb-3">Source</th>
+                <th className="table-header text-right pb-3">
+                  <button onClick={() => toggleSort('amount')} className="flex items-center gap-1 ml-auto hover:text-[var(--foreground)] transition-colors">
+                    Amount <SortIcon field="amount" />
+                  </button>
+                </th>
+                <th className="table-header text-right pb-3">Price</th>
+                <th className="table-header text-right pb-3">
+                  <button onClick={() => toggleSort('value')} className="flex items-center gap-1 ml-auto hover:text-[var(--foreground)] transition-colors">
+                    Value <SortIcon field="value" />
+                  </button>
+                </th>
+                <th className="table-header text-right pb-3">
+                  <button onClick={() => toggleSort('change')} className="flex items-center gap-1 ml-auto hover:text-[var(--foreground)] transition-colors">
+                    24h <SortIcon field="change" />
+                  </button>
+                </th>
+                <th className="table-header text-right pb-3">%</th>
+                <th className="table-header text-right pb-3 w-10"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedPositions.map((position) => {
+                const isWalletPosition = !!position.walletAddress;
+                const isCexPosition = position.protocol?.startsWith('cex:');
+                const isDebt = position.isDebt;
 
-                  return (
-                    <tr
-                      key={position.id}
-                      className={`border-b border-[var(--border)] last:border-0 hover:bg-[var(--background-secondary)] transition-colors ${
-                        isDebt ? 'bg-[var(--negative-light)]' : ''
-                      }`}
-                    >
-                      <td className="py-3">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold ${
-                            isDebt ? 'bg-[var(--negative)] text-white' : 'bg-[var(--tag-bg)]'
-                          }`}>
-                            {position.symbol.slice(0, 2).toUpperCase()}
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <p className="font-medium">{position.symbol.toUpperCase()}</p>
-                              {isDebt && (
-                                <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-[var(--negative)] text-white rounded">
-                                  DEBT
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-xs text-[var(--foreground-muted)]">{position.name}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="py-3">
-                        {isWalletPosition ? (
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <Wallet className="w-3.5 h-3.5 text-[var(--accent-primary)]" />
-                            <span className="text-xs text-[var(--foreground-muted)]">
-                              {formatAddress(position.walletAddress!, 4)}
-                            </span>
-                            {position.chain && (
-                              <span className="tag text-[10px] py-0 px-1.5">{position.chain}</span>
-                            )}
-                            {position.protocol && (
-                              <span className="tag text-[10px] py-0 px-1.5 bg-[var(--accent-primary)] text-white">
-                                {position.protocol}
-                              </span>
-                            )}
-                          </div>
-                        ) : isCexPosition ? (
-                          <span className="tag">CEX</span>
-                        ) : (
-                          <span className="tag">{getAssetTypeLabel(position.type)}</span>
-                        )}
-                      </td>
-                      <td className="py-3 text-right font-mono text-sm">
-                        {hideBalances ? '•••' : formatNumber(position.amount)}
-                      </td>
-                      <td className="py-3 text-right">
-                        <button
-                          onClick={() => openCustomPriceModal(position)}
-                          className="group inline-flex items-center gap-1 font-mono text-sm hover:text-[var(--accent-primary)] transition-colors"
-                        >
-                          {position.currentPrice > 0 ? formatCurrency(position.currentPrice) : '-'}
-                          {position.hasCustomPrice && (
-                            <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]" />
-                          )}
-                          <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity" />
-                        </button>
-                      </td>
-                      <td className={`py-3 text-right font-semibold ${isDebt ? 'text-[var(--negative)]' : ''}`}>
-                        {hideBalances ? '••••' : formatCurrency(position.value)}
-                      </td>
-                      <td className={`py-3 text-right ${getChangeColor(position.changePercent24h)}`}>
-                        {formatPercent(position.changePercent24h)}
-                      </td>
-                      <td className={`py-3 text-right ${isDebt ? 'text-[var(--negative)]' : 'text-[var(--foreground-muted)]'}`}>
-                        {position.allocation.toFixed(1)}%
-                      </td>
-                      <td className="py-3 text-right">
-                        {!isWalletPosition && !isCexPosition && (
-                          <button
-                            onClick={() => handleDelete(position.id, false)}
-                            className="p-2 rounded-lg hover:bg-[var(--negative-light)] text-[var(--negative)] transition-colors"
-                            title="Delete position"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="table-scroll">
-            <table className="w-full min-w-[600px]">
-              <thead>
-                <tr className="border-b border-[var(--border)]">
-                  <th className="table-header text-left pb-3 cursor-pointer" onClick={() => toggleSort('symbol')}>
-                    <span className="flex items-center gap-1">
-                      Asset
-                      {sortField === 'symbol' && <ArrowUpDown className="w-3 h-3" />}
-                    </span>
-                  </th>
-                  <th className="table-header text-left pb-3">Type</th>
-                  <th className="table-header text-right pb-3 cursor-pointer" onClick={() => toggleSort('amount')}>
-                    <span className="flex items-center justify-end gap-1">
-                      Amount
-                      {sortField === 'amount' && <ArrowUpDown className="w-3 h-3" />}
-                    </span>
-                  </th>
-                  <th className="table-header text-right pb-3">Price</th>
-                  <th className="table-header text-right pb-3 cursor-pointer" onClick={() => toggleSort('value')}>
-                    <span className="flex items-center justify-end gap-1">
-                      Value
-                      {sortField === 'value' && <ArrowUpDown className="w-3 h-3" />}
-                    </span>
-                  </th>
-                  <th className="table-header text-right pb-3 cursor-pointer" onClick={() => toggleSort('change')}>
-                    <span className="flex items-center justify-end gap-1">
-                      24h
-                      {sortField === 'change' && <ArrowUpDown className="w-3 h-3" />}
-                    </span>
-                  </th>
-                  <th className="table-header text-right pb-3">%</th>
-                </tr>
-              </thead>
-              <tbody>
-                {aggregatedAssets.map((asset, index) => (
+                return (
                   <tr
-                    key={`${asset.symbol}-${index}`}
-                    className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--background-secondary)] transition-colors"
+                    key={position.id}
+                    className={`border-b border-[var(--border)] last:border-0 hover:bg-[var(--background-secondary)] transition-colors ${
+                      isDebt ? 'bg-[var(--negative-light)]' : ''
+                    }`}
                   >
                     <td className="py-3">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-[var(--tag-bg)] rounded-full flex items-center justify-center text-xs font-semibold">
-                          {asset.symbol.slice(0, 2).toUpperCase()}
-                        </div>
-                        <div>
-                          <p className="font-medium">{asset.symbol.toUpperCase()}</p>
-                          <p className="text-xs text-[var(--foreground-muted)]">{asset.name}</p>
+                        <CryptoIcon symbol={position.symbol} size={32} isDebt={isDebt} />
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium">{position.symbol.toUpperCase()}</p>
+                          {isDebt && (
+                            <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-[var(--negative)] text-white rounded">
+                              DEBT
+                            </span>
+                          )}
                         </div>
                       </div>
                     </td>
                     <td className="py-3">
-                      <span className="text-sm text-[var(--foreground-muted)]">
-                        {getAssetTypeLabel(asset.type)}
-                      </span>
+                      {isWalletPosition ? (
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <Wallet className="w-3.5 h-3.5 text-[var(--accent-primary)]" />
+                          <span className="text-xs text-[var(--foreground-muted)]">
+                            {formatAddress(position.walletAddress!, 4)}
+                          </span>
+                          {position.chain && (
+                            <span className="tag text-[10px] py-0 px-1.5">{position.chain}</span>
+                          )}
+                          {position.protocol && (
+                            <span className="tag text-[10px] py-0 px-1.5 bg-[var(--accent-primary)] text-white">
+                              {position.protocol}
+                            </span>
+                          )}
+                        </div>
+                      ) : isCexPosition ? (
+                        <span className="tag">CEX</span>
+                      ) : (
+                        <span className="tag">{getAssetTypeLabel(position.type)}</span>
+                      )}
                     </td>
                     <td className="py-3 text-right font-mono text-sm">
-                      {hideBalances ? '•••' : formatNumber(asset.amount)}
+                      {hideBalances ? '•••' : formatNumber(position.amount)}
                     </td>
                     <td className="py-3 text-right">
                       <button
-                        onClick={() => openCustomPriceModal(asset)}
+                        onClick={() => openCustomPriceModal(position)}
                         className="group inline-flex items-center gap-1 font-mono text-sm hover:text-[var(--accent-primary)] transition-colors"
                       >
-                        {formatCurrency(asset.currentPrice)}
-                        {asset.hasCustomPrice && (
+                        {position.currentPrice > 0 ? formatCurrency(position.currentPrice) : '-'}
+                        {position.hasCustomPrice && (
                           <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]" />
                         )}
                         <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity" />
                       </button>
                     </td>
-                    <td className="py-3 text-right font-semibold">
-                      {hideBalances ? '••••' : formatCurrency(asset.value)}
+                    <td className={`py-3 text-right font-semibold ${isDebt ? 'text-[var(--negative)]' : ''}`}>
+                      {hideBalances ? '••••' : formatCurrency(position.value)}
                     </td>
-                    <td className={`py-3 text-right ${getChangeColor(asset.changePercent24h)}`}>
-                      {formatPercent(asset.changePercent24h)}
+                    <td className={`py-3 text-right ${getChangeColor(position.changePercent24h)}`}>
+                      {formatPercent(position.changePercent24h)}
                     </td>
-                    <td className="py-3 text-right text-[var(--foreground-muted)]">
-                      {asset.allocation.toFixed(1)}%
+                    <td className={`py-3 text-right ${isDebt ? 'text-[var(--negative)]' : 'text-[var(--foreground-muted)]'}`}>
+                      {position.allocation.toFixed(1)}%
+                    </td>
+                    <td className="py-3 text-right">
+                      {!isWalletPosition && !isCexPosition && (
+                        <button
+                          onClick={() => handleDelete(position.id, false)}
+                          className="p-2 rounded-lg hover:bg-[var(--negative-light)] text-[var(--negative)] transition-colors"
+                          title="Delete position"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="table-scroll">
+          <table className="w-full min-w-[600px]">
+            <thead>
+              <tr className="border-b border-[var(--border)]">
+                <th className="table-header text-left pb-3">
+                  <button onClick={() => toggleSort('symbol')} className="flex items-center gap-1 hover:text-[var(--foreground)] transition-colors">
+                    Asset <SortIcon field="symbol" />
+                  </button>
+                </th>
+                <th className="table-header text-left pb-3">Type</th>
+                <th className="table-header text-right pb-3">
+                  <button onClick={() => toggleSort('amount')} className="flex items-center gap-1 ml-auto hover:text-[var(--foreground)] transition-colors">
+                    Amount <SortIcon field="amount" />
+                  </button>
+                </th>
+                <th className="table-header text-right pb-3">Price</th>
+                <th className="table-header text-right pb-3">
+                  <button onClick={() => toggleSort('value')} className="flex items-center gap-1 ml-auto hover:text-[var(--foreground)] transition-colors">
+                    Value <SortIcon field="value" />
+                  </button>
+                </th>
+                <th className="table-header text-right pb-3">
+                  <button onClick={() => toggleSort('change')} className="flex items-center gap-1 ml-auto hover:text-[var(--foreground)] transition-colors">
+                    24h <SortIcon field="change" />
+                  </button>
+                </th>
+                <th className="table-header text-right pb-3">%</th>
+              </tr>
+            </thead>
+            <tbody>
+              {aggregatedAssets.map((asset, index) => (
+                <tr
+                  key={`${asset.symbol}-${index}`}
+                  className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--background-secondary)] transition-colors"
+                >
+                  <td className="py-3">
+                    <div className="flex items-center gap-3">
+                      <CryptoIcon symbol={asset.symbol} size={32} />
+                      <p className="font-medium">{asset.symbol.toUpperCase()}</p>
+                    </div>
+                  </td>
+                  <td className="py-3">
+                    <span className="text-sm text-[var(--foreground-muted)]">
+                      {getAssetTypeLabel(asset.type)}
+                    </span>
+                  </td>
+                  <td className="py-3 text-right font-mono text-sm">
+                    {hideBalances ? '•••' : formatNumber(asset.amount)}
+                  </td>
+                  <td className="py-3 text-right">
+                    <button
+                      onClick={() => openCustomPriceModal(asset)}
+                      className="group inline-flex items-center gap-1 font-mono text-sm hover:text-[var(--accent-primary)] transition-colors"
+                    >
+                      {formatCurrency(asset.currentPrice)}
+                      {asset.hasCustomPrice && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]" />
+                      )}
+                      <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity" />
+                    </button>
+                  </td>
+                  <td className="py-3 text-right font-semibold">
+                    {hideBalances ? '••••' : formatCurrency(asset.value)}
+                  </td>
+                  <td className={`py-3 text-right ${getChangeColor(asset.changePercent24h)}`}>
+                    {formatPercent(asset.changePercent24h)}
+                  </td>
+                  <td className="py-3 text-right text-[var(--foreground-muted)]">
+                    {asset.allocation.toFixed(1)}%
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Custom Price Modal */}
       {customPriceModal.asset && (

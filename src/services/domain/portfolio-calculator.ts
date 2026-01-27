@@ -1654,3 +1654,97 @@ export function calculateEquitiesBreakdown(assets: AssetWithPrice[]): EquitiesBr
     chartData,
   };
 }
+
+/**
+ * Crypto breakdown result type
+ */
+export interface CryptoBreakdownResult {
+  total: number;
+  cryptoPositions: AssetWithPrice[];
+  chartData: { label: string; value: number; color: string; breakdown: { label: string; value: number }[] }[];
+  byCategory: Record<string, { value: number; count: number }>;
+}
+
+/**
+ * Calculate crypto breakdown by sub-category - SINGLE SOURCE OF TRUTH
+ * Uses GROSS ASSETS only (positive values)
+ */
+export function calculateCryptoBreakdown(assets: AssetWithPrice[]): CryptoBreakdownResult {
+  const categoryService = getCategoryService();
+
+  // Filter to crypto only
+  const cryptoPositions = assets.filter((p) => {
+    const mainCat = categoryService.getMainCategory(p.symbol, p.type);
+    return mainCat === 'crypto';
+  });
+
+  // Category colors
+  const categoryColors: Record<string, string> = {
+    'btc': '#F7931A',
+    'eth': '#627EEA',
+    'sol': '#9945FF',
+    'stablecoins': '#4CAF50',
+    'tokens': '#00BCD4',
+    'perps': '#FF5722',
+  };
+
+  const categoryLabels: Record<string, string> = {
+    'btc': 'Bitcoin',
+    'eth': 'Ethereum',
+    'sol': 'Solana',
+    'stablecoins': 'Stablecoins',
+    'tokens': 'Tokens',
+    'perps': 'Perps',
+  };
+
+  // Group by sub-category - ASSETS only (positive values)
+  const categoryMap: Record<string, { value: number; count: number; positions: AssetWithPrice[] }> = {};
+
+  cryptoPositions.filter(p => p.value > 0).forEach((p) => {
+    const subCat = categoryService.getSubCategory(p.symbol, p.type);
+    if (!categoryMap[subCat]) {
+      categoryMap[subCat] = { value: 0, count: 0, positions: [] };
+    }
+    categoryMap[subCat].value += p.value;
+    categoryMap[subCat].count++;
+    categoryMap[subCat].positions.push(p);
+  });
+
+  const total = Object.values(categoryMap).reduce((sum, cat) => sum + cat.value, 0);
+
+  // Helper to aggregate by symbol
+  const aggregateBySymbol = (positions: AssetWithPrice[]) => {
+    const map = new Map<string, number>();
+    positions.forEach(p => {
+      const key = p.symbol.toUpperCase();
+      map.set(key, (map.get(key) || 0) + p.value);
+    });
+    return Array.from(map.entries())
+      .map(([label, value]) => ({ label, value }))
+      .sort((a, b) => b.value - a.value);
+  };
+
+  // Build chart data sorted by value
+  const chartData = Object.entries(categoryMap)
+    .filter(([_, data]) => data.value > 0)
+    .map(([category, data]) => ({
+      label: categoryLabels[category] || category,
+      value: data.value,
+      color: categoryColors[category] || '#6B7280',
+      breakdown: aggregateBySymbol(data.positions),
+    }))
+    .sort((a, b) => b.value - a.value);
+
+  // Build byCategory summary
+  const byCategory: Record<string, { value: number; count: number }> = {};
+  Object.entries(categoryMap).forEach(([cat, data]) => {
+    byCategory[cat] = { value: data.value, count: data.count };
+  });
+
+  return {
+    total,
+    cryptoPositions,
+    chartData,
+    byCategory,
+  };
+}

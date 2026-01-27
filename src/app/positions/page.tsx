@@ -6,6 +6,7 @@ import { Plus, Trash2, Search, Wallet, RefreshCw, Eye, EyeOff, ArrowUpDown, Down
 import { usePortfolioStore } from '@/store/portfolioStore';
 import { calculateAllPositionsWithPrices, calculatePortfolioSummary, aggregatePositionsBySymbol, calculateUnrealizedPnL } from '@/services';
 import AddPositionModal from '@/components/modals/AddPositionModal';
+import CryptoIcon from '@/components/ui/CryptoIcon';
 import CustomPriceModal from '@/components/modals/CustomPriceModal';
 import { useRefresh } from '@/components/PortfolioProvider';
 import {
@@ -503,21 +504,14 @@ export default function PositionsPage() {
                     >
                       <td className="py-3">
                         <div className="flex items-center gap-3">
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold ${
-                            isDebt ? 'bg-[var(--negative)] text-white' : 'bg-[var(--tag-bg)]'
-                          }`}>
-                            {position.symbol.slice(0, 2).toUpperCase()}
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <p className="font-medium">{position.symbol.toUpperCase()}</p>
-                              {isDebt && (
-                                <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-[var(--negative)] text-white rounded">
-                                  DEBT
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-xs text-[var(--foreground-muted)]">{position.name}</p>
+                          <CryptoIcon symbol={position.symbol} size={32} isDebt={isDebt} />
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium">{position.symbol.toUpperCase()}</p>
+                            {isDebt && (
+                              <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-[var(--negative)] text-white rounded">
+                                DEBT
+                              </span>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -651,13 +645,8 @@ export default function PositionsPage() {
                   >
                     <td className="py-3">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-[var(--tag-bg)] rounded-full flex items-center justify-center text-xs font-semibold">
-                          {asset.symbol.slice(0, 2).toUpperCase()}
-                        </div>
-                        <div>
-                          <p className="font-medium">{asset.symbol.toUpperCase()}</p>
-                          <p className="text-xs text-[var(--foreground-muted)]">{asset.name}</p>
-                        </div>
+                        <CryptoIcon symbol={asset.symbol} size={32} />
+                        <p className="font-medium">{asset.symbol.toUpperCase()}</p>
                       </div>
                     </td>
                     <td className="py-3">
