@@ -135,7 +135,12 @@ export default function DonutChart({
 
   return (
     <div>
-      <h4 className="text-[15px] font-medium mb-3">{title}</h4>
+      <div className="flex items-baseline justify-between mb-3">
+        <h4 className="text-[15px] font-medium">{title}</h4>
+        <span className="text-[13px] font-semibold">
+          {hideValues ? '••••••' : formatCurrency(total)}
+        </span>
+      </div>
       <div className="flex items-start gap-5 relative">
         {/* Donut Chart SVG with center tooltip */}
         <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
@@ -198,7 +203,7 @@ export default function DonutChart({
 
 
         {/* Legend */}
-        <div className="flex-1 space-y-1 min-w-0">
+        <div className="flex-1 space-y-1.5 min-w-0">
           {displayItems.map((item, index) => {
             const percentage = total > 0 ? (item.value / total) * 100 : 0;
             const isHovered = hoveredIndex === index;
@@ -218,9 +223,14 @@ export default function DonutChart({
                   />
                   <span className="text-[12px] truncate">{item.label}</span>
                 </div>
-                <span className="text-[12px] text-[var(--foreground-muted)] flex-shrink-0">
-                  {hideValues ? '••' : `${percentage.toFixed(0)}%`}
-                </span>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <span className="text-[12px] font-medium">
+                    {hideValues ? '••••' : formatCurrency(item.value)}
+                  </span>
+                  <span className="text-[11px] text-[var(--foreground-muted)] w-8 text-right">
+                    {hideValues ? '••' : `${percentage.toFixed(0)}%`}
+                  </span>
+                </div>
               </div>
             );
           })}

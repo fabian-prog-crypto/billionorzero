@@ -72,13 +72,15 @@ export default function CashPage() {
     const total = includeStablecoins ? fiat.value + stablecoins.value : fiat.value;
 
     // Calculate by currency for pie chart with breakdown by location
+    // Uses ASSETS only (positive values) - debt doesn't count toward allocation
     const currencyMap: Record<string, { value: number; count: number; positions: AssetWithPrice[] }> = {};
 
     const positionsToAnalyze = includeStablecoins
       ? [...fiatPositions, ...stablecoinPositions]
       : fiatPositions;
 
-    positionsToAnalyze.forEach((p) => {
+    // Only process ASSETS (positive values)
+    positionsToAnalyze.filter(p => p.value > 0).forEach((p) => {
       const currency = p.symbol.toUpperCase();
       if (!currencyMap[currency]) {
         currencyMap[currency] = { value: 0, count: 0, positions: [] };
@@ -119,7 +121,7 @@ export default function CashPage() {
         value: data.value,
         color: currencyColors[currency] || '#6B7280',
         breakdown: data.positions
-          .map(p => ({ label: getLocationLabel(p), value: Math.abs(p.value) }))
+          .map(p => ({ label: getLocationLabel(p), value: p.value }))
           .sort((a, b) => b.value - a.value),
       }))
       .sort((a, b) => b.value - a.value);

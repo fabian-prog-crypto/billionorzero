@@ -219,6 +219,7 @@ export class WalletProvider {
         // This prevents duplicates when there are multiple positions in the same protocol
         const aggregatedSupply = new Map<string, { symbol: string; amount: number; price: number }>();
         const aggregatedDebt = new Map<string, { symbol: string; amount: number; price: number }>();
+        const aggregatedRewards = new Map<string, { symbol: string; amount: number; price: number }>();
         let totalValue = 0;
 
         for (const item of protocol.portfolio_item_list || []) {
@@ -251,9 +252,42 @@ export class WalletProvider {
               aggregatedDebt.set(key, { symbol: t.symbol, amount: t.amount, price: t.price });
             }
           }
+
+          // Aggregate reward tokens (vesting, claimable rewards - e.g., Sablier)
+          for (const t of item.detail?.reward_token_list || []) {
+            // Skip spam tokens using pattern matching
+            if (isSpamToken(t.symbol, t.name)) continue;
+
+            const key = t.symbol.toLowerCase();
+            const existing = aggregatedRewards.get(key);
+            if (existing) {
+              existing.amount += t.amount;
+            } else {
+              aggregatedRewards.set(key, { symbol: t.symbol, amount: t.amount, price: t.price });
+            }
+          }
+
+          // Also check for generic token_list (some protocols use this instead of specific lists)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const genericTokenList = (item.detail as any)?.token_list;
+          if (Array.isArray(genericTokenList)) {
+            for (const t of genericTokenList) {
+              if (!t?.symbol || isSpamToken(t.symbol, t.name)) continue;
+
+              const key = t.symbol.toLowerCase();
+              // Add to supply if not already there (treat generic tokens as supply/assets)
+              if (!aggregatedSupply.has(key) && !aggregatedRewards.has(key)) {
+                aggregatedSupply.set(key, { symbol: t.symbol, amount: t.amount || 0, price: t.price || 0 });
+              }
+            }
+          }
         }
 
-        const tokens = Array.from(aggregatedSupply.values());
+        // Combine supply tokens and reward tokens (both are assets)
+        // Reward tokens include vesting/locked tokens (e.g., Sablier vesting streams)
+        const supplyTokens = Array.from(aggregatedSupply.values());
+        const rewardTokens = Array.from(aggregatedRewards.values());
+        const tokens = [...supplyTokens, ...rewardTokens];
         const debtTokens = Array.from(aggregatedDebt.values());
 
         if (tokens.length > 0 || debtTokens.length > 0) {

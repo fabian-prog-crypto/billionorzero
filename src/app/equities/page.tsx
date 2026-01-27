@@ -36,24 +36,26 @@ export default function EquitiesPage() {
     });
   }, [allPositions, categoryService]);
 
-  // Helper to aggregate positions by symbol
+  // Helper to aggregate ASSETS (positive values only) by symbol
   const aggregateBySymbol = (positions: AssetWithPrice[]) => {
     const map = new Map<string, number>();
-    positions.forEach(p => {
+    // Only count positive values (assets, not debt)
+    positions.filter(p => p.value > 0).forEach(p => {
       const key = p.symbol.toUpperCase();
-      map.set(key, (map.get(key) || 0) + Math.abs(p.value));
+      map.set(key, (map.get(key) || 0) + p.value);
     });
     return Array.from(map.entries())
       .map(([label, value]) => ({ label, value }))
       .sort((a, b) => b.value - a.value);
   };
 
-  // Calculate stocks vs ETFs breakdown
+  // Calculate stocks vs ETFs breakdown - ASSETS only (positive values)
   const breakdownData = useMemo(() => {
     const stockPositions: AssetWithPrice[] = [];
     const etfPositions: AssetWithPrice[] = [];
 
-    equityPositions.forEach((p) => {
+    // Only process ASSETS (positive values)
+    equityPositions.filter(p => p.value > 0).forEach((p) => {
       const subCat = categoryService.getSubCategory(p.symbol, p.type);
       if (subCat === 'etfs') {
         etfPositions.push(p);
@@ -62,8 +64,8 @@ export default function EquitiesPage() {
       }
     });
 
-    const stocksValue = stockPositions.reduce((sum, p) => sum + Math.abs(p.value), 0);
-    const etfsValue = etfPositions.reduce((sum, p) => sum + Math.abs(p.value), 0);
+    const stocksValue = stockPositions.reduce((sum, p) => sum + p.value, 0);
+    const etfsValue = etfPositions.reduce((sum, p) => sum + p.value, 0);
     const total = stocksValue + etfsValue;
 
     const chartData: DonutChartItem[] = [];

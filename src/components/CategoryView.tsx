@@ -1,15 +1,17 @@
 'use client';
 
 import { useMemo } from 'react';
-import { ArrowUpRight } from 'lucide-react';
+import { ArrowUpRight, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
 import DonutChart, { DonutChartItem } from '@/components/charts/DonutChart';
-import type { AssetWithPrice } from '@/types';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import {
   calculateAllPositionsWithPrices,
   calculateCryptoMetrics,
   calculateCryptoAllocation,
+  calculateCustodyBreakdown,
+  calculateChainBreakdown,
+  calculateExposureBreakdown,
   getCategoryService,
 } from '@/services';
 import { MainCategory } from '@/services/domain/category-service';
@@ -47,125 +49,18 @@ export default function CategoryView({
     });
   }, [allPositions, category, categoryService]);
 
-  // Helper to aggregate positions by symbol
-  const aggregateBySymbol = (positions: AssetWithPrice[]) => {
-    const map = new Map<string, number>();
-    positions.forEach(p => {
-      const key = p.symbol.toUpperCase();
-      map.set(key, (map.get(key) || 0) + Math.abs(p.value));
-    });
-    return Array.from(map.entries())
-      .map(([label, value]) => ({ label, value }))
-      .sort((a, b) => b.value - a.value);
-  };
-
-  // Calculate custody breakdown with local breakdown computation
+  // Use centralized service functions for chart data (SINGLE SOURCE OF TRUTH)
   const custodyChartData = useMemo((): DonutChartItem[] => {
-    const buckets: Record<string, { assets: AssetWithPrice[]; color: string }> = {
-      'Self-Custody': { assets: [], color: '#4CAF50' },
-      'DeFi': { assets: [], color: '#9C27B0' },
-      'CEX': { assets: [], color: '#FF9800' },
-      'Banks & Brokers': { assets: [], color: '#2196F3' },
-      'Manual': { assets: [], color: '#607D8B' },
-    };
-
-    categoryPositions.forEach(asset => {
-      if (asset.protocol?.startsWith('cex:')) {
-        buckets['CEX'].assets.push(asset);
-      } else if (asset.type === 'stock' || asset.type === 'cash') {
-        buckets['Banks & Brokers'].assets.push(asset);
-      } else if (asset.walletAddress) {
-        if (asset.protocol && asset.protocol !== 'wallet') {
-          buckets['DeFi'].assets.push(asset);
-        } else {
-          buckets['Self-Custody'].assets.push(asset);
-        }
-      } else {
-        buckets['Manual'].assets.push(asset);
-      }
-    });
-
-    return Object.entries(buckets)
-      .filter(([_, b]) => b.assets.length > 0)
-      .map(([label, b]) => ({
-        label,
-        value: b.assets.reduce((sum, a) => sum + Math.abs(a.value), 0),
-        color: b.color,
-        breakdown: aggregateBySymbol(b.assets),
-      }))
-      .sort((a, b) => b.value - a.value);
+    return calculateCustodyBreakdown(categoryPositions);
   }, [categoryPositions]);
 
-  // Calculate chain breakdown with local breakdown computation
   const chainChartData = useMemo((): DonutChartItem[] => {
-    const chainColors: Record<string, string> = {
-      'eth': '#627EEA', 'ethereum': '#627EEA', 'arb': '#28A0F0', 'arbitrum': '#28A0F0',
-      'op': '#FF0420', 'optimism': '#FF0420', 'base': '#0052FF', 'bsc': '#F0B90B',
-      'matic': '#8247E5', 'polygon': '#8247E5', 'sol': '#9945FF', 'solana': '#9945FF',
-    };
-
-    const buckets: Record<string, { assets: AssetWithPrice[]; color: string }> = {};
-
-    categoryPositions.forEach(asset => {
-      let chain = 'Other';
-      if (asset.protocol?.startsWith('cex:')) {
-        chain = asset.protocol.replace('cex:', '').charAt(0).toUpperCase() + asset.protocol.replace('cex:', '').slice(1);
-      } else if (asset.chain) {
-        chain = asset.chain.charAt(0).toUpperCase() + asset.chain.slice(1);
-      }
-
-      if (!buckets[chain]) {
-        buckets[chain] = { assets: [], color: chainColors[chain.toLowerCase()] || '#6B7280' };
-      }
-      buckets[chain].assets.push(asset);
-    });
-
-    return Object.entries(buckets)
-      .filter(([_, b]) => b.assets.length > 0)
-      .map(([label, b]) => ({
-        label,
-        value: b.assets.reduce((sum, a) => sum + Math.abs(a.value), 0),
-        color: b.color,
-        breakdown: aggregateBySymbol(b.assets),
-      }))
-      .sort((a, b) => b.value - a.value);
+    return calculateChainBreakdown(categoryPositions);
   }, [categoryPositions]);
 
-  // Calculate exposure breakdown with local breakdown computation
   const exposureChartData = useMemo((): DonutChartItem[] => {
-    const categoryConfig: Record<string, { color: string; label: string }> = {
-      stablecoins: { color: '#4CAF50', label: 'Stablecoins' },
-      eth: { color: '#627EEA', label: 'ETH' },
-      btc: { color: '#F7931A', label: 'BTC' },
-      sol: { color: '#9945FF', label: 'SOL' },
-      tokens: { color: '#00BCD4', label: 'Tokens' },
-      defi: { color: '#9C27B0', label: 'DeFi' },
-      other: { color: '#6B7280', label: 'Other' },
-    };
-
-    const buckets: Record<string, { assets: AssetWithPrice[]; color: string; label: string }> = {};
-
-    categoryPositions.forEach(asset => {
-      const rawSubCat = categoryService.getSubCategory(asset.symbol, asset.type);
-      const subCat = categoryConfig[rawSubCat] ? rawSubCat : 'other';
-
-      const config = categoryConfig[subCat];
-      if (!buckets[subCat]) {
-        buckets[subCat] = { assets: [], color: config.color, label: config.label };
-      }
-      buckets[subCat].assets.push(asset);
-    });
-
-    return Object.entries(buckets)
-      .filter(([_, b]) => b.assets.length > 0)
-      .map(([_, b]) => ({
-        label: b.label,
-        value: b.assets.reduce((sum, a) => sum + Math.abs(a.value), 0),
-        color: b.color,
-        breakdown: aggregateBySymbol(b.assets),
-      }))
-      .sort((a, b) => b.value - a.value);
-  }, [categoryPositions, categoryService]);
+    return calculateExposureBreakdown(categoryPositions);
+  }, [categoryPositions]);
 
   // Calculate crypto metrics
   const cryptoMetrics = useMemo(() => {
@@ -177,9 +72,10 @@ export default function CategoryView({
     return calculateCryptoAllocation(categoryPositions);
   }, [categoryPositions]);
 
-  // Calculate totals
-  const totalValue = categoryPositions.reduce((sum, p) => sum + p.value, 0);
+  // Calculate totals (centralized logic)
   const totalGrossAssets = categoryPositions.filter(p => p.value > 0).reduce((sum, p) => sum + p.value, 0);
+  const totalDebt = categoryPositions.filter(p => p.value < 0).reduce((sum, p) => sum + Math.abs(p.value), 0);
+  const totalValue = totalGrossAssets - totalDebt; // Net value
 
   if (categoryPositions.length === 0) {
     return (
@@ -211,11 +107,21 @@ export default function CategoryView({
 
         <div className="flex gap-6 text-right">
           <div>
-            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-0.5">Assets</p>
+            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-0.5">Gross Assets</p>
             <p className="text-[13px] font-medium">
               {hideBalances ? '••••' : formatCurrency(totalGrossAssets)}
             </p>
           </div>
+          {totalDebt > 0 && (
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-0.5 flex items-center gap-1">
+                Debt <AlertTriangle className="w-3 h-3 text-[var(--warning)]" />
+              </p>
+              <p className="text-[13px] font-medium text-[var(--negative)]">
+                {hideBalances ? '••••' : `-${formatCurrency(totalDebt)}`}
+              </p>
+            </div>
+          )}
           <div>
             <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-0.5">Positions</p>
             <p className="text-[13px] font-medium">{categoryPositions.length}</p>

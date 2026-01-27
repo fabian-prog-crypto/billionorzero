@@ -7,9 +7,10 @@ import {
   calculatePortfolioSummary,
   calculateAllPositionsWithPrices,
   calculateExposureData,
-  getCategoryService,
+  calculateAllocationBreakdown,
+  calculateCustodyBreakdown,
+  calculateRiskProfile,
 } from '@/services';
-import type { AssetWithPrice } from '@/types';
 import NetWorthChart from '@/components/charts/NetWorthChart';
 import DonutChart, { DonutChartItem } from '@/components/charts/DonutChart';
 import {
@@ -36,126 +37,33 @@ export default function OverviewPage() {
     return calculateExposureData(allAssetsWithPrices);
   }, [allAssetsWithPrices]);
 
-  const { exposureMetrics, concentrationMetrics } = exposureData;
+  const { exposureMetrics, concentrationMetrics, grossAssets, totalDebts } = exposureData;
 
-  // Build chart data with breakdowns computed locally
-  const categoryService = getCategoryService();
-
-  // Helper to aggregate assets by symbol for breakdown
-  const aggregateBySymbol = (assets: AssetWithPrice[]) => {
-    const map = new Map<string, number>();
-    assets.forEach(a => {
-      const key = a.symbol.toUpperCase();
-      map.set(key, (map.get(key) || 0) + Math.abs(a.value));
-    });
-    return Array.from(map.entries())
-      .map(([label, value]) => ({ label, value }))
-      .sort((a, b) => b.value - a.value);
-  };
-
-  // Allocation breakdown: Cash & Equivalents, Crypto, Equities
+  // Use centralized service functions for chart data (SINGLE SOURCE OF TRUTH)
   const allocationChartData = useMemo((): DonutChartItem[] => {
-    const cashAssets: AssetWithPrice[] = [];
-    const cryptoAssets: AssetWithPrice[] = [];
-    const equityAssets: AssetWithPrice[] = [];
-
-    allAssetsWithPrices.forEach(asset => {
-      const mainCat = categoryService.getMainCategory(asset.symbol, asset.type);
-      const subCat = categoryService.getSubCategory(asset.symbol, asset.type);
-
-      if (mainCat === 'cash') {
-        cashAssets.push(asset);
-      } else if (mainCat === 'crypto') {
-        if (subCat === 'stablecoins') {
-          cashAssets.push(asset);
-        } else {
-          cryptoAssets.push(asset);
-        }
-      } else if (mainCat === 'equities') {
-        equityAssets.push(asset);
-      }
-    });
-
-    const items: DonutChartItem[] = [];
-    const cashValue = cashAssets.reduce((sum, a) => sum + Math.abs(a.value), 0);
-    const cryptoValue = cryptoAssets.reduce((sum, a) => sum + Math.abs(a.value), 0);
-    const equityValue = equityAssets.reduce((sum, a) => sum + Math.abs(a.value), 0);
-
-    if (cashValue > 0) items.push({ label: 'Cash & Equivalents', value: cashValue, color: '#4CAF50', breakdown: aggregateBySymbol(cashAssets) });
-    if (cryptoValue > 0) items.push({ label: 'Crypto', value: cryptoValue, color: '#FF9800', breakdown: aggregateBySymbol(cryptoAssets) });
-    if (equityValue > 0) items.push({ label: 'Equities', value: equityValue, color: '#F44336', breakdown: aggregateBySymbol(equityAssets) });
-
-    return items.sort((a, b) => b.value - a.value);
-  }, [allAssetsWithPrices, categoryService]);
-
-  // Custody breakdown: Self-Custody, DeFi, CEX, Banks & Brokers, Manual
-  const custodyChartData = useMemo((): DonutChartItem[] => {
-    const buckets: Record<string, { assets: AssetWithPrice[]; color: string }> = {
-      'Self-Custody': { assets: [], color: '#4CAF50' },
-      'DeFi': { assets: [], color: '#9C27B0' },
-      'CEX': { assets: [], color: '#FF9800' },
-      'Banks & Brokers': { assets: [], color: '#2196F3' },
-      'Manual': { assets: [], color: '#607D8B' },
-    };
-
-    allAssetsWithPrices.forEach(asset => {
-      if (asset.protocol?.startsWith('cex:')) {
-        buckets['CEX'].assets.push(asset);
-      } else if (asset.type === 'stock' || asset.type === 'cash') {
-        buckets['Banks & Brokers'].assets.push(asset);
-      } else if (asset.walletAddress) {
-        if (asset.protocol && asset.protocol !== 'wallet') {
-          buckets['DeFi'].assets.push(asset);
-        } else {
-          buckets['Self-Custody'].assets.push(asset);
-        }
-      } else {
-        buckets['Manual'].assets.push(asset);
-      }
-    });
-
-    return Object.entries(buckets)
-      .filter(([_, b]) => b.assets.length > 0)
-      .map(([label, b]) => ({
-        label,
-        value: b.assets.reduce((sum, a) => sum + Math.abs(a.value), 0),
-        color: b.color,
-        breakdown: aggregateBySymbol(b.assets),
-      }))
-      .sort((a, b) => b.value - a.value);
+    return calculateAllocationBreakdown(allAssetsWithPrices);
   }, [allAssetsWithPrices]);
 
-  // Risk profile breakdown: Conservative, Moderate, Aggressive
+  const custodyChartData = useMemo((): DonutChartItem[] => {
+    return calculateCustodyBreakdown(allAssetsWithPrices);
+  }, [allAssetsWithPrices]);
+
   const riskChartData = useMemo((): DonutChartItem[] => {
-    const buckets: Record<string, { assets: AssetWithPrice[]; color: string }> = {
-      'Conservative': { assets: [], color: '#4CAF50' },
-      'Moderate': { assets: [], color: '#2196F3' },
-      'Aggressive': { assets: [], color: '#F44336' },
+    return calculateRiskProfile(allAssetsWithPrices);
+  }, [allAssetsWithPrices]);
+
+  // Extract category totals for display (from centralized allocation data)
+  const categoryTotals = useMemo(() => {
+    const cashItem = allocationChartData.find(item => item.label === 'Cash & Equivalents');
+    const cryptoItem = allocationChartData.find(item => item.label === 'Crypto');
+    const equitiesItem = allocationChartData.find(item => item.label === 'Equities');
+
+    return {
+      cash: cashItem?.value || 0,
+      crypto: cryptoItem?.value || 0,
+      equities: equitiesItem?.value || 0,
     };
-
-    allAssetsWithPrices.forEach(asset => {
-      const mainCat = categoryService.getMainCategory(asset.symbol, asset.type);
-      const subCat = categoryService.getSubCategory(asset.symbol, asset.type);
-
-      if (mainCat === 'cash' || subCat === 'stablecoins') {
-        buckets['Conservative'].assets.push(asset);
-      } else if (subCat === 'btc' || subCat === 'eth' || mainCat === 'equities') {
-        buckets['Moderate'].assets.push(asset);
-      } else {
-        buckets['Aggressive'].assets.push(asset);
-      }
-    });
-
-    return Object.entries(buckets)
-      .filter(([_, b]) => b.assets.length > 0)
-      .map(([label, b]) => ({
-        label,
-        value: b.assets.reduce((sum, a) => sum + Math.abs(a.value), 0),
-        color: b.color,
-        breakdown: aggregateBySymbol(b.assets),
-      }))
-      .sort((a, b) => b.value - a.value);
-  }, [allAssetsWithPrices, categoryService]);
+  }, [allocationChartData]);
 
   // Use centralized metrics (already calculated in exposureData)
   const debtRatio = exposureMetrics.debtRatio;
@@ -215,6 +123,63 @@ export default function OverviewPage() {
         {/* Mini chart */}
         <div className="w-full lg:w-[350px] h-[100px]">
           <NetWorthChart snapshots={snapshots} height={100} minimal />
+        </div>
+      </div>
+
+      <hr className="border-[var(--border)]" />
+
+      {/* Category Totals - using centralized service data */}
+      <div>
+        <h3 className="font-medium mb-4">Asset Allocation</h3>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">CASH & EQUIVALENTS</p>
+            <p className="text-xl font-semibold">
+              {hideBalances ? '••••' : formatCurrency(categoryTotals.cash)}
+            </p>
+            <p className="text-xs text-[var(--foreground-muted)]">
+              {grossAssets > 0 ? ((categoryTotals.cash / grossAssets) * 100).toFixed(1) : 0}% of assets
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">CRYPTO</p>
+            <p className="text-xl font-semibold">
+              {hideBalances ? '••••' : formatCurrency(categoryTotals.crypto)}
+            </p>
+            <p className="text-xs text-[var(--foreground-muted)]">
+              {grossAssets > 0 ? ((categoryTotals.crypto / grossAssets) * 100).toFixed(1) : 0}% of assets
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">EQUITIES</p>
+            <p className="text-xl font-semibold">
+              {hideBalances ? '••••' : formatCurrency(categoryTotals.equities)}
+            </p>
+            <p className="text-xs text-[var(--foreground-muted)]">
+              {grossAssets > 0 ? ((categoryTotals.equities / grossAssets) * 100).toFixed(1) : 0}% of assets
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">GROSS ASSETS</p>
+            <p className="text-xl font-semibold">
+              {hideBalances ? '••••' : formatCurrency(grossAssets)}
+            </p>
+            <p className="text-xs text-[var(--foreground-muted)]">
+              Total before debt
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2 flex items-center gap-1">
+              TOTAL DEBT
+              {totalDebts > 0 && <AlertTriangle className="w-3 h-3 text-[var(--warning)]" />}
+            </p>
+            <p className={`text-xl font-semibold ${totalDebts > 0 ? 'text-[var(--negative)]' : ''}`}>
+              {hideBalances ? '••••' : `-${formatCurrency(totalDebts)}`}
+            </p>
+            <p className="text-xs text-[var(--foreground-muted)]">
+              {grossAssets > 0 ? ((totalDebts / grossAssets) * 100).toFixed(1) : 0}% of assets
+            </p>
+          </div>
         </div>
       </div>
 

@@ -30,14 +30,18 @@ export interface DebankProtocolResponse {
   logo_url?: string;
   portfolio_item_list: {
     name: string;
+    detail_types?: string[]; // e.g., ['vesting', 'locked', 'lending', 'reward', etc.]
     stats: {
       asset_usd_value: number;
+      debt_usd_value?: number;
       net_usd_value: number;
     };
     detail: {
       supply_token_list?: DebankTokenResponse[];
       borrow_token_list?: DebankTokenResponse[];
       reward_token_list?: DebankTokenResponse[];
+      // Additional fields that may contain tokens for certain protocols
+      token_list?: DebankTokenResponse[]; // Generic token list for some protocols
     };
   }[];
 }

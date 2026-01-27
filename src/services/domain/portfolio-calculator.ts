@@ -708,6 +708,7 @@ const CUSTODY_COLORS: Record<string, string> = {
 /**
  * Calculate custody breakdown - SINGLE SOURCE OF TRUTH
  * Categories: Self-Custody, DeFi, CEX, Banks & Brokers, Manual
+ * Uses GROSS ASSETS only - debt doesn't count toward custody allocation
  */
 export function calculateCustodyBreakdown(assets: AssetWithPrice[]): CustodyBreakdownItem[] {
   const custodyMap: Record<string, { value: number; positions: Map<string, number> }> = {
@@ -718,8 +719,11 @@ export function calculateCustodyBreakdown(assets: AssetWithPrice[]): CustodyBrea
     'Manual': { value: 0, positions: new Map() },
   };
 
-  assets.forEach((asset) => {
-    const value = Math.abs(asset.value);
+  // Only process ASSETS (positive values) - debt doesn't contribute to custody allocation
+  const grossAssets = assets.filter(a => a.value > 0);
+
+  grossAssets.forEach((asset) => {
+    const value = asset.value; // Already positive
     const symbolKey = asset.symbol.toUpperCase();
     let category: string;
 
@@ -763,11 +767,17 @@ export function calculateCustodyBreakdown(assets: AssetWithPrice[]): CustodyBrea
 /**
  * Calculate chain breakdown
  */
+/**
+ * Uses GROSS ASSETS only - debt doesn't count toward chain allocation
+ */
 export function calculateChainBreakdown(assets: AssetWithPrice[]): ChainBreakdownItem[] {
   const chainMap: Record<string, number> = {};
 
-  assets.forEach((asset) => {
-    const value = Math.abs(asset.value);
+  // Only process ASSETS (positive values)
+  const grossAssets = assets.filter(a => a.value > 0);
+
+  grossAssets.forEach((asset) => {
+    const value = asset.value; // Already positive
     let chain = 'Other';
 
     if (asset.protocol?.startsWith('cex:')) {
@@ -801,6 +811,8 @@ export function calculateChainBreakdown(assets: AssetWithPrice[]): ChainBreakdow
 
 /**
  * Calculate crypto-specific metrics
+ * IMPORTANT: Uses GROSS ASSETS only (positive values) to avoid debt inflating metrics
+ * Debt positions are tracked separately and don't contribute to dominance/ratio calculations
  */
 export function calculateCryptoMetrics(assets: AssetWithPrice[]): CryptoMetrics {
   const categoryService = getCategoryService();
@@ -811,20 +823,23 @@ export function calculateCryptoMetrics(assets: AssetWithPrice[]): CryptoMetrics 
     return mainCat === 'crypto';
   });
 
-  const totalCryptoValue = cryptoAssets.reduce((sum, a) => sum + Math.abs(a.value), 0);
+  // Use GROSS ASSETS only (positive values) - debt should not inflate metrics
+  // Example: $100k USDC held + $50k USDC borrowed should show ratio based on $100k, not $150k
+  const cryptoGrossAssets = cryptoAssets.filter(a => a.value > 0);
+  const totalCryptoValue = cryptoGrossAssets.reduce((sum, a) => sum + a.value, 0);
 
   if (totalCryptoValue === 0) {
     return { stablecoinRatio: 0, btcDominance: 0, ethDominance: 0, defiExposure: 0 };
   }
 
-  // Calculate metrics
+  // Calculate metrics from ASSETS only (not debt)
   let stablecoinValue = 0;
   let btcValue = 0;
   let ethValue = 0;
   let defiValue = 0;
 
-  cryptoAssets.forEach((asset) => {
-    const value = Math.abs(asset.value);
+  cryptoGrossAssets.forEach((asset) => {
+    const value = asset.value; // Already positive since we filtered
     const subCat = categoryService.getSubCategory(asset.symbol, asset.type);
 
     if (subCat === 'stablecoins') {
@@ -851,14 +866,15 @@ export function calculateCryptoMetrics(assets: AssetWithPrice[]): CryptoMetrics 
 
 /**
  * Calculate crypto allocation for horizontal bar display
+ * Uses GROSS ASSETS only - debt positions don't contribute to allocation %
  */
 export function calculateCryptoAllocation(assets: AssetWithPrice[]): CryptoAllocationItem[] {
   const categoryService = getCategoryService();
 
-  // Filter to crypto only
+  // Filter to crypto ASSETS only (positive values) - debt doesn't count toward allocation
   const cryptoAssets = assets.filter((a) => {
     const mainCat = categoryService.getMainCategory(a.symbol, a.type);
-    return mainCat === 'crypto';
+    return mainCat === 'crypto' && a.value > 0;
   });
 
   const allocationMap: Record<string, { value: number; color: string }> = {};
@@ -882,7 +898,7 @@ export function calculateCryptoAllocation(assets: AssetWithPrice[]): CryptoAlloc
   };
 
   cryptoAssets.forEach((asset) => {
-    const value = Math.abs(asset.value);
+    const value = asset.value; // Already positive since we filtered
     let subCat = categoryService.getSubCategory(asset.symbol, asset.type);
 
     // Check if it's a perp position
@@ -919,13 +935,16 @@ export function calculateCryptoAllocation(assets: AssetWithPrice[]): CryptoAlloc
 /**
  * Calculate exposure breakdown for donut chart (Stablecoins, ETH, DeFi, BTC, etc.)
  */
+/**
+ * Uses GROSS ASSETS only - debt doesn't count toward exposure allocation
+ */
 export function calculateExposureBreakdown(assets: AssetWithPrice[]): CryptoAllocationItem[] {
   const categoryService = getCategoryService();
 
-  // Filter to crypto only
+  // Filter to crypto ASSETS only (positive values) - debt doesn't count toward exposure
   const cryptoAssets = assets.filter((a) => {
     const mainCat = categoryService.getMainCategory(a.symbol, a.type);
-    return mainCat === 'crypto';
+    return mainCat === 'crypto' && a.value > 0;
   });
 
   const exposureMap: Record<string, { value: number; color: string; label: string }> = {};
@@ -944,7 +963,7 @@ export function calculateExposureBreakdown(assets: AssetWithPrice[]): CryptoAllo
   };
 
   cryptoAssets.forEach((asset) => {
-    const value = Math.abs(asset.value);
+    const value = asset.value; // Already positive since we filtered
     const subCat = categoryService.getSubCategory(asset.symbol, asset.type);
 
     // Map to exposure categories
@@ -1306,6 +1325,7 @@ export function calculateExposureData(assets: AssetWithPrice[]): ExposureData {
 /**
  * Calculate allocation breakdown - SINGLE SOURCE OF TRUTH
  * Categories: Cash & Equivalents (cash + stablecoins), Crypto (non-stablecoins), Equities
+ * Uses GROSS ASSETS only - debt doesn't count toward allocation percentages
  */
 export function calculateAllocationBreakdown(assets: AssetWithPrice[]): AllocationBreakdownItem[] {
   const categoryService = getCategoryService();
@@ -1315,8 +1335,11 @@ export function calculateAllocationBreakdown(assets: AssetWithPrice[]): Allocati
     'Equities': { value: 0, color: '#F44336', positions: new Map() },
   };
 
-  assets.forEach((asset) => {
-    const value = Math.abs(asset.value);
+  // Only process ASSETS (positive values) - debt doesn't contribute to allocation
+  const grossAssets = assets.filter(a => a.value > 0);
+
+  grossAssets.forEach((asset) => {
+    const value = asset.value; // Already positive
     const mainCat = categoryService.getMainCategory(asset.symbol, asset.type);
     const symbolKey = asset.symbol.toUpperCase();
 
@@ -1371,6 +1394,7 @@ export function calculateAllocationBreakdown(assets: AssetWithPrice[]): Allocati
  * Conservative: Cash, stablecoins
  * Moderate: Large cap crypto (BTC, ETH), equities
  * Aggressive: Altcoins, DeFi tokens, perps
+ * Uses GROSS ASSETS only - debt doesn't count toward risk profile allocation
  */
 export function calculateRiskProfile(assets: AssetWithPrice[]): RiskProfileItem[] {
   const categoryService = getCategoryService();
@@ -1380,8 +1404,11 @@ export function calculateRiskProfile(assets: AssetWithPrice[]): RiskProfileItem[
     'Aggressive': { value: 0, color: '#F44336', positions: new Map() },
   };
 
-  assets.forEach((asset) => {
-    const value = Math.abs(asset.value);
+  // Only process ASSETS (positive values) - debt doesn't contribute to risk allocation
+  const grossAssets = assets.filter(a => a.value > 0);
+
+  grossAssets.forEach((asset) => {
+    const value = asset.value; // Already positive
     const mainCat = categoryService.getMainCategory(asset.symbol, asset.type);
     const subCat = categoryService.getSubCategory(asset.symbol, asset.type);
     const symbolKey = asset.symbol.toUpperCase();
