@@ -1701,7 +1701,17 @@ export function calculateCryptoBreakdown(assets: AssetWithPrice[]): CryptoBreakd
   const categoryMap: Record<string, { value: number; count: number; positions: AssetWithPrice[] }> = {};
 
   cryptoPositions.filter(p => p.value > 0).forEach((p) => {
-    const subCat = categoryService.getSubCategory(p.symbol, p.type);
+    // Determine subcategory - check for perps first (based on protocol + name pattern)
+    let subCat = categoryService.getSubCategory(p.symbol, p.type);
+
+    // Override to 'perps' if position is on a perp protocol and is a perp trade
+    if (p.protocol && isPerpProtocol(p.protocol)) {
+      const { isPerpTrade } = detectPerpTrade(p.name);
+      if (isPerpTrade) {
+        subCat = 'perps';
+      }
+    }
+
     if (!categoryMap[subCat]) {
       categoryMap[subCat] = { value: 0, count: 0, positions: [] };
     }

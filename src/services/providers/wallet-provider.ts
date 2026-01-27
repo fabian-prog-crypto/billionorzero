@@ -285,8 +285,12 @@ export class WalletProvider {
 
         // Combine supply tokens and reward tokens (both are assets)
         // Reward tokens include vesting/locked tokens (e.g., Sablier vesting streams)
+        // IMPORTANT: Only include reward tokens that don't already exist in supply
+        // Some protocols (Aave, Compound) include the same token in both supply and reward lists
         const supplyTokens = Array.from(aggregatedSupply.values());
-        const rewardTokens = Array.from(aggregatedRewards.values());
+        const rewardTokens = Array.from(aggregatedRewards.values()).filter(
+          (reward) => !aggregatedSupply.has(reward.symbol.toLowerCase())
+        );
         const tokens = [...supplyTokens, ...rewardTokens];
         const debtTokens = Array.from(aggregatedDebt.values());
 

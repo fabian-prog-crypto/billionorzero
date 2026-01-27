@@ -205,7 +205,8 @@ export default function CryptoPositionsPage() {
 
   const displayData = viewMode === 'assets' ? aggregatedAssets : sortedPositions;
   const hasActiveFilter = selectedCategories.size < CRYPTO_FILTER_OPTIONS.length;
-  const filteredValue = filteredPositions.reduce((sum, p) => sum + p.value, 0);
+  // Only sum positive values (assets) to match pie chart calculation
+  const filteredValue = filteredPositions.filter(p => p.value > 0).reduce((sum, p) => sum + p.value, 0);
   const uniqueAssets = new Set(breakdownData.cryptoPositions.map(p => p.symbol.toLowerCase())).size;
 
   // Empty state
