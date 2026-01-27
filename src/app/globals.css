@@ -698,3 +698,155 @@ input::placeholder {
   background-size: 48px 48px;
   opacity: 0.2;
 }
+
+/* ========================================
+   Standardized UI Patterns
+   ======================================== */
+
+/* Empty state variants - standardized padding */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 128px 0; /* py-32 equivalent */
+}
+
+.empty-state-sm {
+  padding: 48px 0; /* py-12 */
+}
+
+.empty-state-md {
+  padding: 64px 0; /* py-16 */
+}
+
+.empty-state-lg {
+  padding: 128px 0; /* py-32 */
+}
+
+/* Empty state icon container */
+.empty-state-icon {
+  width: 80px;
+  height: 80px;
+  border-radius: 16px;
+  background: var(--background-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 24px;
+}
+
+.empty-state-icon svg {
+  width: 40px;
+  height: 40px;
+  color: var(--foreground-muted);
+}
+
+/* Standardized label text - always 10px uppercase */
+.label-text {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--foreground-muted);
+  margin-bottom: 4px;
+}
+
+/* Section header - 15px medium */
+.section-header {
+  font-size: 15px;
+  font-weight: 500;
+  margin-bottom: 16px;
+}
+
+/* Alert component variants */
+.alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 8px;
+}
+
+.alert-info {
+  background: var(--background-secondary);
+  border: 1px solid var(--border);
+}
+
+.alert-warning {
+  background: var(--warning-light);
+  border: 1px solid rgba(201, 176, 123, 0.2);
+}
+
+.alert-error {
+  background: var(--negative-light);
+  border: 1px solid rgba(201, 123, 123, 0.2);
+}
+
+.alert-success {
+  background: var(--positive-light);
+  border: 1px solid rgba(124, 185, 139, 0.2);
+}
+
+/* Filter chip base styles */
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 9999px;
+  transition: all 0.15s ease;
+  cursor: pointer;
+  border: 1px solid var(--border);
+}
+
+.filter-chip-active {
+  background: var(--accent-primary);
+  color: white;
+  border-color: var(--accent-primary);
+}
+
+.filter-chip-inactive {
+  background: var(--background);
+  color: var(--foreground-muted);
+}
+
+.filter-chip-inactive:hover {
+  border-color: var(--foreground-muted);
+  color: var(--foreground);
+}
+
+/* View mode toggle container */
+.view-toggle {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--background-secondary);
+  border-radius: 8px;
+}
+
+.view-toggle-btn {
+  padding: 6px 12px;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.view-toggle-btn-active {
+  background: var(--card-bg);
+  color: var(--foreground);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.view-toggle-btn-inactive {
+  color: var(--foreground-muted);
+}
+
+.view-toggle-btn-inactive:hover {
+  color: var(--foreground);
+}

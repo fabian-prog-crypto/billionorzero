@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Banknote, ArrowUpDown, ChevronDown, ChevronUp, Search, ToggleLeft, ToggleRight } from 'lucide-react';
+import { Banknote, ArrowUpDown, ChevronDown, ChevronUp, ToggleLeft, ToggleRight } from 'lucide-react';
 import DonutChart from '@/components/charts/DonutChart';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import {
@@ -10,6 +10,9 @@ import {
   getCategoryService,
 } from '@/services';
 import { formatCurrency, formatNumber } from '@/lib/utils';
+import { CURRENCY_COLORS, CRYPTO_COLORS } from '@/lib/colors';
+import SearchInput from '@/components/ui/SearchInput';
+import EmptyState from '@/components/ui/EmptyState';
 
 type SortField = 'symbol' | 'value' | 'amount' | 'category';
 type SortDirection = 'asc' | 'desc';
@@ -181,7 +184,7 @@ export default function CashPage() {
           <div className="grid grid-cols-2 gap-6">
             <div>
               <div className="flex items-center gap-2 mb-2">
-                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#4CAF50' }} />
+                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: CURRENCY_COLORS.USD }} />
                 <span className="text-[13px] font-medium">Fiat Currencies</span>
               </div>
               <p className="text-xl font-semibold mb-1">
@@ -194,7 +197,7 @@ export default function CashPage() {
             {includeStablecoins && (
               <div>
                 <div className="flex items-center gap-2 mb-2">
-                  <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#26A17B' }} />
+                  <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: CURRENCY_COLORS.USDT }} />
                   <span className="text-[13px] font-medium">Stablecoins</span>
                 </div>
                 <p className="text-xl font-semibold mb-1">
@@ -213,16 +216,12 @@ export default function CashPage() {
 
       {/* Search */}
       <div className="flex items-center gap-3 mb-4">
-        <div className="relative flex-1 max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--foreground-muted)]" />
-          <input
-            type="text"
-            placeholder="Search positions..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9 w-full"
-          />
-        </div>
+        <SearchInput
+          value={searchQuery}
+          onChange={setSearchQuery}
+          placeholder="Search positions..."
+          className="flex-1 max-w-xs"
+        />
         <span className="text-[13px] text-[var(--foreground-muted)]">
           {filteredPositions.length} position{filteredPositions.length !== 1 ? 's' : ''}
         </span>
@@ -280,7 +279,7 @@ export default function CashPage() {
                     <div className="flex items-center gap-3">
                       <div
                         className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold text-white"
-                        style={{ backgroundColor: isStable ? '#26A17B' : '#4CAF50' }}
+                        style={{ backgroundColor: isStable ? CURRENCY_COLORS.USDT : CURRENCY_COLORS.USD }}
                       >
                         {position.symbol.slice(0, 2).toUpperCase()}
                       </div>
@@ -296,8 +295,8 @@ export default function CashPage() {
                     <span
                       className="px-2 py-1 text-xs font-medium rounded"
                       style={{
-                        backgroundColor: isStable ? 'rgba(38, 161, 123, 0.1)' : 'rgba(76, 175, 80, 0.1)',
-                        color: isStable ? '#26A17B' : '#4CAF50',
+                        backgroundColor: isStable ? `${CURRENCY_COLORS.USDT}1A` : `${CURRENCY_COLORS.USD}1A`,
+                        color: isStable ? CURRENCY_COLORS.USDT : CURRENCY_COLORS.USD,
                       }}
                     >
                       {isStable ? 'Stablecoin' : 'Fiat'}

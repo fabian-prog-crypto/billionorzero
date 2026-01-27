@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { TrendingUp, ArrowUpDown, ChevronDown, ChevronUp, Search } from 'lucide-react';
+import { TrendingUp, ArrowUpDown, ChevronDown, ChevronUp } from 'lucide-react';
 import DonutChart from '@/components/charts/DonutChart';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import {
@@ -10,6 +10,9 @@ import {
   getCategoryService,
 } from '@/services';
 import { formatCurrency, formatNumber, formatPercent, getChangeColor } from '@/lib/utils';
+import { SUBCATEGORY_COLORS } from '@/lib/colors';
+import SearchInput from '@/components/ui/SearchInput';
+import EmptyState from '@/components/ui/EmptyState';
 
 type SortField = 'symbol' | 'value' | 'amount' | 'price' | 'change';
 type SortDirection = 'asc' | 'desc';
@@ -147,7 +150,7 @@ export default function EquitiesPage() {
           <div className="grid grid-cols-2 gap-6">
             <div>
               <div className="flex items-center gap-2 mb-2">
-                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#E91E63' }} />
+                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: SUBCATEGORY_COLORS.equities_stocks }} />
                 <span className="text-[13px] font-medium">Individual Stocks</span>
               </div>
               <p className="text-xl font-semibold mb-1">
@@ -159,7 +162,7 @@ export default function EquitiesPage() {
             </div>
             <div>
               <div className="flex items-center gap-2 mb-2">
-                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#9C27B0' }} />
+                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: SUBCATEGORY_COLORS.equities_etfs }} />
                 <span className="text-[13px] font-medium">ETFs</span>
               </div>
               <p className="text-xl font-semibold mb-1">
@@ -177,16 +180,12 @@ export default function EquitiesPage() {
 
       {/* Search */}
       <div className="flex items-center gap-3 mb-4">
-        <div className="relative flex-1 max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--foreground-muted)]" />
-          <input
-            type="text"
-            placeholder="Search positions..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9 w-full"
-          />
-        </div>
+        <SearchInput
+          value={searchQuery}
+          onChange={setSearchQuery}
+          placeholder="Search positions..."
+          className="flex-1 max-w-xs"
+        />
         <span className="text-[13px] text-[var(--foreground-muted)]">
           {filteredPositions.length} position{filteredPositions.length !== 1 ? 's' : ''}
         </span>
@@ -254,7 +253,7 @@ export default function EquitiesPage() {
                     <div className="flex items-center gap-3">
                       <div
                         className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold text-white"
-                        style={{ backgroundColor: isETF ? '#9C27B0' : '#E91E63' }}
+                        style={{ backgroundColor: isETF ? SUBCATEGORY_COLORS.equities_etfs : SUBCATEGORY_COLORS.equities_stocks }}
                       >
                         {position.symbol.slice(0, 2).toUpperCase()}
                       </div>
@@ -270,8 +269,8 @@ export default function EquitiesPage() {
                     <span
                       className="px-2 py-1 text-xs font-medium rounded"
                       style={{
-                        backgroundColor: isETF ? 'rgba(156, 39, 176, 0.1)' : 'rgba(233, 30, 99, 0.1)',
-                        color: isETF ? '#9C27B0' : '#E91E63',
+                        backgroundColor: isETF ? `${SUBCATEGORY_COLORS.equities_etfs}1A` : `${SUBCATEGORY_COLORS.equities_stocks}1A`,
+                        color: isETF ? SUBCATEGORY_COLORS.equities_etfs : SUBCATEGORY_COLORS.equities_stocks,
                       }}
                     >
                       {isETF ? 'ETF' : 'Stock'}

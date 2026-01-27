@@ -4,6 +4,8 @@ import { useMemo } from 'react';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import { calculateAllPositionsWithPrices, calculateExposureData, aggregatePositionsBySymbol } from '@/services';
 import { formatCurrency } from '@/lib/utils';
+import { EXPOSURE_COLORS, CRYPTO_COLORS } from '@/lib/colors';
+import Alert from '@/components/ui/Alert';
 import { Info } from 'lucide-react';
 
 export default function ExposurePage() {
@@ -91,7 +93,7 @@ export default function ExposurePage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: '#10B981' }} />
+            <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: EXPOSURE_COLORS.stablecoins }} />
             <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)]">CASH & EQUIVALENTS</p>
           </div>
           <p className="text-xl font-semibold">{hideBalances ? '••••' : formatCurrency(cashItem?.value || 0)}</p>
@@ -99,7 +101,7 @@ export default function ExposurePage() {
         </div>
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: '#F7931A' }} />
+            <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: CRYPTO_COLORS.btc }} />
             <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)]">BTC</p>
           </div>
           <p className="text-xl font-semibold">{hideBalances ? '••••' : formatCurrency(btcItem?.value || 0)}</p>
@@ -107,7 +109,7 @@ export default function ExposurePage() {
         </div>
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: '#627EEA' }} />
+            <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: CRYPTO_COLORS.eth }} />
             <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)]">ETH</p>
           </div>
           <p className="text-xl font-semibold">{hideBalances ? '••••' : formatCurrency(ethItem?.value || 0)}</p>
@@ -115,7 +117,7 @@ export default function ExposurePage() {
         </div>
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: '#22D3EE' }} />
+            <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: EXPOSURE_COLORS.other }} />
             <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)]">TOKENS</p>
           </div>
           <p className="text-xl font-semibold">{hideBalances ? '••••' : formatCurrency(tokensItem?.value || 0)}</p>
@@ -373,13 +375,10 @@ export default function ExposurePage() {
             </div>
 
             {/* Estimation Notice */}
-            <div className="mt-4 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg flex items-start gap-2">
-              <Info className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
-              <p className="text-xs text-amber-700 dark:text-amber-400">
-                Margin calculations are <strong>estimates</strong> based on 5x average leverage (20% margin).
-                Actual requirements vary by exchange (Hyperliquid, Lighter, Ethereal), asset type, and position size.
-              </p>
-            </div>
+            <Alert type="warning" className="mt-4">
+              Margin calculations are <strong>estimates</strong> based on 5x average leverage (20% margin).
+              Actual requirements vary by exchange (Hyperliquid, Lighter, Ethereal), asset type, and position size.
+            </Alert>
           </div>
         </>
       )}

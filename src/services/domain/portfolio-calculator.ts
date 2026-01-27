@@ -719,15 +719,17 @@ export function calculateCustodyBreakdown(assets: AssetWithPrice[]): CustodyBrea
     'Manual': { value: 0, positions: new Map() },
   };
 
-  // Only process ASSETS (positive values) - debt doesn't contribute to custody allocation
-  const grossAssets = assets.filter(a => a.value > 0);
-
-  grossAssets.forEach((asset) => {
-    const value = asset.value; // Already positive
+  // Process ALL assets including debt - use NET values
+  // Debt subtracts from the category where it was borrowed
+  assets.forEach((asset) => {
+    const value = asset.value; // Can be negative for debt
     const symbolKey = asset.symbol.toUpperCase();
     let category: string;
 
     if (asset.protocol?.startsWith('cex:')) {
+      category = 'CEX';
+    } else if (isPerpProtocol(asset.protocol)) {
+      // Perp exchanges are centralized custody (like CEX)
       category = 'CEX';
     } else if (asset.type === 'stock' || asset.type === 'cash') {
       category = 'Banks & Brokers';
@@ -742,16 +744,20 @@ export function calculateCustodyBreakdown(assets: AssetWithPrice[]): CustodyBrea
     }
 
     custodyMap[category].value += value;
-    custodyMap[category].positions.set(
-      symbolKey,
-      (custodyMap[category].positions.get(symbolKey) || 0) + value
-    );
+    // Only track positive positions in breakdown
+    if (value > 0) {
+      custodyMap[category].positions.set(
+        symbolKey,
+        (custodyMap[category].positions.get(symbolKey) || 0) + value
+      );
+    }
   });
 
-  const total = Object.values(custodyMap).reduce((sum, item) => sum + item.value, 0);
+  // Use NET total (sum of all values including negative)
+  const total = Object.values(custodyMap).reduce((sum, item) => sum + Math.max(0, item.value), 0);
 
   return Object.entries(custodyMap)
-    .filter(([_, item]) => item.value > 0)
+    .filter(([_, item]) => item.value > 0) // Only show categories with positive NET value
     .map(([label, item]) => ({
       label,
       value: item.value,
@@ -759,6 +765,7 @@ export function calculateCustodyBreakdown(assets: AssetWithPrice[]): CustodyBrea
       color: CUSTODY_COLORS[label] || '#6B7280',
       breakdown: Array.from(item.positions.entries())
         .map(([symbol, val]) => ({ label: symbol, value: val }))
+        .filter(item => item.value > 0)
         .sort((a, b) => b.value - a.value),
     }))
     .sort((a, b) => b.value - a.value);
@@ -766,39 +773,36 @@ export function calculateCustodyBreakdown(assets: AssetWithPrice[]): CustodyBrea
 
 /**
  * Calculate chain breakdown
- */
-/**
- * Uses GROSS ASSETS only - debt doesn't count toward chain allocation
+ * Uses NET values - debt subtracts from the chain where it was borrowed
  */
 export function calculateChainBreakdown(assets: AssetWithPrice[]): ChainBreakdownItem[] {
   const chainMap: Record<string, number> = {};
 
-  // Only process ASSETS (positive values)
-  const grossAssets = assets.filter(a => a.value > 0);
-
-  grossAssets.forEach((asset) => {
-    const value = asset.value; // Already positive
+  // Process ALL assets including debt - use NET values
+  assets.forEach((asset) => {
+    const value = asset.value; // Can be negative for debt
     let chain = 'Other';
 
     if (asset.protocol?.startsWith('cex:')) {
       // CEX positions - use exchange name
       const exchange = asset.protocol.replace('cex:', '');
       chain = exchange.charAt(0).toUpperCase() + exchange.slice(1);
-    } else if (asset.chain) {
-      // On-chain positions
-      chain = asset.chain.charAt(0).toUpperCase() + asset.chain.slice(1);
     } else if (asset.protocol && isPerpProtocol(asset.protocol)) {
       // Perp protocols
       chain = asset.protocol.charAt(0).toUpperCase() + asset.protocol.slice(1);
+    } else if (asset.chain) {
+      // On-chain positions
+      chain = asset.chain.charAt(0).toUpperCase() + asset.chain.slice(1);
     }
 
     chainMap[chain] = (chainMap[chain] || 0) + value;
   });
 
-  const total = Object.values(chainMap).reduce((sum, v) => sum + v, 0);
+  // Use NET total (only positive values contribute)
+  const total = Object.values(chainMap).reduce((sum, v) => sum + Math.max(0, v), 0);
 
   return Object.entries(chainMap)
-    .filter(([_, value]) => value > 0)
+    .filter(([_, value]) => value > 0) // Only show chains with positive NET value
     .map(([chain, value]) => ({
       chain: chain.toLowerCase(),
       label: chain,
@@ -811,8 +815,8 @@ export function calculateChainBreakdown(assets: AssetWithPrice[]): ChainBreakdow
 
 /**
  * Calculate crypto-specific metrics
- * IMPORTANT: Uses GROSS ASSETS only (positive values) to avoid debt inflating metrics
- * Debt positions are tracked separately and don't contribute to dominance/ratio calculations
+ * Uses NET values - debt subtracts from the relevant category
+ * Perp trades are excluded from dominance calculations (they're leverage, not holdings)
  */
 export function calculateCryptoMetrics(assets: AssetWithPrice[]): CryptoMetrics {
   const categoryService = getCategoryService();
@@ -823,25 +827,28 @@ export function calculateCryptoMetrics(assets: AssetWithPrice[]): CryptoMetrics 
     return mainCat === 'crypto';
   });
 
-  // Use GROSS ASSETS only (positive values) - debt should not inflate metrics
-  // Example: $100k USDC held + $50k USDC borrowed should show ratio based on $100k, not $150k
-  const cryptoGrossAssets = cryptoAssets.filter(a => a.value > 0);
-  const totalCryptoValue = cryptoGrossAssets.reduce((sum, a) => sum + a.value, 0);
-
-  if (totalCryptoValue === 0) {
-    return { stablecoinRatio: 0, btcDominance: 0, ethDominance: 0, defiExposure: 0 };
-  }
-
-  // Calculate metrics from ASSETS only (not debt)
+  // Calculate NET totals per category (debt subtracts)
   let stablecoinValue = 0;
   let btcValue = 0;
   let ethValue = 0;
   let defiValue = 0;
+  let totalNetValue = 0;
 
-  cryptoGrossAssets.forEach((asset) => {
-    const value = asset.value; // Already positive since we filtered
+  cryptoAssets.forEach((asset) => {
+    const value = asset.value; // Can be negative for debt
     const subCat = categoryService.getSubCategory(asset.symbol, asset.type);
 
+    // Skip perp trades from dominance calculations - they're leveraged exposure, not holdings
+    if (asset.protocol && isPerpProtocol(asset.protocol)) {
+      const { isPerpTrade } = detectPerpTrade(asset.name);
+      if (isPerpTrade) {
+        // Don't count perp trades in asset dominance, but still add to total
+        totalNetValue += value;
+        return;
+      }
+    }
+
+    // Add to category totals (including negative values for debt)
     if (subCat === 'stablecoins') {
       stablecoinValue += value;
     }
@@ -851,30 +858,40 @@ export function calculateCryptoMetrics(assets: AssetWithPrice[]): CryptoMetrics 
     if (subCat === 'eth') {
       ethValue += value;
     }
-    if (asset.protocol && asset.protocol !== 'wallet' && !asset.protocol.startsWith('cex:')) {
+    // DeFi exposure: non-wallet, non-CEX, non-perp protocols
+    if (asset.protocol &&
+        asset.protocol !== 'wallet' &&
+        !asset.protocol.startsWith('cex:') &&
+        !isPerpProtocol(asset.protocol)) {
       defiValue += value;
     }
+
+    totalNetValue += value;
   });
 
+  if (totalNetValue <= 0) {
+    return { stablecoinRatio: 0, btcDominance: 0, ethDominance: 0, defiExposure: 0 };
+  }
+
   return {
-    stablecoinRatio: (stablecoinValue / totalCryptoValue) * 100,
-    btcDominance: (btcValue / totalCryptoValue) * 100,
-    ethDominance: (ethValue / totalCryptoValue) * 100,
-    defiExposure: (defiValue / totalCryptoValue) * 100,
+    stablecoinRatio: Math.max(0, (stablecoinValue / totalNetValue) * 100),
+    btcDominance: Math.max(0, (btcValue / totalNetValue) * 100),
+    ethDominance: Math.max(0, (ethValue / totalNetValue) * 100),
+    defiExposure: Math.max(0, (defiValue / totalNetValue) * 100),
   };
 }
 
 /**
  * Calculate crypto allocation for horizontal bar display
- * Uses GROSS ASSETS only - debt positions don't contribute to allocation %
+ * Uses NET values - debt subtracts from the relevant category
  */
 export function calculateCryptoAllocation(assets: AssetWithPrice[]): CryptoAllocationItem[] {
   const categoryService = getCategoryService();
 
-  // Filter to crypto ASSETS only (positive values) - debt doesn't count toward allocation
+  // Filter to crypto only (all values including debt)
   const cryptoAssets = assets.filter((a) => {
     const mainCat = categoryService.getMainCategory(a.symbol, a.type);
-    return mainCat === 'crypto' && a.value > 0;
+    return mainCat === 'crypto';
   });
 
   const allocationMap: Record<string, { value: number; color: string }> = {};
@@ -898,7 +915,7 @@ export function calculateCryptoAllocation(assets: AssetWithPrice[]): CryptoAlloc
   };
 
   cryptoAssets.forEach((asset) => {
-    const value = asset.value; // Already positive since we filtered
+    const value = asset.value; // Can be negative for debt
     let subCat = categoryService.getSubCategory(asset.symbol, asset.type);
 
     // Check if it's a perp position
@@ -918,10 +935,11 @@ export function calculateCryptoAllocation(assets: AssetWithPrice[]): CryptoAlloc
     allocationMap[subCat].value += value;
   });
 
-  const totalValue = Object.values(allocationMap).reduce((sum, item) => sum + item.value, 0);
+  // Use NET total (only positive category values)
+  const totalValue = Object.values(allocationMap).reduce((sum, item) => sum + Math.max(0, item.value), 0);
 
   return Object.entries(allocationMap)
-    .filter(([_, item]) => item.value > 0)
+    .filter(([_, item]) => item.value > 0) // Only show categories with positive NET value
     .map(([category, item]) => ({
       category,
       label: categoryLabels[category] || category,
@@ -934,17 +952,16 @@ export function calculateCryptoAllocation(assets: AssetWithPrice[]): CryptoAlloc
 
 /**
  * Calculate exposure breakdown for donut chart (Stablecoins, ETH, DeFi, BTC, etc.)
- */
-/**
- * Uses GROSS ASSETS only - debt doesn't count toward exposure allocation
+ * Uses NET values - debt subtracts from the relevant category
+ * Includes perps as a separate category for consistency with allocation
  */
 export function calculateExposureBreakdown(assets: AssetWithPrice[]): CryptoAllocationItem[] {
   const categoryService = getCategoryService();
 
-  // Filter to crypto ASSETS only (positive values) - debt doesn't count toward exposure
+  // Filter to crypto only (all values including debt)
   const cryptoAssets = assets.filter((a) => {
     const mainCat = categoryService.getMainCategory(a.symbol, a.type);
-    return mainCat === 'crypto' && a.value > 0;
+    return mainCat === 'crypto';
   });
 
   const exposureMap: Record<string, { value: number; color: string; label: string }> = {};
@@ -955,6 +972,7 @@ export function calculateExposureBreakdown(assets: AssetWithPrice[]): CryptoAllo
     btc: { color: '#F7931A', label: 'BTC' },
     sol: { color: '#9945FF', label: 'SOL' },
     tokens: { color: '#00BCD4', label: 'Tokens' },
+    perps: { color: '#FF5722', label: 'Perps' },
     defi: { color: '#9C27B0', label: 'DeFi' },
     rwa: { color: '#795548', label: 'RWA' },
     privacy: { color: '#37474F', label: 'Privacy' },
@@ -963,11 +981,18 @@ export function calculateExposureBreakdown(assets: AssetWithPrice[]): CryptoAllo
   };
 
   cryptoAssets.forEach((asset) => {
-    const value = asset.value; // Already positive since we filtered
-    const subCat = categoryService.getSubCategory(asset.symbol, asset.type);
+    const value = asset.value; // Can be negative for debt
+    let exposureCat: string = categoryService.getSubCategory(asset.symbol, asset.type);
+
+    // Check if it's a perp position (same logic as allocation for consistency)
+    if (asset.protocol && isPerpProtocol(asset.protocol)) {
+      const { isPerpTrade } = detectPerpTrade(asset.name);
+      if (isPerpTrade) {
+        exposureCat = 'perps';
+      }
+    }
 
     // Map to exposure categories
-    let exposureCat: string = subCat;
     if (!categoryConfig[exposureCat]) {
       exposureCat = 'other';
     }
@@ -983,10 +1008,11 @@ export function calculateExposureBreakdown(assets: AssetWithPrice[]): CryptoAllo
     exposureMap[exposureCat].value += value;
   });
 
-  const totalValue = Object.values(exposureMap).reduce((sum, item) => sum + item.value, 0);
+  // Use NET total (only positive category values)
+  const totalValue = Object.values(exposureMap).reduce((sum, item) => sum + Math.max(0, item.value), 0);
 
   return Object.entries(exposureMap)
-    .filter(([_, item]) => item.value > 0)
+    .filter(([_, item]) => item.value > 0) // Only show categories with positive NET value
     .map(([category, item]) => ({
       category,
       label: item.label,
@@ -1494,36 +1520,36 @@ export function calculateCashBreakdown(
     return mainCat === 'crypto' && subCat === 'stablecoins';
   });
 
-  // Calculate totals - ASSETS only (positive values)
+  // Calculate NET totals - debt subtracts from the category
   const fiat = { value: 0, count: 0 };
   const stablecoins = { value: 0, count: 0 };
 
-  fiatPositions.filter(p => p.value > 0).forEach((p) => {
-    fiat.value += p.value;
-    fiat.count++;
+  fiatPositions.forEach((p) => {
+    fiat.value += p.value; // Can be negative for debt
+    if (p.value > 0) fiat.count++;
   });
 
-  stablecoinPositions.filter(p => p.value > 0).forEach((p) => {
-    stablecoins.value += p.value;
-    stablecoins.count++;
+  stablecoinPositions.forEach((p) => {
+    stablecoins.value += p.value; // Can be negative for debt
+    if (p.value > 0) stablecoins.count++;
   });
 
   const total = includeStablecoins ? fiat.value + stablecoins.value : fiat.value;
 
-  // Calculate by currency for pie chart
+  // Calculate by currency for pie chart - use NET values
   const currencyMap: Record<string, { value: number; count: number; positions: AssetWithPrice[] }> = {};
   const positionsToAnalyze = includeStablecoins
     ? [...fiatPositions, ...stablecoinPositions]
     : fiatPositions;
 
-  // Only process ASSETS (positive values)
-  positionsToAnalyze.filter(p => p.value > 0).forEach((p) => {
+  // Process ALL positions (including debt) to get NET by currency
+  positionsToAnalyze.forEach((p) => {
     const currency = p.symbol.toUpperCase();
     if (!currencyMap[currency]) {
       currencyMap[currency] = { value: 0, count: 0, positions: [] };
     }
-    currencyMap[currency].value += p.value;
-    currencyMap[currency].count++;
+    currencyMap[currency].value += p.value; // Can be negative for debt
+    if (p.value > 0) currencyMap[currency].count++;
     currencyMap[currency].positions.push(p);
   });
 
@@ -1551,13 +1577,15 @@ export function calculateCashBreakdown(
     return 'Manual';
   };
 
-  // Generate chartData sorted by value with breakdown
+  // Generate chartData sorted by value with breakdown - only show positive NET values
   const chartData = Object.entries(currencyMap)
+    .filter(([_, data]) => data.value > 0) // Only currencies with positive NET value
     .map(([currency, data]) => ({
       label: currency,
       value: data.value,
       color: currencyColors[currency] || '#6B7280',
       breakdown: data.positions
+        .filter(p => p.value > 0) // Only show positive positions in breakdown
         .map(p => ({ label: getLocationLabel(p), value: p.value }))
         .sort((a, b) => b.value - a.value),
     }))
@@ -1598,24 +1626,34 @@ export function calculateEquitiesBreakdown(assets: AssetWithPrice[]): EquitiesBr
     return mainCat === 'equities';
   });
 
-  // Separate stocks and ETFs - ASSETS only (positive values)
+  // Track NET values by type - debt subtracts from category
+  let stocksValue = 0;
+  let etfsValue = 0;
+  let stocksCount = 0;
+  let etfsCount = 0;
   const stockPositions: AssetWithPrice[] = [];
   const etfPositions: AssetWithPrice[] = [];
 
-  equityPositions.filter(p => p.value > 0).forEach((p) => {
+  equityPositions.forEach((p) => {
     const subCat = categoryService.getSubCategory(p.symbol, p.type);
     if (subCat === 'etfs') {
-      etfPositions.push(p);
+      etfsValue += p.value; // Can be negative for debt
+      if (p.value > 0) {
+        etfsCount++;
+        etfPositions.push(p);
+      }
     } else {
-      stockPositions.push(p);
+      stocksValue += p.value; // Can be negative for debt
+      if (p.value > 0) {
+        stocksCount++;
+        stockPositions.push(p);
+      }
     }
   });
 
-  const stocksValue = stockPositions.reduce((sum, p) => sum + p.value, 0);
-  const etfsValue = etfPositions.reduce((sum, p) => sum + p.value, 0);
   const total = stocksValue + etfsValue;
 
-  // Helper to aggregate by symbol
+  // Helper to aggregate by symbol (only positive values for breakdown)
   const aggregateBySymbol = (positions: AssetWithPrice[]) => {
     const map = new Map<string, number>();
     positions.forEach(p => {
@@ -1623,11 +1661,12 @@ export function calculateEquitiesBreakdown(assets: AssetWithPrice[]): EquitiesBr
       map.set(key, (map.get(key) || 0) + p.value);
     });
     return Array.from(map.entries())
+      .filter(([_, value]) => value > 0) // Only show positive NET values
       .map(([label, value]) => ({ label, value }))
       .sort((a, b) => b.value - a.value);
   };
 
-  // Build chart data
+  // Build chart data - only show categories with positive NET value
   const chartData: { label: string; value: number; color: string; breakdown: { label: string; value: number }[] }[] = [];
   if (stocksValue > 0) {
     chartData.push({
@@ -1647,9 +1686,9 @@ export function calculateEquitiesBreakdown(assets: AssetWithPrice[]): EquitiesBr
   }
 
   return {
-    stocks: { value: stocksValue, count: stockPositions.length },
-    etfs: { value: etfsValue, count: etfPositions.length },
-    total,
+    stocks: { value: Math.max(0, stocksValue), count: stocksCount },
+    etfs: { value: Math.max(0, etfsValue), count: etfsCount },
+    total: Math.max(0, total),
     equityPositions,
     chartData,
   };
@@ -1667,7 +1706,7 @@ export interface CryptoBreakdownResult {
 
 /**
  * Calculate crypto breakdown by sub-category - SINGLE SOURCE OF TRUTH
- * Uses GROSS ASSETS only (positive values)
+ * Uses NET values - debt subtracts from the relevant category
  */
 export function calculateCryptoBreakdown(assets: AssetWithPrice[]): CryptoBreakdownResult {
   const categoryService = getCategoryService();
@@ -1697,12 +1736,12 @@ export function calculateCryptoBreakdown(assets: AssetWithPrice[]): CryptoBreakd
     'perps': 'Perps',
   };
 
-  // Group by sub-category - ASSETS only (positive values)
+  // Group by sub-category - use NET values (debt subtracts)
   const categoryMap: Record<string, { value: number; count: number; positions: AssetWithPrice[] }> = {};
 
-  cryptoPositions.filter(p => p.value > 0).forEach((p) => {
+  cryptoPositions.forEach((p) => {
     // Determine subcategory - check for perps first (based on protocol + name pattern)
-    let subCat = categoryService.getSubCategory(p.symbol, p.type);
+    let subCat: string = categoryService.getSubCategory(p.symbol, p.type);
 
     // Override to 'perps' if position is on a perp protocol and is a perp trade
     if (p.protocol && isPerpProtocol(p.protocol)) {
@@ -1715,14 +1754,17 @@ export function calculateCryptoBreakdown(assets: AssetWithPrice[]): CryptoBreakd
     if (!categoryMap[subCat]) {
       categoryMap[subCat] = { value: 0, count: 0, positions: [] };
     }
-    categoryMap[subCat].value += p.value;
-    categoryMap[subCat].count++;
-    categoryMap[subCat].positions.push(p);
+    categoryMap[subCat].value += p.value; // Can be negative for debt
+    if (p.value > 0) {
+      categoryMap[subCat].count++;
+      categoryMap[subCat].positions.push(p);
+    }
   });
 
-  const total = Object.values(categoryMap).reduce((sum, cat) => sum + cat.value, 0);
+  // NET total (only positive category values)
+  const total = Object.values(categoryMap).reduce((sum, cat) => sum + Math.max(0, cat.value), 0);
 
-  // Helper to aggregate by symbol
+  // Helper to aggregate by symbol (only positive values for breakdown)
   const aggregateBySymbol = (positions: AssetWithPrice[]) => {
     const map = new Map<string, number>();
     positions.forEach(p => {
@@ -1730,11 +1772,12 @@ export function calculateCryptoBreakdown(assets: AssetWithPrice[]): CryptoBreakd
       map.set(key, (map.get(key) || 0) + p.value);
     });
     return Array.from(map.entries())
+      .filter(([_, value]) => value > 0) // Only show positive NET values
       .map(([label, value]) => ({ label, value }))
       .sort((a, b) => b.value - a.value);
   };
 
-  // Build chart data sorted by value
+  // Build chart data sorted by value - only show categories with positive NET value
   const chartData = Object.entries(categoryMap)
     .filter(([_, data]) => data.value > 0)
     .map(([category, data]) => ({
@@ -1745,10 +1788,12 @@ export function calculateCryptoBreakdown(assets: AssetWithPrice[]): CryptoBreakd
     }))
     .sort((a, b) => b.value - a.value);
 
-  // Build byCategory summary
+  // Build byCategory summary - only positive values
   const byCategory: Record<string, { value: number; count: number }> = {};
   Object.entries(categoryMap).forEach(([cat, data]) => {
-    byCategory[cat] = { value: data.value, count: data.count };
+    if (data.value > 0) {
+      byCategory[cat] = { value: data.value, count: data.count };
+    }
   });
 
   return {

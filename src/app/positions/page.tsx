@@ -2,13 +2,16 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Plus, Trash2, Search, Wallet, RefreshCw, Eye, EyeOff, ArrowUpDown, Download, Layers, Grid3X3, Edit2 } from 'lucide-react';
+import { Plus, Trash2, Wallet, RefreshCw, Eye, EyeOff, ArrowUpDown, Download, Layers, Grid3X3, Edit2 } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import { calculateAllPositionsWithPrices, calculatePortfolioSummary, aggregatePositionsBySymbol, calculateUnrealizedPnL } from '@/services';
 import AddPositionModal from '@/components/modals/AddPositionModal';
 import CryptoIcon from '@/components/ui/CryptoIcon';
 import CustomPriceModal from '@/components/modals/CustomPriceModal';
 import { useRefresh } from '@/components/PortfolioProvider';
+import SearchInput from '@/components/ui/SearchInput';
+import ViewModeToggle from '@/components/ui/ViewModeToggle';
+import EmptyState from '@/components/ui/EmptyState';
 import {
   formatCurrency,
   formatPercent,
@@ -371,45 +374,24 @@ export default function PositionsPage() {
       {/* Unified Filter Bar */}
       <div className="flex flex-wrap items-center gap-3 mb-4">
           {/* View Mode Toggle */}
-          <div className="flex gap-1 p-1 bg-[var(--background-secondary)] rounded-lg">
-            <button
-              onClick={() => setViewMode('positions')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors flex items-center gap-1.5 ${
-                viewMode === 'positions'
-                  ? 'bg-[var(--card-bg)] text-[var(--foreground)] shadow-sm'
-                  : 'text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
-              }`}
-            >
-              <Layers className="w-3.5 h-3.5" />
-              Positions
-            </button>
-            <button
-              onClick={() => setViewMode('assets')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors flex items-center gap-1.5 ${
-                viewMode === 'assets'
-                  ? 'bg-[var(--card-bg)] text-[var(--foreground)] shadow-sm'
-                  : 'text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
-              }`}
-            >
-              <Grid3X3 className="w-3.5 h-3.5" />
-              Assets
-            </button>
-          </div>
+          <ViewModeToggle
+            modes={[
+              { id: 'positions', label: 'Positions', icon: <Layers className="w-3.5 h-3.5" /> },
+              { id: 'assets', label: 'Assets', icon: <Grid3X3 className="w-3.5 h-3.5" /> },
+            ]}
+            activeMode={viewMode}
+            onChange={(mode) => setViewMode(mode as ViewMode)}
+          />
 
           {/* Spacer */}
           <div className="flex-1" />
 
           {/* Search */}
-          <div className="relative min-w-[160px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--foreground-muted)]" />
-            <input
-              type="text"
-              placeholder="Search..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 w-full text-sm py-2"
-            />
-          </div>
+          <SearchInput
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder="Search..."
+          />
 
           {/* Actions */}
           <button
@@ -436,24 +418,29 @@ export default function PositionsPage() {
       {/* Table */}
       <div>
         {displayData.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-[var(--foreground-muted)]">
-              {positions.length === 0
-                ? 'No positions yet. Add a position or connect a wallet to get started.'
-                : 'No positions match your filter.'}
-            </p>
-            {positions.length === 0 && (
-              <div className="flex justify-center gap-3 mt-4">
-                <button onClick={() => setShowAddPosition(true)} className="btn btn-primary">
-                  <Plus className="w-4 h-4" /> Add Position
-                </button>
-                <button onClick={refresh} className="btn btn-secondary" disabled={isRefreshing}>
-                  <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-                  Sync Wallets
-                </button>
-              </div>
-            )}
-          </div>
+          positions.length === 0 ? (
+            <EmptyState
+              icon={<Wallet className="w-full h-full" />}
+              title="No positions yet"
+              description="Add a position or connect a wallet to get started."
+              size="sm"
+              action={
+                <div className="flex justify-center gap-3">
+                  <button onClick={() => setShowAddPosition(true)} className="btn btn-primary">
+                    <Plus className="w-4 h-4" /> Add Position
+                  </button>
+                  <button onClick={refresh} className="btn btn-secondary" disabled={isRefreshing}>
+                    <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                    Sync Wallets
+                  </button>
+                </div>
+              }
+            />
+          ) : (
+            <div className="text-center py-12">
+              <p className="text-[var(--foreground-muted)]">No positions match your filter.</p>
+            </div>
+          )
         ) : viewMode === 'positions' ? (
           <div className="table-scroll">
             <table className="w-full min-w-[700px]">

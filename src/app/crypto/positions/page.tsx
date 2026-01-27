@@ -1,12 +1,15 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Trash2, Wallet, ArrowUpDown, ChevronUp, ChevronDown, Layers, Grid3X3, Edit2, Search, Download, Coins } from 'lucide-react';
+import { Trash2, Wallet, ArrowUpDown, ChevronUp, ChevronDown, Layers, Grid3X3, Edit2, Download, Coins } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import { calculateAllPositionsWithPrices, aggregatePositionsBySymbol, calculateCryptoBreakdown, getCategoryService } from '@/services';
 import DonutChart from '@/components/charts/DonutChart';
 import CryptoIcon from '@/components/ui/CryptoIcon';
 import CustomPriceModal from '@/components/modals/CustomPriceModal';
+import SearchInput from '@/components/ui/SearchInput';
+import ViewModeToggle from '@/components/ui/ViewModeToggle';
+import EmptyState from '@/components/ui/EmptyState';
 import {
   formatCurrency,
   formatPercent,
@@ -15,6 +18,7 @@ import {
   getAssetTypeLabel,
   formatAddress,
 } from '@/lib/utils';
+import { CRYPTO_COLORS } from '@/lib/colors';
 import { AssetWithPrice } from '@/types';
 import { CryptoSubCategory } from '@/lib/assetCategories';
 
@@ -23,12 +27,12 @@ type SortField = 'symbol' | 'value' | 'amount' | 'change';
 type SortDirection = 'asc' | 'desc';
 
 const CRYPTO_FILTER_OPTIONS: { value: CryptoSubCategory; label: string; color: string }[] = [
-  { value: 'btc', label: 'BTC', color: '#F7931A' },
-  { value: 'eth', label: 'ETH', color: '#627EEA' },
-  { value: 'sol', label: 'SOL', color: '#9945FF' },
-  { value: 'stablecoins', label: 'Stables', color: '#4CAF50' },
-  { value: 'tokens', label: 'Tokens', color: '#00BCD4' },
-  { value: 'perps', label: 'Perps', color: '#FF5722' },
+  { value: 'btc', label: 'BTC', color: CRYPTO_COLORS.btc },
+  { value: 'eth', label: 'ETH', color: CRYPTO_COLORS.eth },
+  { value: 'sol', label: 'SOL', color: CRYPTO_COLORS.sol },
+  { value: 'stablecoins', label: 'Stables', color: CRYPTO_COLORS.stablecoins },
+  { value: 'tokens', label: 'Tokens', color: CRYPTO_COLORS.tokens },
+  { value: 'perps', label: 'Perps', color: CRYPTO_COLORS.perps },
 ];
 
 export default function CryptoPositionsPage() {
@@ -324,44 +328,24 @@ export default function CryptoPositionsPage() {
       {/* Controls Row */}
       <div className="flex flex-wrap items-center gap-3 mb-4">
         {/* View Toggle */}
-        <div className="flex gap-1 p-1 bg-[var(--background-secondary)] rounded-lg">
-          <button
-            onClick={() => setViewMode('assets')}
-            className={`px-3 py-1.5 text-[12px] font-medium rounded-md transition-colors flex items-center gap-1.5 ${
-              viewMode === 'assets'
-                ? 'bg-[var(--background)] text-[var(--foreground)] shadow-sm'
-                : 'text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
-            }`}
-          >
-            <Grid3X3 className="w-3.5 h-3.5" />
-            Assets ({aggregatedAssets.length})
-          </button>
-          <button
-            onClick={() => setViewMode('positions')}
-            className={`px-3 py-1.5 text-[12px] font-medium rounded-md transition-colors flex items-center gap-1.5 ${
-              viewMode === 'positions'
-                ? 'bg-[var(--background)] text-[var(--foreground)] shadow-sm'
-                : 'text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
-            }`}
-          >
-            <Layers className="w-3.5 h-3.5" />
-            Positions ({sortedPositions.length})
-          </button>
-        </div>
+        <ViewModeToggle
+          modes={[
+            { id: 'assets', label: 'Assets', icon: <Grid3X3 className="w-3.5 h-3.5" />, count: aggregatedAssets.length },
+            { id: 'positions', label: 'Positions', icon: <Layers className="w-3.5 h-3.5" />, count: sortedPositions.length },
+          ]}
+          activeMode={viewMode}
+          onChange={(mode) => setViewMode(mode as ViewMode)}
+        />
 
         <div className="flex-1" />
 
         {/* Search */}
-        <div className="relative flex-1 max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--foreground-muted)]" />
-          <input
-            type="text"
-            placeholder="Search..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9 w-full"
-          />
-        </div>
+        <SearchInput
+          value={searchQuery}
+          onChange={setSearchQuery}
+          placeholder="Search..."
+          className="flex-1 max-w-xs"
+        />
 
         {/* Export */}
         <button onClick={exportCSV} className="btn btn-secondary p-2" title="Export CSV">
@@ -371,9 +355,12 @@ export default function CryptoPositionsPage() {
 
       {/* Table */}
       {displayData.length === 0 ? (
-        <div className="text-center py-12">
-          <p className="text-[var(--foreground-muted)]">No positions match your filters.</p>
-        </div>
+        <EmptyState
+          icon={<Coins className="w-full h-full" />}
+          title="No positions found"
+          description="No positions match your filters."
+          size="sm"
+        />
       ) : viewMode === 'positions' ? (
         <div className="table-scroll">
           <table className="w-full min-w-[700px]">

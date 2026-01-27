@@ -13,6 +13,7 @@ import {
 } from '@/services';
 import NetWorthChart from '@/components/charts/NetWorthChart';
 import DonutChart, { DonutChartItem } from '@/components/charts/DonutChart';
+import EmptyState from '@/components/ui/EmptyState';
 import {
   formatCurrency,
   formatPercent,
@@ -74,17 +75,12 @@ export default function OverviewPage() {
 
   if (!hasData) {
     return (
-      <div>
-        <div className="flex flex-col items-center justify-center py-32">
-          <div className="w-20 h-20 rounded-2xl bg-[var(--background-tertiary)] flex items-center justify-center mb-6">
-            <TrendingUp className="w-10 h-10 text-[var(--foreground-muted)]" />
-          </div>
-          <h2 className="text-xl font-semibold mb-2">No positions yet</h2>
-          <p className="text-[var(--foreground-muted)] text-center max-w-md">
-            Add your first position to start tracking your portfolio.
-          </p>
-        </div>
-      </div>
+      <EmptyState
+        icon={<TrendingUp className="w-full h-full" />}
+        title="No positions yet"
+        description="Add your first position to start tracking your portfolio."
+        size="lg"
+      />
     );
   }
 

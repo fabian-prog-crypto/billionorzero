@@ -17,6 +17,8 @@ import {
 } from '@/services';
 import { MainCategory } from '@/services/domain/category-service';
 import { formatCurrency } from '@/lib/utils';
+import { CRYPTO_COLORS, TOKEN_CATEGORY_COLORS } from '@/lib/colors';
+import EmptyState from '@/components/ui/EmptyState';
 
 interface CategoryViewProps {
   category: MainCategory;
@@ -84,15 +86,12 @@ export default function CategoryView({
 
   if (categoryPositions.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-32">
-        <div className="w-20 h-20 rounded-2xl bg-[var(--background-tertiary)] flex items-center justify-center mb-6">
-          {emptyIcon}
-        </div>
-        <h2 className="text-xl font-semibold mb-2">No {title.toLowerCase()} positions</h2>
-        <p className="text-[var(--foreground-muted)] text-center max-w-md">
-          {emptyMessage}
-        </p>
-      </div>
+      <EmptyState
+        icon={emptyIcon}
+        title={`No ${title.toLowerCase()} positions`}
+        description={emptyMessage}
+        size="lg"
+      />
     );
   }
 
@@ -178,17 +177,17 @@ export default function CategoryView({
               <MetricCard
                 label="BTC DOMINANCE"
                 value={`${cryptoMetrics.btcDominance.toFixed(1)}%`}
-                color="#F7931A"
+                color={CRYPTO_COLORS.btc}
               />
               <MetricCard
                 label="ETH DOMINANCE"
                 value={`${cryptoMetrics.ethDominance.toFixed(1)}%`}
-                color="#627EEA"
+                color={CRYPTO_COLORS.eth}
               />
               <MetricCard
                 label="DEFI EXPOSURE"
                 value={`${cryptoMetrics.defiExposure.toFixed(1)}%`}
-                color="#9C27B0"
+                color={TOKEN_CATEGORY_COLORS.defi.color}
               />
             </div>
           </div>
