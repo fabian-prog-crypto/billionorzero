@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from 'react';
 import { Banknote, ArrowUpDown, ChevronDown, ChevronUp, Search, ToggleLeft, ToggleRight } from 'lucide-react';
-import DonutChart from '@/components/charts/DonutChart';
+import DonutChart, { DonutChartItem } from '@/components/charts/DonutChart';
+import type { AssetWithPrice } from '@/types';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import {
   calculateAllPositionsWithPrices,
@@ -70,8 +71,8 @@ export default function CashPage() {
 
     const total = includeStablecoins ? fiat.value + stablecoins.value : fiat.value;
 
-    // Calculate by currency for pie chart
-    const currencyMap: Record<string, { value: number; count: number }> = {};
+    // Calculate by currency for pie chart with breakdown by location
+    const currencyMap: Record<string, { value: number; count: number; positions: AssetWithPrice[] }> = {};
 
     const positionsToAnalyze = includeStablecoins
       ? [...fiatPositions, ...stablecoinPositions]
@@ -80,10 +81,11 @@ export default function CashPage() {
     positionsToAnalyze.forEach((p) => {
       const currency = p.symbol.toUpperCase();
       if (!currencyMap[currency]) {
-        currencyMap[currency] = { value: 0, count: 0 };
+        currencyMap[currency] = { value: 0, count: 0, positions: [] };
       }
       currencyMap[currency].value += p.value;
       currencyMap[currency].count++;
+      currencyMap[currency].positions.push(p);
     });
 
     // Define colors for common currencies
@@ -102,12 +104,23 @@ export default function CashPage() {
       'SUSDE': '#1565C0',
     };
 
-    // Generate chartData sorted by value
-    const chartData = Object.entries(currencyMap)
+    // Helper to get location label for a position
+    const getLocationLabel = (p: AssetWithPrice) => {
+      if (p.protocol?.startsWith('cex:')) return p.protocol.replace('cex:', '').toUpperCase();
+      if (p.protocol && p.protocol !== 'wallet') return p.protocol;
+      if (p.walletAddress) return `${p.walletAddress.slice(0, 6)}...${p.walletAddress.slice(-4)}`;
+      return 'Manual';
+    };
+
+    // Generate chartData sorted by value with breakdown
+    const chartData: DonutChartItem[] = Object.entries(currencyMap)
       .map(([currency, data]) => ({
         label: currency,
         value: data.value,
         color: currencyColors[currency] || '#6B7280',
+        breakdown: data.positions
+          .map(p => ({ label: getLocationLabel(p), value: Math.abs(p.value) }))
+          .sort((a, b) => b.value - a.value),
       }))
       .sort((a, b) => b.value - a.value);
 

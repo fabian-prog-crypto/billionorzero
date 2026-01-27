@@ -3,10 +3,16 @@
 import { useMemo, useState } from 'react';
 import { formatCurrency } from '@/lib/utils';
 
+export interface DonutChartBreakdownItem {
+  label: string;
+  value: number;
+}
+
 export interface DonutChartItem {
   label: string;
   value: number;
   color: string;
+  breakdown?: DonutChartBreakdownItem[]; // Individual positions within this category
 }
 
 interface DonutChartProps {
@@ -130,7 +136,7 @@ export default function DonutChart({
   return (
     <div>
       <h4 className="text-[15px] font-medium mb-3">{title}</h4>
-      <div className="flex items-start gap-5">
+      <div className="flex items-start gap-5 relative">
         {/* Donut Chart SVG with center tooltip */}
         <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
           <svg width={size} height={size}>
@@ -139,11 +145,9 @@ export default function DonutChart({
                 key={segment.index}
                 d={segment.path}
                 fill={segment.color}
-                className="transition-all duration-150 cursor-pointer"
+                className="transition-opacity duration-100 cursor-pointer"
                 style={{
-                  opacity: hoveredIndex === null || hoveredIndex === segment.index ? 1 : 0.4,
-                  transform: hoveredIndex === segment.index ? 'scale(1.02)' : 'scale(1)',
-                  transformOrigin: 'center',
+                  opacity: hoveredIndex === null || hoveredIndex === segment.index ? 1 : 0.3,
                 }}
                 onMouseEnter={() => setHoveredIndex(segment.index)}
                 onMouseLeave={() => setHoveredIndex(null)}
@@ -151,50 +155,71 @@ export default function DonutChart({
             ))}
           </svg>
 
-          {/* Center tooltip on hover */}
+          {/* Hover tooltip with breakdown */}
           {hoveredItem && (
             <div
-              className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none"
-              style={{ padding: size * 0.22 }}
+              className="absolute z-50 backdrop-blur-md bg-white/70 px-2.5 py-1.5 pointer-events-none text-[10px]"
+              style={{
+                left: size + 10,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                minWidth: 120,
+                maxWidth: 160,
+              }}
             >
-              <span className="text-[10px] font-medium text-center truncate max-w-full">
-                {hoveredItem.label}
-              </span>
-              <span className="text-[15px] font-semibold">
-                {hideValues ? '••••' : `${hoveredPercentage.toFixed(0)}%`}
-              </span>
-              {!hideValues && (
-                <span className="text-[9px] text-[var(--foreground-muted)]">
-                  {formatCurrency(hoveredItem.value)}
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <span className="font-medium text-black/90">{hoveredItem.label}</span>
+                <span className="text-black/50">
+                  {hideValues ? '••' : `${hoveredPercentage.toFixed(0)}%`}
                 </span>
+              </div>
+              {hoveredItem.breakdown && hoveredItem.breakdown.length > 0 ? (
+                <div className="space-y-px">
+                  {hoveredItem.breakdown.slice(0, 5).map((item, idx) => (
+                    <div key={idx} className="flex justify-between gap-2 text-[9px]">
+                      <span className="truncate text-black/40">{item.label}</span>
+                      <span className="flex-shrink-0 text-black/60">{hideValues ? '••••' : formatCurrency(item.value)}</span>
+                    </div>
+                  ))}
+                  {hoveredItem.breakdown.length > 5 && (
+                    <div className="text-black/30 text-[8px] mt-0.5">
+                      +{hoveredItem.breakdown.length - 5} more
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-black/50">
+                  {hideValues ? '••••' : formatCurrency(hoveredItem.value)}
+                </div>
               )}
             </div>
           )}
         </div>
 
+
         {/* Legend */}
-        <div className="flex-1 space-y-1.5 min-w-0">
+        <div className="flex-1 space-y-1 min-w-0">
           {displayItems.map((item, index) => {
             const percentage = total > 0 ? (item.value / total) * 100 : 0;
             const isHovered = hoveredIndex === index;
             return (
               <div
                 key={index}
-                className={`flex items-center justify-between gap-2 transition-opacity duration-150 cursor-pointer ${
-                  hoveredIndex !== null && !isHovered ? 'opacity-40' : 'opacity-100'
+                className={`flex items-center justify-between gap-2 transition-opacity duration-100 cursor-pointer ${
+                  hoveredIndex !== null && !isHovered ? 'opacity-30' : 'opacity-100'
                 }`}
                 onMouseEnter={() => setHoveredIndex(index)}
                 onMouseLeave={() => setHoveredIndex(null)}
               >
-                <div className="flex items-center gap-2 min-w-0">
+                <div className="flex items-center gap-1.5 min-w-0">
                   <div
-                    className="w-2.5 h-2.5 rounded-sm flex-shrink-0"
+                    className="w-2 h-2 rounded-sm flex-shrink-0"
                     style={{ backgroundColor: item.color }}
                   />
-                  <span className="text-[13px] truncate">{item.label}</span>
+                  <span className="text-[12px] truncate">{item.label}</span>
                 </div>
-                <span className="text-[13px] text-[var(--foreground-muted)] flex-shrink-0">
-                  {hideValues ? '••••' : `~${percentage.toFixed(0)}%`}
+                <span className="text-[12px] text-[var(--foreground-muted)] flex-shrink-0">
+                  {hideValues ? '••' : `${percentage.toFixed(0)}%`}
                 </span>
               </div>
             );

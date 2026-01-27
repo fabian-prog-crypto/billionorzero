@@ -7,12 +7,11 @@ import {
   calculatePortfolioSummary,
   calculateAllPositionsWithPrices,
   calculateExposureData,
-  calculateCustodyBreakdown,
-  calculateAllocationBreakdown,
-  calculateRiskProfile,
+  getCategoryService,
 } from '@/services';
+import type { AssetWithPrice } from '@/types';
 import NetWorthChart from '@/components/charts/NetWorthChart';
-import DonutChart from '@/components/charts/DonutChart';
+import DonutChart, { DonutChartItem } from '@/components/charts/DonutChart';
 import {
   formatCurrency,
   formatPercent,
@@ -39,20 +38,124 @@ export default function OverviewPage() {
 
   const { exposureMetrics, concentrationMetrics } = exposureData;
 
-  // Use centralized custody breakdown calculation
-  const custodyBreakdown = useMemo(() => {
-    return calculateCustodyBreakdown(allAssetsWithPrices);
+  // Build chart data with breakdowns computed locally
+  const categoryService = getCategoryService();
+
+  // Helper to aggregate assets by symbol for breakdown
+  const aggregateBySymbol = (assets: AssetWithPrice[]) => {
+    const map = new Map<string, number>();
+    assets.forEach(a => {
+      const key = a.symbol.toUpperCase();
+      map.set(key, (map.get(key) || 0) + Math.abs(a.value));
+    });
+    return Array.from(map.entries())
+      .map(([label, value]) => ({ label, value }))
+      .sort((a, b) => b.value - a.value);
+  };
+
+  // Allocation breakdown: Cash & Equivalents, Crypto, Equities
+  const allocationChartData = useMemo((): DonutChartItem[] => {
+    const cashAssets: AssetWithPrice[] = [];
+    const cryptoAssets: AssetWithPrice[] = [];
+    const equityAssets: AssetWithPrice[] = [];
+
+    allAssetsWithPrices.forEach(asset => {
+      const mainCat = categoryService.getMainCategory(asset.symbol, asset.type);
+      const subCat = categoryService.getSubCategory(asset.symbol, asset.type);
+
+      if (mainCat === 'cash') {
+        cashAssets.push(asset);
+      } else if (mainCat === 'crypto') {
+        if (subCat === 'stablecoins') {
+          cashAssets.push(asset);
+        } else {
+          cryptoAssets.push(asset);
+        }
+      } else if (mainCat === 'equities') {
+        equityAssets.push(asset);
+      }
+    });
+
+    const items: DonutChartItem[] = [];
+    const cashValue = cashAssets.reduce((sum, a) => sum + Math.abs(a.value), 0);
+    const cryptoValue = cryptoAssets.reduce((sum, a) => sum + Math.abs(a.value), 0);
+    const equityValue = equityAssets.reduce((sum, a) => sum + Math.abs(a.value), 0);
+
+    if (cashValue > 0) items.push({ label: 'Cash & Equivalents', value: cashValue, color: '#4CAF50', breakdown: aggregateBySymbol(cashAssets) });
+    if (cryptoValue > 0) items.push({ label: 'Crypto', value: cryptoValue, color: '#FF9800', breakdown: aggregateBySymbol(cryptoAssets) });
+    if (equityValue > 0) items.push({ label: 'Equities', value: equityValue, color: '#F44336', breakdown: aggregateBySymbol(equityAssets) });
+
+    return items.sort((a, b) => b.value - a.value);
+  }, [allAssetsWithPrices, categoryService]);
+
+  // Custody breakdown: Self-Custody, DeFi, CEX, Banks & Brokers, Manual
+  const custodyChartData = useMemo((): DonutChartItem[] => {
+    const buckets: Record<string, { assets: AssetWithPrice[]; color: string }> = {
+      'Self-Custody': { assets: [], color: '#4CAF50' },
+      'DeFi': { assets: [], color: '#9C27B0' },
+      'CEX': { assets: [], color: '#FF9800' },
+      'Banks & Brokers': { assets: [], color: '#2196F3' },
+      'Manual': { assets: [], color: '#607D8B' },
+    };
+
+    allAssetsWithPrices.forEach(asset => {
+      if (asset.protocol?.startsWith('cex:')) {
+        buckets['CEX'].assets.push(asset);
+      } else if (asset.type === 'stock' || asset.type === 'cash') {
+        buckets['Banks & Brokers'].assets.push(asset);
+      } else if (asset.walletAddress) {
+        if (asset.protocol && asset.protocol !== 'wallet') {
+          buckets['DeFi'].assets.push(asset);
+        } else {
+          buckets['Self-Custody'].assets.push(asset);
+        }
+      } else {
+        buckets['Manual'].assets.push(asset);
+      }
+    });
+
+    return Object.entries(buckets)
+      .filter(([_, b]) => b.assets.length > 0)
+      .map(([label, b]) => ({
+        label,
+        value: b.assets.reduce((sum, a) => sum + Math.abs(a.value), 0),
+        color: b.color,
+        breakdown: aggregateBySymbol(b.assets),
+      }))
+      .sort((a, b) => b.value - a.value);
   }, [allAssetsWithPrices]);
 
-  // Use centralized allocation breakdown calculation
-  const allocationBreakdown = useMemo(() => {
-    return calculateAllocationBreakdown(allAssetsWithPrices);
-  }, [allAssetsWithPrices]);
+  // Risk profile breakdown: Conservative, Moderate, Aggressive
+  const riskChartData = useMemo((): DonutChartItem[] => {
+    const buckets: Record<string, { assets: AssetWithPrice[]; color: string }> = {
+      'Conservative': { assets: [], color: '#4CAF50' },
+      'Moderate': { assets: [], color: '#2196F3' },
+      'Aggressive': { assets: [], color: '#F44336' },
+    };
 
-  // Use centralized risk profile calculation
-  const riskProfileBreakdown = useMemo(() => {
-    return calculateRiskProfile(allAssetsWithPrices);
-  }, [allAssetsWithPrices]);
+    allAssetsWithPrices.forEach(asset => {
+      const mainCat = categoryService.getMainCategory(asset.symbol, asset.type);
+      const subCat = categoryService.getSubCategory(asset.symbol, asset.type);
+
+      if (mainCat === 'cash' || subCat === 'stablecoins') {
+        buckets['Conservative'].assets.push(asset);
+      } else if (subCat === 'btc' || subCat === 'eth' || mainCat === 'equities') {
+        buckets['Moderate'].assets.push(asset);
+      } else {
+        buckets['Aggressive'].assets.push(asset);
+      }
+    });
+
+    return Object.entries(buckets)
+      .filter(([_, b]) => b.assets.length > 0)
+      .map(([label, b]) => ({
+        label,
+        value: b.assets.reduce((sum, a) => sum + Math.abs(a.value), 0),
+        color: b.color,
+        breakdown: aggregateBySymbol(b.assets),
+      }))
+      .sort((a, b) => b.value - a.value);
+  }, [allAssetsWithPrices, categoryService]);
 
   // Use centralized metrics (already calculated in exposureData)
   const debtRatio = exposureMetrics.debtRatio;
@@ -122,11 +225,7 @@ export default function OverviewPage() {
         {/* Allocation Breakdown */}
         <DonutChart
           title="Allocation"
-          data={allocationBreakdown.map(item => ({
-            label: item.label,
-            value: item.value,
-            color: item.color,
-          }))}
+          data={allocationChartData}
           hideValues={hideBalances}
           maxItems={5}
         />
@@ -134,11 +233,7 @@ export default function OverviewPage() {
         {/* Custody Breakdown */}
         <DonutChart
           title="Custody"
-          data={custodyBreakdown.map(item => ({
-            label: item.label,
-            value: item.value,
-            color: item.color,
-          }))}
+          data={custodyChartData}
           hideValues={hideBalances}
           maxItems={5}
         />
@@ -146,11 +241,7 @@ export default function OverviewPage() {
         {/* Risk Profile */}
         <DonutChart
           title="Risk Profile"
-          data={riskProfileBreakdown.map(item => ({
-            label: item.label,
-            value: item.value,
-            color: item.color,
-          }))}
+          data={riskChartData}
           hideValues={hideBalances}
           maxItems={5}
         />

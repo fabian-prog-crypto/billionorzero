@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from 'react';
 import { TrendingUp, ArrowUpDown, ChevronDown, ChevronUp, Search } from 'lucide-react';
-import DonutChart from '@/components/charts/DonutChart';
+import DonutChart, { DonutChartItem } from '@/components/charts/DonutChart';
+import type { AssetWithPrice } from '@/types';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import {
   calculateAllPositionsWithPrices,
@@ -35,32 +36,59 @@ export default function EquitiesPage() {
     });
   }, [allPositions, categoryService]);
 
+  // Helper to aggregate positions by symbol
+  const aggregateBySymbol = (positions: AssetWithPrice[]) => {
+    const map = new Map<string, number>();
+    positions.forEach(p => {
+      const key = p.symbol.toUpperCase();
+      map.set(key, (map.get(key) || 0) + Math.abs(p.value));
+    });
+    return Array.from(map.entries())
+      .map(([label, value]) => ({ label, value }))
+      .sort((a, b) => b.value - a.value);
+  };
+
   // Calculate stocks vs ETFs breakdown
   const breakdownData = useMemo(() => {
-    const stocks = { value: 0, count: 0 };
-    const etfs = { value: 0, count: 0 };
+    const stockPositions: AssetWithPrice[] = [];
+    const etfPositions: AssetWithPrice[] = [];
 
     equityPositions.forEach((p) => {
       const subCat = categoryService.getSubCategory(p.symbol, p.type);
       if (subCat === 'etfs') {
-        etfs.value += p.value;
-        etfs.count++;
+        etfPositions.push(p);
       } else {
-        stocks.value += p.value;
-        stocks.count++;
+        stockPositions.push(p);
       }
     });
 
-    const total = stocks.value + etfs.value;
+    const stocksValue = stockPositions.reduce((sum, p) => sum + Math.abs(p.value), 0);
+    const etfsValue = etfPositions.reduce((sum, p) => sum + Math.abs(p.value), 0);
+    const total = stocksValue + etfsValue;
+
+    const chartData: DonutChartItem[] = [];
+    if (stocksValue > 0) {
+      chartData.push({
+        label: 'Stocks',
+        value: stocksValue,
+        color: '#E91E63',
+        breakdown: aggregateBySymbol(stockPositions),
+      });
+    }
+    if (etfsValue > 0) {
+      chartData.push({
+        label: 'ETFs',
+        value: etfsValue,
+        color: '#9C27B0',
+        breakdown: aggregateBySymbol(etfPositions),
+      });
+    }
 
     return {
-      stocks,
-      etfs,
+      stocks: { value: stocksValue, count: stockPositions.length },
+      etfs: { value: etfsValue, count: etfPositions.length },
       total,
-      chartData: [
-        { label: 'Stocks', value: stocks.value, color: '#E91E63' },
-        { label: 'ETFs', value: etfs.value, color: '#9C27B0' },
-      ].filter(d => d.value > 0),
+      chartData,
     };
   }, [equityPositions, categoryService]);
 

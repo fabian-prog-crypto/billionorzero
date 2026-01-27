@@ -173,6 +173,14 @@ export interface SimpleExposureItem {
 }
 
 /**
+ * Breakdown item for detailed tooltips
+ */
+export interface BreakdownItem {
+  label: string;
+  value: number;
+}
+
+/**
  * Allocation breakdown item (Cash & Equivalents, Crypto, Equities)
  */
 export interface AllocationBreakdownItem {
@@ -180,6 +188,7 @@ export interface AllocationBreakdownItem {
   value: number;
   percentage: number;
   color: string;
+  breakdown: BreakdownItem[];
 }
 
 /**
@@ -190,6 +199,7 @@ export interface RiskProfileItem {
   value: number;
   percentage: number;
   color: string;
+  breakdown: BreakdownItem[];
 }
 
 /**
@@ -621,6 +631,7 @@ export interface CustodyBreakdownItem {
   value: number;
   percentage: number;
   color: string;
+  breakdown: BreakdownItem[];
 }
 
 /**
@@ -699,47 +710,52 @@ const CUSTODY_COLORS: Record<string, string> = {
  * Categories: Self-Custody, DeFi, CEX, Banks & Brokers, Manual
  */
 export function calculateCustodyBreakdown(assets: AssetWithPrice[]): CustodyBreakdownItem[] {
-  const custodyMap: Record<string, number> = {
-    'Self-Custody': 0,
-    'DeFi': 0,
-    'CEX': 0,
-    'Banks & Brokers': 0,
-    'Manual': 0,
+  const custodyMap: Record<string, { value: number; positions: Map<string, number> }> = {
+    'Self-Custody': { value: 0, positions: new Map() },
+    'DeFi': { value: 0, positions: new Map() },
+    'CEX': { value: 0, positions: new Map() },
+    'Banks & Brokers': { value: 0, positions: new Map() },
+    'Manual': { value: 0, positions: new Map() },
   };
 
   assets.forEach((asset) => {
     const value = Math.abs(asset.value);
+    const symbolKey = asset.symbol.toUpperCase();
+    let category: string;
 
     if (asset.protocol?.startsWith('cex:')) {
-      // CEX positions
-      custodyMap['CEX'] += value;
+      category = 'CEX';
     } else if (asset.type === 'stock' || asset.type === 'cash') {
-      // Stocks and cash are typically held at banks/brokers
-      custodyMap['Banks & Brokers'] += value;
+      category = 'Banks & Brokers';
     } else if (asset.walletAddress) {
-      // Wallet positions
       if (asset.protocol && asset.protocol !== 'wallet') {
-        // DeFi protocol (Aave, Morpho, etc.)
-        custodyMap['DeFi'] += value;
+        category = 'DeFi';
       } else {
-        // Self-custody (plain wallet holdings)
-        custodyMap['Self-Custody'] += value;
+        category = 'Self-Custody';
       }
     } else {
-      // Manual positions
-      custodyMap['Manual'] += value;
+      category = 'Manual';
     }
+
+    custodyMap[category].value += value;
+    custodyMap[category].positions.set(
+      symbolKey,
+      (custodyMap[category].positions.get(symbolKey) || 0) + value
+    );
   });
 
-  const total = Object.values(custodyMap).reduce((sum, v) => sum + v, 0);
+  const total = Object.values(custodyMap).reduce((sum, item) => sum + item.value, 0);
 
   return Object.entries(custodyMap)
-    .filter(([_, value]) => value > 0)
-    .map(([label, value]) => ({
+    .filter(([_, item]) => item.value > 0)
+    .map(([label, item]) => ({
       label,
-      value,
-      percentage: total > 0 ? (value / total) * 100 : 0,
+      value: item.value,
+      percentage: total > 0 ? (item.value / total) * 100 : 0,
       color: CUSTODY_COLORS[label] || '#6B7280',
+      breakdown: Array.from(item.positions.entries())
+        .map(([symbol, val]) => ({ label: symbol, value: val }))
+        .sort((a, b) => b.value - a.value),
     }))
     .sort((a, b) => b.value - a.value);
 }
@@ -1293,28 +1309,44 @@ export function calculateExposureData(assets: AssetWithPrice[]): ExposureData {
  */
 export function calculateAllocationBreakdown(assets: AssetWithPrice[]): AllocationBreakdownItem[] {
   const categoryService = getCategoryService();
-  const allocationMap: Record<string, { value: number; color: string }> = {
-    'Cash & Equivalents': { value: 0, color: '#4CAF50' },
-    'Crypto': { value: 0, color: '#FF9800' },
-    'Equities': { value: 0, color: '#F44336' },
+  const allocationMap: Record<string, { value: number; color: string; positions: Map<string, number> }> = {
+    'Cash & Equivalents': { value: 0, color: '#4CAF50', positions: new Map() },
+    'Crypto': { value: 0, color: '#FF9800', positions: new Map() },
+    'Equities': { value: 0, color: '#F44336', positions: new Map() },
   };
 
   assets.forEach((asset) => {
     const value = Math.abs(asset.value);
     const mainCat = categoryService.getMainCategory(asset.symbol, asset.type);
+    const symbolKey = asset.symbol.toUpperCase();
 
     if (mainCat === 'cash') {
       allocationMap['Cash & Equivalents'].value += value;
+      allocationMap['Cash & Equivalents'].positions.set(
+        symbolKey,
+        (allocationMap['Cash & Equivalents'].positions.get(symbolKey) || 0) + value
+      );
     } else if (mainCat === 'crypto') {
-      // Check if stablecoin - stablecoins go to Cash & Equivalents
       const subCat = categoryService.getSubCategory(asset.symbol, asset.type);
       if (subCat === 'stablecoins') {
         allocationMap['Cash & Equivalents'].value += value;
+        allocationMap['Cash & Equivalents'].positions.set(
+          symbolKey,
+          (allocationMap['Cash & Equivalents'].positions.get(symbolKey) || 0) + value
+        );
       } else {
         allocationMap['Crypto'].value += value;
+        allocationMap['Crypto'].positions.set(
+          symbolKey,
+          (allocationMap['Crypto'].positions.get(symbolKey) || 0) + value
+        );
       }
     } else if (mainCat === 'equities') {
       allocationMap['Equities'].value += value;
+      allocationMap['Equities'].positions.set(
+        symbolKey,
+        (allocationMap['Equities'].positions.get(symbolKey) || 0) + value
+      );
     }
   });
 
@@ -1327,6 +1359,9 @@ export function calculateAllocationBreakdown(assets: AssetWithPrice[]): Allocati
       value: item.value,
       percentage: total > 0 ? (item.value / total) * 100 : 0,
       color: item.color,
+      breakdown: Array.from(item.positions.entries())
+        .map(([symbol, val]) => ({ label: symbol, value: val }))
+        .sort((a, b) => b.value - a.value),
     }))
     .sort((a, b) => b.value - a.value);
 }
@@ -1339,29 +1374,37 @@ export function calculateAllocationBreakdown(assets: AssetWithPrice[]): Allocati
  */
 export function calculateRiskProfile(assets: AssetWithPrice[]): RiskProfileItem[] {
   const categoryService = getCategoryService();
-  const riskMap: Record<string, { value: number; color: string }> = {
-    'Conservative': { value: 0, color: '#4CAF50' },
-    'Moderate': { value: 0, color: '#2196F3' },
-    'Aggressive': { value: 0, color: '#F44336' },
+  const riskMap: Record<string, { value: number; color: string; positions: Map<string, number> }> = {
+    'Conservative': { value: 0, color: '#4CAF50', positions: new Map() },
+    'Moderate': { value: 0, color: '#2196F3', positions: new Map() },
+    'Aggressive': { value: 0, color: '#F44336', positions: new Map() },
   };
 
   assets.forEach((asset) => {
     const value = Math.abs(asset.value);
     const mainCat = categoryService.getMainCategory(asset.symbol, asset.type);
     const subCat = categoryService.getSubCategory(asset.symbol, asset.type);
+    const symbolKey = asset.symbol.toUpperCase();
+    let category: string;
 
     // Conservative: Cash, stablecoins
     if (mainCat === 'cash' || subCat === 'stablecoins') {
-      riskMap['Conservative'].value += value;
+      category = 'Conservative';
     }
     // Moderate: Large cap crypto (BTC, ETH), blue chip stocks/ETFs
     else if (subCat === 'btc' || subCat === 'eth' || mainCat === 'equities') {
-      riskMap['Moderate'].value += value;
+      category = 'Moderate';
     }
     // Aggressive: Altcoins, DeFi, perps, other tokens
     else {
-      riskMap['Aggressive'].value += value;
+      category = 'Aggressive';
     }
+
+    riskMap[category].value += value;
+    riskMap[category].positions.set(
+      symbolKey,
+      (riskMap[category].positions.get(symbolKey) || 0) + value
+    );
   });
 
   const total = Object.values(riskMap).reduce((sum, item) => sum + item.value, 0);
@@ -1373,6 +1416,9 @@ export function calculateRiskProfile(assets: AssetWithPrice[]): RiskProfileItem[
       value: item.value,
       percentage: total > 0 ? (item.value / total) * 100 : 0,
       color: item.color,
+      breakdown: Array.from(item.positions.entries())
+        .map(([symbol, val]) => ({ label: symbol, value: val }))
+        .sort((a, b) => b.value - a.value),
     }))
     .sort((a, b) => b.value - a.value);
 }
