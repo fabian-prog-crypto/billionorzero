@@ -40,14 +40,33 @@ export class PortfolioService {
 
   /**
    * Update provider configurations from config manager
+   * Always reload from localStorage to get the latest API keys
    */
   private updateProviders(): void {
+    // Reload config from localStorage to ensure we have the latest API keys
+    this.configManager.loadFromStorage();
     const config = this.configManager.getConfig();
 
-    getWalletProvider({
-      debankApiKey: config.debankApiKey,
+    // Debug: Log config state
+    console.log('[PortfolioService.updateProviders] Config loaded:', {
+      hasDebankKey: !!config.debankApiKey,
+      debankKeyLength: config.debankApiKey?.length || 0,
+      debankKeyPreview: config.debankApiKey ? config.debankApiKey.slice(0, 8) + '...' : 'NONE',
       useDemoData: config.useDemoData,
     });
+
+    const walletProviderConfig = {
+      debankApiKey: config.debankApiKey,
+      heliusApiKey: config.heliusApiKey,
+      useDemoData: config.useDemoData,
+    };
+    console.log('[PortfolioService.updateProviders] Calling getWalletProvider with:', {
+      hasDebankKey: !!walletProviderConfig.debankApiKey,
+      hasHeliusKey: !!walletProviderConfig.heliusApiKey,
+      useDemoData: walletProviderConfig.useDemoData,
+    });
+
+    getWalletProvider(walletProviderConfig);
 
     getPriceProvider({
       stockApiKey: config.stockApiKey,
@@ -71,15 +90,28 @@ export class PortfolioService {
     wallets: Wallet[],
     forceRefresh: boolean = false
   ): Promise<RefreshResult> {
+    console.log('[PortfolioService.refreshPortfolio] Starting with:', {
+      manualPositionsCount: manualPositions.length,
+      walletsCount: wallets.length,
+      forceRefresh,
+    });
+
     // Ensure providers have latest config
     this.updateProviders();
 
     const walletProvider = getWalletProvider();
     const priceProvider = getPriceProvider();
 
+    console.log('[PortfolioService.refreshPortfolio] Fetching wallet positions...');
+
     // Fetch wallet positions - includes prices from DeBank
     const walletResult = await walletProvider.fetchAllWalletPositions(wallets, forceRefresh);
     const walletPositions = walletResult.positions;
+
+    console.log('[PortfolioService.refreshPortfolio] Wallet result:', {
+      positionsCount: walletPositions.length,
+      pricesCount: Object.keys(walletResult.prices).length,
+    });
 
     // Get unique wallet token symbols to fetch 24h changes from CoinGecko
     const walletCryptoSymbols = [...new Set(
@@ -116,16 +148,6 @@ export class PortfolioService {
     // for wallet tokens where DeBank has no price (like SYRUP)
     // These are keyed by CoinGecko ID (e.g., "maple-finance" for SYRUP)
     const allPrices = { ...coingeckoPrices, ...externalPrices, ...debankPrices };
-
-    // Debug logging
-    console.log('[REFRESH] DeBank prices:', Object.keys(debankPrices).length, 'tokens');
-    console.log('[REFRESH] External prices:', Object.keys(externalPrices).length, 'tokens');
-    console.log('[REFRESH] Wallet positions:', walletPositions.length);
-
-    // Log sample of prices with 24h change
-    for (const [key, data] of Object.entries(debankPrices).slice(0, 5)) {
-      console.log(`  [PRICE] ${key}: $${data.price} (${data.changePercent24h.toFixed(2)}%)`);
-    }
 
     return {
       prices: allPrices,

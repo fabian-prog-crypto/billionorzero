@@ -12,8 +12,37 @@ import { getCached, setCache, clearAllCache, formatCacheAge } from '../utils/cac
 
 const DEFAULT_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
+// Spam token detection patterns - uses partial matching
+// If token symbol or name CONTAINS any of these strings (case-insensitive), it's blocked
+const SPAM_TOKEN_PATTERNS = [
+  'squid',        // SQUID Game token (rug pull) - matches "SQUID", "SQUID2", "SquidGame"
+  'safemoon',     // Known scam token
+  'shibaswap',    // Fake token impersonating ShibaSwap
+  'airdrop',      // Common in spam token names
+  'visit',        // Spam tokens often have "visit xyz.com" in name
+  '.com',         // Spam tokens advertising websites
+  '.io/',         // Spam tokens advertising websites (with slash to avoid legitimate tokens)
+  '.xyz',         // Spam tokens advertising websites
+  'claim',        // "Claim your..." spam tokens
+];
+
+/**
+ * Check if a token symbol or name matches spam patterns
+ * Uses partial matching for better spam detection
+ */
+function isSpamToken(symbol: string, name?: string): boolean {
+  const symbolLower = symbol.toLowerCase();
+  const nameLower = (name || '').toLowerCase();
+
+  return SPAM_TOKEN_PATTERNS.some(pattern =>
+    symbolLower.includes(pattern) || nameLower.includes(pattern)
+  );
+}
+
+
 export interface WalletProviderConfig {
   debankApiKey?: string;
+  heliusApiKey?: string; // For Solana wallets
   useDemoData?: boolean;
   cacheTtlMs?: number; // Cache TTL in milliseconds (default 5 min)
 }
@@ -42,17 +71,43 @@ export class WalletProvider {
   }
 
   /**
+   * Check if an address is a Solana address (base58, 32-44 chars, no 0x prefix)
+   */
+  private isSolanaAddress(address?: string): boolean {
+    if (!address) return false;
+    // Solana addresses are base58 encoded, typically 32-44 characters
+    // They don't start with 0x and contain only alphanumeric chars (no 0, O, I, l)
+    const base58Regex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+    return base58Regex.test(address);
+  }
+
+  /**
    * Fetch wallet tokens with caching and automatic fallback to demo data
    */
   async getWalletTokens(address: string, forceRefresh: boolean = false): Promise<WalletTokensResult> {
+    // Debug: Log config state
+    console.log('[WalletProvider] getWalletTokens called:', {
+      hasApiKey: !!this.config.debankApiKey,
+      apiKeyLength: this.config.debankApiKey?.length || 0,
+      useDemoData: this.config.useDemoData,
+      address: address.slice(0, 10) + '...',
+    });
+
     // If explicitly using demo data or no API key
     if (this.config.useDemoData || !this.config.debankApiKey) {
-      console.info('WalletProvider: Using demo data (no API key configured)');
+      console.warn('[WalletProvider] USING DEMO DATA - Reason:', {
+        useDemoDataFlag: this.config.useDemoData,
+        hasApiKey: !!this.config.debankApiKey,
+        apiKeyLength: this.config.debankApiKey?.length || 0,
+        configKeys: Object.keys(this.config),
+      });
       return {
         tokens: generateDemoWalletTokens(address),
         isDemo: true,
       };
     }
+
+    console.log('[WalletProvider] Will call DeBank API with key length:', this.config.debankApiKey?.length);
 
     // Check cache first (unless force refresh)
     const cacheKey = `tokens_${address.toLowerCase()}`;
@@ -65,8 +120,10 @@ export class WalletProvider {
     }
 
     try {
+      console.log('[WalletProvider] Calling DeBank API...');
       const client = getDebankApiClient(this.config.debankApiKey);
       const rawTokens = await client.getWalletTokens(address);
+      console.log('[WalletProvider] DeBank API returned', rawTokens.length, 'tokens');
 
       // Transform API response to WalletBalance with filtering
       // The DeBank token_list endpoint (without is_all=true) returns ONLY wallet tokens,
@@ -80,8 +137,11 @@ export class WalletProvider {
           // Must have a positive amount
           if (token.amount <= 0) return false;
 
-          // Exclude if explicitly marked as scam/suspicious
+          // Exclude if explicitly marked as scam/suspicious by DeBank
           if (token.is_scam === true || token.is_suspicious === true) return false;
+
+          // Exclude spam tokens using pattern matching (checks symbol and name)
+          if (isSpamToken(token.symbol, token.name)) return false;
 
           // Calculate value for filtering decisions
           const value = token.amount * (token.price || 0);
@@ -113,7 +173,11 @@ export class WalletProvider {
 
       return result;
     } catch (error) {
-      console.error('WalletProvider: API error, falling back to demo data', error);
+      console.error('[WalletProvider] API error, falling back to demo data:', {
+        errorType: error?.constructor?.name,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
 
       return {
         tokens: generateDemoWalletTokens(address),
@@ -160,8 +224,11 @@ export class WalletProvider {
         for (const item of protocol.portfolio_item_list || []) {
           totalValue += item.stats?.net_usd_value || 0;
 
-          // Aggregate supply tokens
+          // Aggregate supply tokens (filter spam)
           for (const t of item.detail?.supply_token_list || []) {
+            // Skip spam tokens using pattern matching
+            if (isSpamToken(t.symbol, t.name)) continue;
+
             const key = t.symbol.toLowerCase();
             const existing = aggregatedSupply.get(key);
             if (existing) {
@@ -171,8 +238,11 @@ export class WalletProvider {
             }
           }
 
-          // Aggregate debt tokens
+          // Aggregate debt tokens (filter spam)
           for (const t of item.detail?.borrow_token_list || []) {
+            // Skip spam tokens using pattern matching
+            if (isSpamToken(t.symbol, t.name)) continue;
+
             const key = t.symbol.toLowerCase();
             const existing = aggregatedDebt.get(key);
             if (existing) {
@@ -237,7 +307,33 @@ export class WalletProvider {
     positions: Position[];
     prices: Record<string, { price: number; symbol: string }>;
   }> {
-    if (wallets.length === 0) return { positions: [], prices: {} };
+    // Separate wallets by type
+    const evmWallets = wallets.filter(w => w.address?.startsWith('0x'));
+    const solanaWallets = wallets.filter(w => this.isSolanaAddress(w.address));
+    const otherWallets = wallets.filter(w =>
+      !w.address?.startsWith('0x') && !this.isSolanaAddress(w.address)
+    );
+
+    if (otherWallets.length > 0) {
+      console.log('[WalletProvider.fetchAllWalletPositions] Skipping unsupported wallets:',
+        otherWallets.map(w => `${w.address?.slice(0, 10)}... (${w.name || 'unnamed'})`));
+    }
+
+    console.log('[WalletProvider.fetchAllWalletPositions] Called with:', {
+      totalWallets: wallets.length,
+      evmWallets: evmWallets.length,
+      solanaWallets: solanaWallets.length,
+      otherWallets: otherWallets.length,
+      forceRefresh,
+      hasDebankKey: !!this.config.debankApiKey,
+      hasHeliusKey: !!this.config.heliusApiKey,
+      useDemoData: this.config.useDemoData,
+    });
+
+    if (evmWallets.length === 0 && solanaWallets.length === 0) {
+      console.log('[WalletProvider.fetchAllWalletPositions] No supported wallets, returning empty');
+      return { positions: [], prices: {} };
+    }
 
     if (forceRefresh) {
       console.log('[CACHE] Force refresh requested - bypassing cache');
@@ -246,7 +342,7 @@ export class WalletProvider {
     const allPositions: Position[] = [];
     const debankPrices: Record<string, { price: number; symbol: string }> = {};
 
-    for (const wallet of wallets) {
+    for (const wallet of evmWallets) {
       // Track tokens that come from protocols to avoid double counting
       // Use multiple keys for robust matching:
       // - "symbol-chain" for exact match
@@ -266,6 +362,9 @@ export class WalletProvider {
         for (const token of defiPos.tokens) {
           // Skip tokens with zero amount, but allow price=0 (pre-market, new tokens)
           if (token.amount <= 0) continue;
+
+          // Skip spam tokens using pattern matching
+          if (isSpamToken(token.symbol)) continue;
 
           // Track this token as coming from a protocol (for dedup against wallet tokens)
           const tokenKey = `${token.symbol.toLowerCase()}-${defiPos.chain}`;
@@ -316,6 +415,9 @@ export class WalletProvider {
             // Skip tokens with zero amount, but allow price=0 (pre-market, new tokens)
             if (token.amount <= 0) continue;
 
+            // Skip spam tokens using pattern matching
+            if (isSpamToken(token.symbol)) continue;
+
             // Use protocol + type + symbol for unique ID
             const positionId = `${wallet.id}-${defiPos.protocol}-${defiPos.type}-${token.symbol}-debt`;
 
@@ -365,7 +467,6 @@ export class WalletProvider {
 
           // First check exact chain match
           if (protocolTokenKeysByChain.has(tokenKey)) {
-            console.log(`[DEDUP] Skipping ${token.symbol} on ${token.chain} - already in protocol position (exact match)`);
             return false;
           }
 
@@ -376,7 +477,6 @@ export class WalletProvider {
           // Skip this fallback for common tokens that might legitimately exist separately
           const commonTokens = new Set(['usdc', 'usdt', 'dai', 'weth', 'wbtc', 'eth', 'btc', 'frax', 'lusd']);
           if (!commonTokens.has(symbolOnly) && protocolTokenSymbols.has(symbolOnly)) {
-            console.log(`[DEDUP] Skipping ${token.symbol} on ${token.chain} - already in protocol position (symbol match)`);
             return false;
           }
 
@@ -416,7 +516,121 @@ export class WalletProvider {
       }
     }
 
+    // FOURTH: Fetch Solana wallet positions using Helius API
+    for (const wallet of solanaWallets) {
+      const solanaResult = await this.getSolanaWalletTokens(wallet.address, forceRefresh);
+
+      if (solanaResult.error) {
+        console.warn(`[WalletProvider] Solana wallet ${wallet.address.slice(0, 8)}... error:`, solanaResult.error);
+      }
+
+      const solanaPositions = solanaResult.tokens.map((token, index) => {
+        const priceKey = `helius-${token.symbol.toLowerCase()}-sol`;
+        debankPrices[priceKey] = {
+          price: token.price,
+          symbol: token.symbol,
+        };
+
+        return {
+          id: `${wallet.id}-sol-${token.symbol}-${index}`,
+          type: 'crypto' as const,
+          symbol: token.symbol,
+          name: token.name,
+          amount: token.amount,
+          walletAddress: wallet.address,
+          chain: 'sol',
+          debankPriceKey: priceKey,
+          addedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+      });
+
+      allPositions.push(...solanaPositions);
+    }
+
     return { positions: allPositions, prices: debankPrices };
+  }
+
+  /**
+   * Fetch Solana wallet tokens using Helius API
+   */
+  async getSolanaWalletTokens(address: string, forceRefresh: boolean = false): Promise<WalletTokensResult> {
+    console.log('[WalletProvider] getSolanaWalletTokens called:', {
+      hasApiKey: !!this.config.heliusApiKey,
+      address: address.slice(0, 10) + '...',
+    });
+
+    // If no Helius API key, return empty (not demo data for Solana)
+    if (!this.config.heliusApiKey) {
+      console.warn('[WalletProvider] No Helius API key configured for Solana wallet');
+      return {
+        tokens: [],
+        isDemo: false,
+        error: 'Helius API key not configured. Add it in Settings to track Solana wallets.',
+      };
+    }
+
+    // Check cache first (unless force refresh)
+    const cacheKey = `solana_tokens_${address.toLowerCase()}`;
+    if (!forceRefresh) {
+      const cached = getCached<WalletTokensResult>(cacheKey);
+      if (cached) {
+        console.log(`[CACHE] Using cached Solana tokens for ${address.slice(0, 8)}... (${formatCacheAge(cached.age)})`);
+        return cached.data;
+      }
+    }
+
+    try {
+      console.log('[WalletProvider] Calling Helius API...');
+      const url = `/api/solana/tokens?address=${encodeURIComponent(address)}&apiKey=${encodeURIComponent(this.config.heliusApiKey)}`;
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new ApiError(
+          errorData.error || 'Failed to fetch Solana tokens',
+          response.status,
+          'helius'
+        );
+      }
+
+      const rawTokens = await response.json();
+      console.log('[WalletProvider] Helius API returned', rawTokens.length, 'tokens');
+
+      // Transform to WalletBalance format (already filtered by API route)
+      const tokens: WalletBalance[] = rawTokens
+        .filter((token: any) => {
+          // Skip spam tokens
+          if (isSpamToken(token.symbol, token.name)) return false;
+          return true;
+        })
+        .map((token: any) => ({
+          symbol: token.symbol,
+          name: token.name,
+          amount: token.amount,
+          price: token.price || 0,
+          value: token.value || 0,
+          chain: 'sol',
+          logo: token.logo_url,
+          isVerified: token.is_verified,
+        }));
+
+      const result = { tokens, isDemo: false };
+
+      // Cache the result
+      const ttl = this.config.cacheTtlMs || DEFAULT_CACHE_TTL_MS;
+      setCache(cacheKey, result, ttl);
+      console.log(`[CACHE] Cached ${tokens.length} Solana tokens for ${address.slice(0, 8)}...`);
+
+      return result;
+    } catch (error) {
+      console.error('[WalletProvider] Helius API error:', error);
+      return {
+        tokens: [],
+        isDemo: false,
+        error: error instanceof ApiError ? error.message : 'Failed to fetch Solana tokens',
+      };
+    }
   }
 }
 
@@ -424,11 +638,29 @@ export class WalletProvider {
 let instance: WalletProvider | null = null;
 
 export function getWalletProvider(config?: WalletProviderConfig): WalletProvider {
+  console.log('[getWalletProvider] Called with config:', {
+    hasConfig: !!config,
+    hasDebankKey: !!config?.debankApiKey,
+    hasHeliusKey: !!config?.heliusApiKey,
+    useDemoData: config?.useDemoData,
+    instanceExists: !!instance,
+  });
+
   if (!instance) {
+    console.log('[getWalletProvider] Creating new instance');
     instance = new WalletProvider(config);
   } else if (config) {
+    console.log('[getWalletProvider] Updating existing instance config');
     instance.updateConfig(config);
   }
+
+  // Log the current instance config state
+  console.log('[getWalletProvider] Instance config after update:', {
+    hasDebankKey: !!instance['config'].debankApiKey,
+    hasHeliusKey: !!instance['config'].heliusApiKey,
+    useDemoData: instance['config'].useDemoData,
+  });
+
   return instance;
 }
 

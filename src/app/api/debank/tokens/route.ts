@@ -7,11 +7,20 @@ export async function GET(request: NextRequest) {
   const address = searchParams.get('address');
   const apiKey = searchParams.get('apiKey');
 
+  console.log('[API /debank/tokens] Request received:', {
+    hasAddress: !!address,
+    addressPrefix: address?.slice(0, 10),
+    hasApiKey: !!apiKey,
+    apiKeyLength: apiKey?.length || 0,
+  });
+
   if (!address) {
+    console.log('[API /debank/tokens] ERROR: Address missing');
     return NextResponse.json({ error: 'Address is required' }, { status: 400 });
   }
 
   if (!apiKey) {
+    console.log('[API /debank/tokens] ERROR: API key missing');
     return NextResponse.json({ error: 'API key is required' }, { status: 400 });
   }
 
@@ -30,7 +39,7 @@ export async function GET(request: NextRequest) {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('DeBank API error:', response.status, errorText);
+      console.error('[API /debank/tokens] DeBank API error:', response.status, errorText);
       return NextResponse.json(
         { error: `DeBank API error: ${response.status}`, details: errorText },
         { status: response.status }
@@ -38,6 +47,7 @@ export async function GET(request: NextRequest) {
     }
 
     const data = await response.json();
+    console.log('[API /debank/tokens] SUCCESS: Returned', Array.isArray(data) ? data.length : 0, 'tokens');
     return NextResponse.json(data);
   } catch (error) {
     console.error('Error fetching from DeBank:', error);

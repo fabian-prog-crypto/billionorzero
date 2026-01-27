@@ -24,11 +24,23 @@ const refreshState = {
  * @param forceRefresh - If true, bypass cache and fetch fresh data
  */
 async function executeRefresh(forceRefresh: boolean = false): Promise<void> {
-  if (refreshState.isRefreshing) return;
+  console.log('[executeRefresh] Starting refresh, forceRefresh:', forceRefresh);
+
+  if (refreshState.isRefreshing) {
+    console.log('[executeRefresh] Already refreshing, skipping');
+    return;
+  }
   refreshState.isRefreshing = true;
 
   const store = usePortfolioStore.getState();
   store.setRefreshing(true);
+
+  console.log('[executeRefresh] Store state:', {
+    walletsCount: store.wallets.length,
+    walletAddresses: store.wallets.map(w => w.address?.slice(0, 10) + '...'),
+    positionsCount: store.positions.length,
+    accountsCount: store.accounts.length,
+  });
 
   try {
     const portfolioService = getPortfolioService();
@@ -38,12 +50,20 @@ async function executeRefresh(forceRefresh: boolean = false): Promise<void> {
       (p) => !p.walletAddress && !p.protocol?.startsWith('cex:')
     );
 
+    console.log('[executeRefresh] Calling portfolioService.refreshPortfolio with', store.wallets.length, 'wallets');
+
     // Use the portfolio service to refresh wallets and prices
     const result = await portfolioService.refreshPortfolio(
       manualPositions,
       store.wallets,
       forceRefresh
     );
+
+    console.log('[executeRefresh] Result:', {
+      walletPositionsCount: result.walletPositions.length,
+      pricesCount: Object.keys(result.prices).length,
+      isDemo: result.isDemo,
+    });
 
     // Fetch CEX account positions
     let cexPositions: Position[] = [];
@@ -103,9 +123,17 @@ interface PortfolioProviderProps {
 }
 
 export default function PortfolioProvider({ children }: PortfolioProviderProps) {
-  // Initialize service on mount
+  // Initialize service on mount and reset any stuck refresh state
   useEffect(() => {
     getPortfolioService().initialize();
+
+    // Reset any stuck refresh state from previous session
+    const store = usePortfolioStore.getState();
+    if (store.isRefreshing) {
+      console.log('[PortfolioProvider] Resetting stuck refresh state');
+      store.setRefreshing(false);
+    }
+    refreshState.isRefreshing = false;
   }, []);
 
   // Auto-sync disabled to save API calls

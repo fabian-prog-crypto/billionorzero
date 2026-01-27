@@ -15,6 +15,7 @@ import {
 
 export default function SettingsPage() {
   const [debankApiKey, setDebankApiKey] = useState('');
+  const [heliusApiKey, setHeliusApiKey] = useState('');
   const [stockApiKey, setStockApiKey] = useState('');
   const [saved, setSaved] = useState(false);
   const [hasPasskey, setHasPasskey] = useState(false);
@@ -34,6 +35,7 @@ export default function SettingsPage() {
   // Load saved API keys and check passkey status
   useEffect(() => {
     setDebankApiKey(localStorage.getItem('debank_api_key') || '');
+    setHeliusApiKey(localStorage.getItem('helius_api_key') || '');
     setStockApiKey(localStorage.getItem('stock_api_key') || '');
 
     // Check passkey support and status
@@ -71,6 +73,7 @@ export default function SettingsPage() {
 
   const handleSave = () => {
     localStorage.setItem('debank_api_key', debankApiKey);
+    localStorage.setItem('helius_api_key', heliusApiKey);
     localStorage.setItem('stock_api_key', stockApiKey);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -304,7 +307,7 @@ export default function SettingsPage() {
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium mb-1">
-                DeBank API Key
+                DeBank API Key (EVM Chains)
                 <a
                   href="https://cloud.debank.com/"
                   target="_blank"
@@ -322,7 +325,31 @@ export default function SettingsPage() {
                 className="w-full"
               />
               <p className="text-xs text-[var(--foreground-muted)] mt-1">
-                Used for automatic wallet tracking and DeFi position detection
+                Used for Ethereum, Arbitrum, Base, and other EVM chains
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                Helius API Key (Solana)
+                <a
+                  href="https://dev.helius.xyz/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="ml-2 text-[var(--accent-primary)] text-xs"
+                >
+                  Get API key
+                </a>
+              </label>
+              <input
+                type="password"
+                placeholder="Enter your Helius API key"
+                value={heliusApiKey}
+                onChange={(e) => setHeliusApiKey(e.target.value)}
+                className="w-full"
+              />
+              <p className="text-xs text-[var(--foreground-muted)] mt-1">
+                Used for Solana wallet tracking and token balances
               </p>
             </div>
 

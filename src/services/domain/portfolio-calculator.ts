@@ -173,6 +173,26 @@ export interface SimpleExposureItem {
 }
 
 /**
+ * Allocation breakdown item (Cash & Equivalents, Crypto, Equities)
+ */
+export interface AllocationBreakdownItem {
+  label: string;
+  value: number;
+  percentage: number;
+  color: string;
+}
+
+/**
+ * Risk profile breakdown item (Conservative, Moderate, Aggressive)
+ */
+export interface RiskProfileItem {
+  label: 'Conservative' | 'Moderate' | 'Aggressive';
+  value: number;
+  percentage: number;
+  color: string;
+}
+
+/**
  * Professional investor metrics - Gross/Net Exposure
  */
 export interface ExposureMetrics {
@@ -184,6 +204,7 @@ export interface ExposureMetrics {
   leverage: number;            // Gross Exposure / Net Worth
   cashPosition: number;        // Available cash/stablecoins
   cashPercentage: number;      // Cash as % of gross assets
+  debtRatio: number;           // Total debts / Gross assets as %
 }
 
 /**
@@ -669,17 +690,20 @@ const CUSTODY_COLORS: Record<string, string> = {
   'Self-Custody': '#4CAF50',
   'DeFi': '#9C27B0',
   'CEX': '#FF9800',
+  'Banks & Brokers': '#2196F3',
   'Manual': '#607D8B',
 };
 
 /**
- * Calculate custody breakdown (Self-Custody, DeFi, CEX, Manual)
+ * Calculate custody breakdown - SINGLE SOURCE OF TRUTH
+ * Categories: Self-Custody, DeFi, CEX, Banks & Brokers, Manual
  */
 export function calculateCustodyBreakdown(assets: AssetWithPrice[]): CustodyBreakdownItem[] {
   const custodyMap: Record<string, number> = {
     'Self-Custody': 0,
     'DeFi': 0,
     'CEX': 0,
+    'Banks & Brokers': 0,
     'Manual': 0,
   };
 
@@ -689,6 +713,9 @@ export function calculateCustodyBreakdown(assets: AssetWithPrice[]): CustodyBrea
     if (asset.protocol?.startsWith('cex:')) {
       // CEX positions
       custodyMap['CEX'] += value;
+    } else if (asset.type === 'stock' || asset.type === 'cash') {
+      // Stocks and cash are typically held at banks/brokers
+      custodyMap['Banks & Brokers'] += value;
     } else if (asset.walletAddress) {
       // Wallet positions
       if (asset.protocol && asset.protocol !== 'wallet') {
@@ -1029,9 +1056,6 @@ export function calculateExposureData(assets: AssetWithPrice[]): ExposureData {
     }
   });
 
-  // Log classification summary
-  console.log('[EXPOSURE] Classification summary:', classificationCounts);
-
   // Calculate totals
   const grossAssets = Object.values(categoryAssets).reduce((sum, v) => sum + v, 0);
   const totalDebts = Object.values(categoryDebts).reduce((sum, v) => sum + v, 0);
@@ -1161,43 +1185,6 @@ export function calculateExposureData(assets: AssetWithPrice[]): ExposureData {
   // Leverage = Gross Exposure / Net Worth
   const leverage = totalValue > 0 ? grossExposure / totalValue : 0;
 
-  // Debug logging for exposure calculation
-  console.log('[EXPOSURE] Calculation breakdown:', {
-    spotLong: spotLong.toFixed(2),
-    spotShort: spotShort.toFixed(2),
-    cashEquivalents: cashEquivalentsForLeverage.toFixed(2),
-    perpsLongs: perpsLongs.toFixed(2),
-    perpsShorts: perpsShorts.toFixed(2),
-    perpsMargin: perpsMargin.toFixed(2),
-    longExposure: longExposure.toFixed(2),
-    shortExposure: shortExposure.toFixed(2),
-    grossExposure: grossExposure.toFixed(2),
-    netExposure: netExposure.toFixed(2),
-    netWorth: totalValue.toFixed(2),
-    leverage: leverage.toFixed(2),
-  });
-  console.log('[EXPOSURE] Classifications:', classificationCounts);
-
-  // Log assets contributing to short exposure to help debug
-  if (spotShort > 0 || perpsShorts > 0) {
-    console.log('[EXPOSURE] Short positions breakdown:');
-    assets.forEach((asset) => {
-      const isOnPerpExchange = asset.protocol && isPerpProtocol(asset.protocol);
-      const isDebt = asset.isDebt || asset.value < 0;
-      const { isShort } = detectPerpTrade(asset.name);
-      const absValue = Math.abs(asset.value);
-
-      // Check if it's a perp short (counted in perpsShorts)
-      if (isOnPerpExchange && isShort) {
-        console.log(`  [PERP SHORT] ${asset.symbol}: $${absValue.toFixed(2)} - ${asset.name}`);
-      }
-      // Check if it's a spot short (counted in spotShort)
-      else if (isDebt && !isOnPerpExchange) {
-        console.log(`  [SPOT SHORT] ${asset.symbol}: $${absValue.toFixed(2)} - ${asset.name} (isDebt: ${asset.isDebt}, value: ${asset.value.toFixed(2)})`);
-      }
-    });
-  }
-
   const exposureMetrics: ExposureMetrics = {
     longExposure,
     shortExposure,
@@ -1207,6 +1194,7 @@ export function calculateExposureData(assets: AssetWithPrice[]): ExposureData {
     leverage,
     cashPosition: cashValue,
     cashPercentage: grossAssets > 0 ? (Math.max(0, cashValue) / grossAssets) * 100 : 0,
+    debtRatio: grossAssets > 0 ? (totalDebts / grossAssets) * 100 : 0,
   };
 
   // Professional Perps Metrics
@@ -1297,4 +1285,94 @@ export function calculateExposureData(assets: AssetWithPrice[]): ExposureData {
     concentrationMetrics,
     spotDerivatives,
   };
+}
+
+/**
+ * Calculate allocation breakdown - SINGLE SOURCE OF TRUTH
+ * Categories: Cash & Equivalents (cash + stablecoins), Crypto (non-stablecoins), Equities
+ */
+export function calculateAllocationBreakdown(assets: AssetWithPrice[]): AllocationBreakdownItem[] {
+  const categoryService = getCategoryService();
+  const allocationMap: Record<string, { value: number; color: string }> = {
+    'Cash & Equivalents': { value: 0, color: '#4CAF50' },
+    'Crypto': { value: 0, color: '#FF9800' },
+    'Equities': { value: 0, color: '#F44336' },
+  };
+
+  assets.forEach((asset) => {
+    const value = Math.abs(asset.value);
+    const mainCat = categoryService.getMainCategory(asset.symbol, asset.type);
+
+    if (mainCat === 'cash') {
+      allocationMap['Cash & Equivalents'].value += value;
+    } else if (mainCat === 'crypto') {
+      // Check if stablecoin - stablecoins go to Cash & Equivalents
+      const subCat = categoryService.getSubCategory(asset.symbol, asset.type);
+      if (subCat === 'stablecoins') {
+        allocationMap['Cash & Equivalents'].value += value;
+      } else {
+        allocationMap['Crypto'].value += value;
+      }
+    } else if (mainCat === 'equities') {
+      allocationMap['Equities'].value += value;
+    }
+  });
+
+  const total = Object.values(allocationMap).reduce((sum, item) => sum + item.value, 0);
+
+  return Object.entries(allocationMap)
+    .filter(([_, item]) => item.value > 0)
+    .map(([label, item]) => ({
+      label,
+      value: item.value,
+      percentage: total > 0 ? (item.value / total) * 100 : 0,
+      color: item.color,
+    }))
+    .sort((a, b) => b.value - a.value);
+}
+
+/**
+ * Calculate risk profile breakdown - SINGLE SOURCE OF TRUTH
+ * Conservative: Cash, stablecoins
+ * Moderate: Large cap crypto (BTC, ETH), equities
+ * Aggressive: Altcoins, DeFi tokens, perps
+ */
+export function calculateRiskProfile(assets: AssetWithPrice[]): RiskProfileItem[] {
+  const categoryService = getCategoryService();
+  const riskMap: Record<string, { value: number; color: string }> = {
+    'Conservative': { value: 0, color: '#4CAF50' },
+    'Moderate': { value: 0, color: '#2196F3' },
+    'Aggressive': { value: 0, color: '#F44336' },
+  };
+
+  assets.forEach((asset) => {
+    const value = Math.abs(asset.value);
+    const mainCat = categoryService.getMainCategory(asset.symbol, asset.type);
+    const subCat = categoryService.getSubCategory(asset.symbol, asset.type);
+
+    // Conservative: Cash, stablecoins
+    if (mainCat === 'cash' || subCat === 'stablecoins') {
+      riskMap['Conservative'].value += value;
+    }
+    // Moderate: Large cap crypto (BTC, ETH), blue chip stocks/ETFs
+    else if (subCat === 'btc' || subCat === 'eth' || mainCat === 'equities') {
+      riskMap['Moderate'].value += value;
+    }
+    // Aggressive: Altcoins, DeFi, perps, other tokens
+    else {
+      riskMap['Aggressive'].value += value;
+    }
+  });
+
+  const total = Object.values(riskMap).reduce((sum, item) => sum + item.value, 0);
+
+  return Object.entries(riskMap)
+    .filter(([_, item]) => item.value > 0)
+    .map(([label, item]) => ({
+      label: label as 'Conservative' | 'Moderate' | 'Aggressive',
+      value: item.value,
+      percentage: total > 0 ? (item.value / total) * 100 : 0,
+      color: item.color,
+    }))
+    .sort((a, b) => b.value - a.value);
 }

@@ -8,7 +8,8 @@ import { CoinGeckoPriceResponse, CoinGeckoSearchResult, ApiError } from './types
 const BASE_URL = 'https://api.coingecko.com/api/v3';
 
 // Rate limiting: CoinGecko free tier allows ~10-30 calls/min
-const RATE_LIMIT_DELAY = 1500; // ms between requests
+const RATE_LIMIT_DELAY = 1000; // ms between requests (reduced from 1500)
+const FETCH_TIMEOUT = 10000; // 10 second timeout
 let lastRequestTime = 0;
 
 async function rateLimitedFetch(url: string): Promise<Response> {
@@ -16,13 +17,29 @@ async function rateLimitedFetch(url: string): Promise<Response> {
   const timeSinceLastRequest = now - lastRequestTime;
 
   if (timeSinceLastRequest < RATE_LIMIT_DELAY) {
-    await new Promise((resolve) =>
-      setTimeout(resolve, RATE_LIMIT_DELAY - timeSinceLastRequest)
-    );
+    const waitTime = RATE_LIMIT_DELAY - timeSinceLastRequest;
+    console.log(`[CoinGecko] Rate limiting: waiting ${waitTime}ms`);
+    await new Promise((resolve) => setTimeout(resolve, waitTime));
   }
 
   lastRequestTime = Date.now();
-  return fetch(url);
+  console.log(`[CoinGecko] Fetching: ${url.slice(0, 80)}...`);
+
+  // Add timeout to fetch
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
+
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`CoinGecko request timed out after ${FETCH_TIMEOUT}ms`);
+    }
+    throw error;
+  }
 }
 
 export class CoinGeckoApiClient {

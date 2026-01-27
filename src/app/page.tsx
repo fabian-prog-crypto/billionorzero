@@ -8,7 +8,8 @@ import {
   calculateAllPositionsWithPrices,
   calculateExposureData,
   calculateCustodyBreakdown,
-  getCategoryService,
+  calculateAllocationBreakdown,
+  calculateRiskProfile,
 } from '@/services';
 import NetWorthChart from '@/components/charts/NetWorthChart';
 import DonutChart from '@/components/charts/DonutChart';
@@ -38,168 +39,25 @@ export default function OverviewPage() {
 
   const { exposureMetrics, concentrationMetrics } = exposureData;
 
-  // Calculate custody breakdown for all assets (with Banks & Brokers added)
+  // Use centralized custody breakdown calculation
   const custodyBreakdown = useMemo(() => {
-    const custodyMap: Record<string, { value: number; color: string }> = {
-      'DeFi': { value: 0, color: '#9C27B0' },
-      'Banks & Brokers': { value: 0, color: '#2196F3' },
-      'Self-Custody': { value: 0, color: '#4CAF50' },
-      'Manual': { value: 0, color: '#607D8B' },
-      'CEX': { value: 0, color: '#FF9800' },
-    };
-
-    allAssetsWithPrices.forEach((asset) => {
-      const value = Math.abs(asset.value);
-
-      if (asset.protocol?.startsWith('cex:')) {
-        custodyMap['CEX'].value += value;
-      } else if (asset.type === 'stock' || asset.type === 'cash') {
-        // Stocks and cash typically held at banks/brokers
-        custodyMap['Banks & Brokers'].value += value;
-      } else if (asset.walletAddress) {
-        if (asset.protocol && asset.protocol !== 'wallet') {
-          custodyMap['DeFi'].value += value;
-        } else {
-          custodyMap['Self-Custody'].value += value;
-        }
-      } else {
-        custodyMap['Manual'].value += value;
-      }
-    });
-
-    const total = Object.values(custodyMap).reduce((sum, item) => sum + item.value, 0);
-
-    return Object.entries(custodyMap)
-      .filter(([_, item]) => item.value > 0)
-      .map(([label, item]) => ({
-        label,
-        value: item.value,
-        percentage: total > 0 ? (item.value / total) * 100 : 0,
-        color: item.color,
-      }))
-      .sort((a, b) => b.value - a.value);
+    return calculateCustodyBreakdown(allAssetsWithPrices);
   }, [allAssetsWithPrices]);
 
-  // Calculate allocation breakdown (Cash & Equivalents, Crypto, Equities)
+  // Use centralized allocation breakdown calculation
   const allocationBreakdown = useMemo(() => {
-    const categoryService = getCategoryService();
-    const allocationMap: Record<string, { value: number; color: string }> = {
-      'Cash & Equivalents': { value: 0, color: '#4CAF50' },
-      'Crypto': { value: 0, color: '#FF9800' },
-      'Equities': { value: 0, color: '#F44336' },
-    };
-
-    allAssetsWithPrices.forEach((asset) => {
-      const value = Math.abs(asset.value);
-      const mainCat = categoryService.getMainCategory(asset.symbol, asset.type);
-
-      if (mainCat === 'cash') {
-        allocationMap['Cash & Equivalents'].value += value;
-      } else if (mainCat === 'crypto') {
-        // Check if stablecoin
-        const subCat = categoryService.getSubCategory(asset.symbol, asset.type);
-        if (subCat === 'stablecoins') {
-          allocationMap['Cash & Equivalents'].value += value;
-        } else {
-          allocationMap['Crypto'].value += value;
-        }
-      } else if (mainCat === 'equities') {
-        allocationMap['Equities'].value += value;
-      }
-    });
-
-    const total = Object.values(allocationMap).reduce((sum, item) => sum + item.value, 0);
-
-    return Object.entries(allocationMap)
-      .filter(([_, item]) => item.value > 0)
-      .map(([label, item]) => ({
-        label,
-        value: item.value,
-        percentage: total > 0 ? (item.value / total) * 100 : 0,
-        color: item.color,
-      }))
-      .sort((a, b) => b.value - a.value);
+    return calculateAllocationBreakdown(allAssetsWithPrices);
   }, [allAssetsWithPrices]);
 
-  // Calculate risk profile breakdown
+  // Use centralized risk profile calculation
   const riskProfileBreakdown = useMemo(() => {
-    const categoryService = getCategoryService();
-    const riskMap: Record<string, { value: number; color: string }> = {
-      'Conservative': { value: 0, color: '#4CAF50' },
-      'Moderate': { value: 0, color: '#2196F3' },
-      'Aggressive': { value: 0, color: '#F44336' },
-    };
-
-    allAssetsWithPrices.forEach((asset) => {
-      const value = Math.abs(asset.value);
-      const mainCat = categoryService.getMainCategory(asset.symbol, asset.type);
-      const subCat = categoryService.getSubCategory(asset.symbol, asset.type);
-
-      // Conservative: Cash, stablecoins, bonds
-      if (mainCat === 'cash' || subCat === 'stablecoins') {
-        riskMap['Conservative'].value += value;
-      }
-      // Moderate: Large cap crypto (BTC, ETH), blue chip stocks
-      else if (subCat === 'btc' || subCat === 'eth' || mainCat === 'equities') {
-        riskMap['Moderate'].value += value;
-      }
-      // Aggressive: Altcoins, DeFi, perps
-      else {
-        riskMap['Aggressive'].value += value;
-      }
-    });
-
-    const total = Object.values(riskMap).reduce((sum, item) => sum + item.value, 0);
-
-    return Object.entries(riskMap)
-      .filter(([_, item]) => item.value > 0)
-      .map(([label, item]) => ({
-        label,
-        value: item.value,
-        percentage: total > 0 ? (item.value / total) * 100 : 0,
-        color: item.color,
-      }))
-      .sort((a, b) => b.value - a.value);
+    return calculateRiskProfile(allAssetsWithPrices);
   }, [allAssetsWithPrices]);
 
-  // Calculate debt ratio
-  const debtRatio = useMemo(() => {
-    const totalDebts = allAssetsWithPrices
-      .filter(a => a.value < 0)
-      .reduce((sum, a) => sum + Math.abs(a.value), 0);
-    const grossAssets = allAssetsWithPrices
-      .filter(a => a.value > 0)
-      .reduce((sum, a) => sum + a.value, 0);
-    return grossAssets > 0 ? (totalDebts / grossAssets) * 100 : 0;
-  }, [allAssetsWithPrices]);
-
-  // Count unique assets
-  const uniqueAssetCount = useMemo(() => {
-    const symbols = new Set(allAssetsWithPrices.map(a => a.symbol.toLowerCase()));
-    return symbols.size;
-  }, [allAssetsWithPrices]);
-
-  // Calculate HHI Index (Herfindahl-Hirschman Index)
-  const hhiIndex = useMemo(() => {
-    const totalValue = allAssetsWithPrices.reduce((sum, a) => sum + Math.abs(a.value), 0);
-    if (totalValue === 0) return 0;
-
-    // Group by symbol and calculate market shares
-    const symbolValues: Record<string, number> = {};
-    allAssetsWithPrices.forEach(a => {
-      const symbol = a.symbol.toLowerCase();
-      symbolValues[symbol] = (symbolValues[symbol] || 0) + Math.abs(a.value);
-    });
-
-    // HHI = sum of squared market shares (in percentage)
-    let hhi = 0;
-    Object.values(symbolValues).forEach(value => {
-      const share = (value / totalValue) * 100;
-      hhi += share * share;
-    });
-
-    return Math.round(hhi);
-  }, [allAssetsWithPrices]);
+  // Use centralized metrics (already calculated in exposureData)
+  const debtRatio = exposureMetrics.debtRatio;
+  const uniqueAssetCount = concentrationMetrics.assetCount;
+  const hhiIndex = concentrationMetrics.herfindahlIndex;
 
   const hasData = positions.length > 0;
 

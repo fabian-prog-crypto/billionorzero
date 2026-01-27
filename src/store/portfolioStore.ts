@@ -303,6 +303,19 @@ export const usePortfolioStore = create<PortfolioState>()(
         // This ensures data saved with version: 2 can still be read
         return persistedState as unknown as PortfolioState;
       },
+      // Don't persist volatile UI state - this prevents sync from getting stuck
+      partialize: (state) => ({
+        positions: state.positions,
+        wallets: state.wallets,
+        accounts: state.accounts,
+        prices: state.prices,
+        customPrices: state.customPrices,
+        snapshots: state.snapshots,
+        lastRefresh: state.lastRefresh,
+        hideBalances: state.hideBalances,
+        riskFreeRate: state.riskFreeRate,
+        // isRefreshing is intentionally excluded - should always start as false
+      }),
     }
   )
 );

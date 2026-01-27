@@ -7,6 +7,7 @@
 
 export * from './types';
 export * from './debank-api';
+export * from './helius-api';
 export * from './coingecko-api';
 export * from './stock-api';
 export * from './hyperliquid-api';

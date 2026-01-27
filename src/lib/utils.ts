@@ -1,4 +1,7 @@
 export function formatCurrency(value: number, decimals: number = 2): string {
+  // Guard against NaN/undefined/null
+  if (value == null || isNaN(value)) return '$0.00';
+
   // Handle negative values by formatting absolute value and prepending minus
   const isNegative = value < 0;
   const absValue = Math.abs(value);
@@ -20,6 +23,9 @@ export function formatCurrency(value: number, decimals: number = 2): string {
 }
 
 export function formatNumber(value: number, decimals: number = 2): string {
+  // Guard against NaN/undefined/null
+  if (value == null || isNaN(value)) return '0';
+
   // Handle negative values
   const isNegative = value < 0;
   const absValue = Math.abs(value);
@@ -44,6 +50,9 @@ export function formatNumber(value: number, decimals: number = 2): string {
 }
 
 export function formatPercent(value: number, decimals: number = 2): string {
+  // Guard against NaN/undefined/null
+  if (value == null || isNaN(value)) return '+0.00%';
+
   const sign = value >= 0 ? '+' : '';
   return `${sign}${value.toFixed(decimals)}%`;
 }
