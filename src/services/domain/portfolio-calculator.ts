@@ -1362,61 +1362,71 @@ export function calculateAllocationBreakdown(assets: AssetWithPrice[]): Allocati
     'Other': { value: 0, color: '#8B7355', positions: new Map() },
   };
 
-  // Only process ASSETS (positive values) - debt doesn't contribute to allocation
-  const grossAssets = assets.filter(a => a.value > 0);
-
-  grossAssets.forEach((asset) => {
-    const value = asset.value; // Already positive
+  // Process ALL assets (including debt) - use NET values
+  assets.forEach((asset) => {
+    const value = asset.value; // Can be negative for debt
     const mainCat = categoryService.getMainCategory(asset.symbol, asset.type);
     const symbolKey = asset.symbol.toUpperCase();
 
     if (mainCat === 'cash') {
       allocationMap['Cash & Equivalents'].value += value;
-      allocationMap['Cash & Equivalents'].positions.set(
-        symbolKey,
-        (allocationMap['Cash & Equivalents'].positions.get(symbolKey) || 0) + value
-      );
-    } else if (mainCat === 'crypto') {
-      const subCat = categoryService.getSubCategory(asset.symbol, asset.type);
-      if (subCat === 'stablecoins') {
-        allocationMap['Cash & Equivalents'].value += value;
+      if (value > 0) {
         allocationMap['Cash & Equivalents'].positions.set(
           symbolKey,
           (allocationMap['Cash & Equivalents'].positions.get(symbolKey) || 0) + value
         );
+      }
+    } else if (mainCat === 'crypto') {
+      const subCat = categoryService.getSubCategory(asset.symbol, asset.type);
+      if (subCat === 'stablecoins') {
+        allocationMap['Cash & Equivalents'].value += value;
+        if (value > 0) {
+          allocationMap['Cash & Equivalents'].positions.set(
+            symbolKey,
+            (allocationMap['Cash & Equivalents'].positions.get(symbolKey) || 0) + value
+          );
+        }
       } else {
         allocationMap['Crypto'].value += value;
-        allocationMap['Crypto'].positions.set(
-          symbolKey,
-          (allocationMap['Crypto'].positions.get(symbolKey) || 0) + value
-        );
+        if (value > 0) {
+          allocationMap['Crypto'].positions.set(
+            symbolKey,
+            (allocationMap['Crypto'].positions.get(symbolKey) || 0) + value
+          );
+        }
       }
     } else if (mainCat === 'equities') {
       allocationMap['Equities'].value += value;
-      allocationMap['Equities'].positions.set(
-        symbolKey,
-        (allocationMap['Equities'].positions.get(symbolKey) || 0) + value
-      );
+      if (value > 0) {
+        allocationMap['Equities'].positions.set(
+          symbolKey,
+          (allocationMap['Equities'].positions.get(symbolKey) || 0) + value
+        );
+      }
     } else {
       // 'other' or any unhandled category
       allocationMap['Other'].value += value;
-      allocationMap['Other'].positions.set(
-        symbolKey,
-        (allocationMap['Other'].positions.get(symbolKey) || 0) + value
-      );
+      if (value > 0) {
+        allocationMap['Other'].positions.set(
+          symbolKey,
+          (allocationMap['Other'].positions.get(symbolKey) || 0) + value
+        );
+      }
     }
   });
 
-  const total = Object.values(allocationMap).reduce((sum, item) => sum + item.value, 0);
+  // Use NET total (only positive category values)
+  const total = Object.values(allocationMap).reduce((sum, item) => sum + Math.max(0, item.value), 0);
 
   return Object.entries(allocationMap)
-    .filter(([_, item]) => item.value > 0)
+    .filter(([_, item]) => item.value > 0) // Only show categories with positive NET value
     .map(([label, item]) => ({
       label,
       value: item.value,
       percentage: total > 0 ? (item.value / total) * 100 : 0,
       color: item.color,
       breakdown: Array.from(item.positions.entries())
+        .filter(([_, val]) => val > 0) // Only show positive values in breakdown
         .map(([symbol, val]) => ({ label: symbol, value: val }))
         .sort((a, b) => b.value - a.value),
     }))
