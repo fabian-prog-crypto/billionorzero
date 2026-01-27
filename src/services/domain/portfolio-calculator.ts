@@ -1438,7 +1438,7 @@ export function calculateAllocationBreakdown(assets: AssetWithPrice[]): Allocati
  * Conservative: Cash, stablecoins
  * Moderate: Large cap crypto (BTC, ETH), equities
  * Aggressive: Altcoins, DeFi tokens, perps
- * Uses GROSS ASSETS only - debt doesn't count toward risk profile allocation
+ * Uses NET values - debt SUBTRACTS from the risk category it belongs to
  */
 export function calculateRiskProfile(assets: AssetWithPrice[]): RiskProfileItem[] {
   const categoryService = getCategoryService();
@@ -1448,11 +1448,9 @@ export function calculateRiskProfile(assets: AssetWithPrice[]): RiskProfileItem[
     'Aggressive': { value: 0, color: '#F44336', positions: new Map() },
   };
 
-  // Only process ASSETS (positive values) - debt doesn't contribute to risk allocation
-  const grossAssets = assets.filter(a => a.value > 0);
-
-  grossAssets.forEach((asset) => {
-    const value = asset.value; // Already positive
+  // Process ALL assets including debt (negative values subtract from their category)
+  assets.forEach((asset) => {
+    const value = asset.value; // Can be negative for debt
     const mainCat = categoryService.getMainCategory(asset.symbol, asset.type);
     const subCat = categoryService.getSubCategory(asset.symbol, asset.type);
     const symbolKey = asset.symbol.toUpperCase();
@@ -1478,16 +1476,17 @@ export function calculateRiskProfile(assets: AssetWithPrice[]): RiskProfileItem[
     );
   });
 
-  const total = Object.values(riskMap).reduce((sum, item) => sum + item.value, 0);
+  const total = Object.values(riskMap).reduce((sum, item) => sum + Math.max(0, item.value), 0);
 
   return Object.entries(riskMap)
-    .filter(([_, item]) => item.value > 0)
+    .filter(([_, item]) => item.value > 0) // Only show categories with positive NET value
     .map(([label, item]) => ({
       label: label as 'Conservative' | 'Moderate' | 'Aggressive',
       value: item.value,
       percentage: total > 0 ? (item.value / total) * 100 : 0,
       color: item.color,
       breakdown: Array.from(item.positions.entries())
+        .filter(([_, val]) => val > 0) // Only show positive positions in breakdown
         .map(([symbol, val]) => ({ label: symbol, value: val }))
         .sort((a, b) => b.value - a.value),
     }))
