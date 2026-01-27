@@ -10,6 +10,7 @@ import { useRefresh } from '@/components/PortfolioProvider';
 import AddPositionModal from '@/components/modals/AddPositionModal';
 import AddWalletModal from '@/components/modals/AddWalletModal';
 import { calculateSyncCost } from '@/lib/constants';
+import { formatDistanceToNow } from 'date-fns';
 
 type MainTab = 'portfolio' | 'insights';
 type SubTab = 'overview' | 'crypto' | 'equities' | 'cash' | 'other';
@@ -73,8 +74,14 @@ export default function AppShell({ children }: AppShellProps) {
   const [showAddPosition, setShowAddPosition] = useState(false);
   const [showAddWallet, setShowAddWallet] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
-  const { hideBalances, toggleHideBalances, wallets } = usePortfolioStore();
+  // Track client-side mount to avoid hydration mismatch with dates
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const { hideBalances, toggleHideBalances, wallets, lastRefresh } = usePortfolioStore();
   const { theme, setTheme } = useThemeStore();
   const { refresh, isRefreshing } = useRefresh();
 
@@ -161,37 +168,45 @@ export default function AppShell({ children }: AppShellProps) {
         {/* Row 1: Main Navigation */}
         <div className="flex items-center justify-between px-6 lg:px-8 border-b border-[var(--border)]">
           {/* Logo */}
-          <Link href="/" className="flex items-center py-4">
-            <span className="text-xl tracking-tight" style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}>
+          <Link href="/" className="flex items-center py-3">
+            <span className="text-base tracking-tight" style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}>
               billionorzero
             </span>
           </Link>
 
-          {/* Right: Actions */}
-          <div className="flex items-center gap-2">
+          {/* Right: Updated + Actions */}
+          <div className="flex items-center gap-1">
+            {mounted && (
+              <span className="text-[10px] text-[var(--foreground-muted)] mr-2 hidden sm:inline">
+                {lastRefresh
+                  ? `Updated ${formatDistanceToNow(new Date(lastRefresh))} ago`
+                  : 'Not synced'}
+              </span>
+            )}
+
             <button
               onClick={toggleTheme}
-              className="btn-ghost"
+              className="btn-ghost p-1.5"
               title={effectiveTheme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
             >
-              {effectiveTheme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+              {effectiveTheme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
 
             <button
               onClick={toggleHideBalances}
-              className="btn-ghost"
+              className="btn-ghost p-1.5"
               title={hideBalances ? 'Show balances' : 'Hide balances'}
             >
-              {hideBalances ? <Eye className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
+              {hideBalances ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
             </button>
 
             <div className="relative group">
               <button
                 onClick={refresh}
                 disabled={isRefreshing}
-                className="btn-ghost"
+                className="btn-ghost p-1.5"
               >
-                <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
               </button>
               <div className="tooltip whitespace-nowrap">
                 {walletCount > 0 ? (
@@ -207,48 +222,52 @@ export default function AppShell({ children }: AppShellProps) {
 
             <button
               onClick={() => setShowAddWallet(true)}
-              className="btn-ghost"
+              className="btn-ghost p-1.5"
               title="Add Wallet"
             >
-              <Wallet className="w-5 h-5" />
+              <Wallet className="w-4 h-4" />
             </button>
 
             <Link
               href="/settings"
-              className="btn-ghost"
+              className="btn-ghost p-1.5"
               title="Settings"
             >
-              <Settings className="w-5 h-5" />
+              <Settings className="w-4 h-4" />
             </Link>
 
             {/* Mobile menu button */}
             <button
               onClick={() => setSidebarOpen(true)}
-              className="lg:hidden btn-ghost"
+              className="lg:hidden btn-ghost p-1.5"
               aria-label="Open menu"
             >
-              <Menu className="w-5 h-5" />
+              <Menu className="w-4 h-4" />
             </button>
           </div>
         </div>
 
         {/* Row 2: Sub Tabs (Category Navigation) */}
-        <div className="flex items-center justify-between px-6 lg:px-8 py-2">
-          <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between px-6 lg:px-8 pt-5 pb-4">
+          <div className="flex items-baseline gap-7">
             {subTabs.map((tab) => (
               <button
                 key={tab.id}
-                className={`text-sm transition-colors relative pb-1.5 ${
-                  activeSubTab === tab.id
-                    ? 'text-[var(--foreground)] font-medium'
-                    : 'text-[var(--foreground-subtle)] hover:text-[var(--foreground-muted)]'
+                className={`transition-colors relative pb-2 ${
+                  activeSubTab !== tab.id ? 'hover:text-[var(--foreground-muted)]' : ''
                 }`}
-                style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
+                style={{
+                  fontFamily: 'Georgia, "Times New Roman", serif',
+                  fontSize: '28px',
+                  lineHeight: '1.2',
+                  fontWeight: activeSubTab === tab.id ? 500 : 400,
+                  color: activeSubTab === tab.id ? 'var(--foreground)' : '#B5B5B5',
+                }}
                 onClick={() => handleSubTabClick(tab.id)}
               >
                 {tab.label}
                 {activeSubTab === tab.id && (
-                  <div className="absolute bottom-0 left-0 right-0 h-px bg-[var(--foreground)]" />
+                  <div className="absolute bottom-0 left-0 right-0 h-[1.5px] bg-[var(--foreground)]" />
                 )}
               </button>
             ))}
@@ -260,13 +279,7 @@ export default function AppShell({ children }: AppShellProps) {
             className="btn btn-primary"
           >
             <Plus className="w-4 h-4" />
-            <span>
-              {activeSubTab === 'overview' ? 'Add Position' :
-               activeSubTab === 'crypto' ? 'Add Crypto' :
-               activeSubTab === 'equities' ? 'Add Equity' :
-               activeSubTab === 'cash' ? 'Add Cash' :
-               'Add Other'}
-            </span>
+            <span>Add {activeSubTab === 'overview' ? 'Position' : subTabs.find(t => t.id === activeSubTab)?.label || 'Position'}</span>
           </button>
         </div>
       </header>
