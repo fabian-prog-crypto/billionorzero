@@ -233,14 +233,14 @@ export default function AppShell({ children }: AppShellProps) {
         </div>
 
         {/* Row 2: Sub Tabs (Category Navigation) */}
-        <div className="flex items-center justify-between px-6 lg:px-8 py-5">
-          <div className="flex items-center gap-8">
+        <div className="flex items-center justify-between px-6 lg:px-8 py-2">
+          <div className="flex items-center gap-3">
             {subTabs.map((tab) => (
               <button
                 key={tab.id}
-                className={`text-4xl transition-colors relative pb-3 ${
+                className={`text-sm transition-colors relative pb-1.5 ${
                   activeSubTab === tab.id
-                    ? 'text-[var(--foreground)]'
+                    ? 'text-[var(--foreground)] font-medium'
                     : 'text-[var(--foreground-subtle)] hover:text-[var(--foreground-muted)]'
                 }`}
                 style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
@@ -248,7 +248,7 @@ export default function AppShell({ children }: AppShellProps) {
               >
                 {tab.label}
                 {activeSubTab === tab.id && (
-                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[var(--foreground)]" />
+                  <div className="absolute bottom-0 left-0 right-0 h-px bg-[var(--foreground)]" />
                 )}
               </button>
             ))}
@@ -318,8 +318,8 @@ export default function AppShell({ children }: AppShellProps) {
           {/* Footer */}
           <div className="p-4 border-t border-[var(--border)]">
             <div className="flex items-center gap-2 text-xs text-[var(--foreground-muted)]">
-              <div className="w-2 h-2 bg-[var(--positive)] animate-pulse"></div>
-              <span>Auto-refresh</span>
+              <div className="w-2 h-2 bg-[var(--foreground-muted)]"></div>
+              <span>Manual sync</span>
             </div>
           </div>
         </aside>

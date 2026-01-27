@@ -108,27 +108,31 @@ export default function PortfolioProvider({ children }: PortfolioProviderProps) 
     getPortfolioService().initialize();
   }, []);
 
-  // Initial refresh on mount
-  useEffect(() => {
-    const store = usePortfolioStore.getState();
-    const hasData = store.positions.length > 0 || store.wallets.length > 0 || store.accounts.length > 0;
-    if (hasData) {
-      executeRefresh(false);
-    }
-  }, []);
-
-  // Auto-refresh interval
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const store = usePortfolioStore.getState();
-      const hasData = store.positions.length > 0 || store.wallets.length > 0 || store.accounts.length > 0;
-      if (hasData) {
-        executeRefresh(false);
-      }
-    }, REFRESH_INTERVAL);
-
-    return () => clearInterval(interval);
-  }, []);
+  // Auto-sync disabled to save API calls
+  // Users must manually click refresh button to sync
+  // Uncomment the code below to re-enable auto-sync:
+  //
+  // // Initial refresh on mount
+  // useEffect(() => {
+  //   const store = usePortfolioStore.getState();
+  //   const hasData = store.positions.length > 0 || store.wallets.length > 0 || store.accounts.length > 0;
+  //   if (hasData) {
+  //     executeRefresh(false);
+  //   }
+  // }, []);
+  //
+  // // Auto-refresh interval
+  // useEffect(() => {
+  //   const interval = setInterval(() => {
+  //     const store = usePortfolioStore.getState();
+  //     const hasData = store.positions.length > 0 || store.wallets.length > 0 || store.accounts.length > 0;
+  //     if (hasData) {
+  //       executeRefresh(false);
+  //     }
+  //   }, REFRESH_INTERVAL);
+  //
+  //   return () => clearInterval(interval);
+  // }, []);
 
   return <>{children}</>;
 }
