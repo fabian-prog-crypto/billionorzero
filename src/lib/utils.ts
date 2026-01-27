@@ -1,25 +1,14 @@
-export function formatCurrency(value: number, decimals: number = 2): string {
+export function formatCurrency(value: number): string {
   // Guard against NaN/undefined/null
-  if (value == null || isNaN(value)) return '$0.00';
+  if (value == null || isNaN(value)) return '$0';
 
   // Handle negative values by formatting absolute value and prepending minus
   const isNegative = value < 0;
   const absValue = Math.abs(value);
   const prefix = isNegative ? '-$' : '$';
 
-  if (absValue >= 1_000_000_000) {
-    return `${prefix}${(absValue / 1_000_000_000).toFixed(2)}B`;
-  }
-  if (absValue >= 1_000_000) {
-    return `${prefix}${(absValue / 1_000_000).toFixed(2)}M`;
-  }
-  if (absValue >= 1_000) {
-    return `${prefix}${absValue.toLocaleString('en-US', {
-      minimumFractionDigits: decimals,
-      maximumFractionDigits: decimals,
-    })}`;
-  }
-  return `${prefix}${absValue.toFixed(decimals)}`;
+  // Format with commas, no decimals, no abbreviations
+  return `${prefix}${Math.round(absValue).toLocaleString('en-US')}`;
 }
 
 export function formatNumber(value: number, decimals: number = 2): string {
@@ -31,22 +20,16 @@ export function formatNumber(value: number, decimals: number = 2): string {
   const absValue = Math.abs(value);
   const prefix = isNegative ? '-' : '';
 
-  if (absValue >= 1_000_000_000) {
-    return `${prefix}${(absValue / 1_000_000_000).toFixed(2)}B`;
-  }
-  if (absValue >= 1_000_000) {
-    return `${prefix}${(absValue / 1_000_000).toFixed(2)}M`;
-  }
-  if (absValue >= 1_000) {
-    return `${prefix}${absValue.toLocaleString('en-US', {
-      minimumFractionDigits: decimals,
-      maximumFractionDigits: decimals,
-    })}`;
-  }
+  // For very small values, show more precision
   if (absValue < 0.01 && absValue > 0) {
     return `${prefix}${absValue.toFixed(6)}`;
   }
-  return `${prefix}${absValue.toFixed(decimals)}`;
+
+  // Format with commas, no abbreviations
+  return `${prefix}${absValue.toLocaleString('en-US', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  })}`;
 }
 
 export function formatPercent(value: number, decimals: number = 2): string {

@@ -68,7 +68,7 @@ export default function NetWorthChart({
             axisLine={false}
             tickLine={false}
             tick={{ fontSize: 11, fill: 'var(--foreground-muted)' }}
-            tickFormatter={(value) => formatCurrency(value, 0)}
+            tickFormatter={(value) => formatCurrency(value)}
             width={70}
           />
         )}
