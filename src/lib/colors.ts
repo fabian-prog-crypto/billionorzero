@@ -69,6 +69,7 @@ export const CHAIN_COLORS: Record<string, string> = {
 export const CUSTODY_COLORS: Record<string, string> = {
   'Self-Custody': '#4CAF50',
   'DeFi': '#9C27B0',
+  'Perp DEX': '#00BCD4',
   'CEX': '#FF9800',
   'Banks & Brokers': '#2196F3',
   'Manual': '#607D8B',

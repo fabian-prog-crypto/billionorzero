@@ -707,13 +707,14 @@ const CUSTODY_COLORS: Record<string, string> = {
 
 /**
  * Calculate custody breakdown - SINGLE SOURCE OF TRUTH
- * Categories: Self-Custody, DeFi, CEX, Banks & Brokers, Manual
- * Uses GROSS ASSETS only - debt doesn't count toward custody allocation
+ * Categories: Self-Custody, DeFi, Perp DEX, CEX, Banks & Brokers, Manual
+ * Uses NET values - debt subtracts from the category where it was borrowed
  */
 export function calculateCustodyBreakdown(assets: AssetWithPrice[]): CustodyBreakdownItem[] {
   const custodyMap: Record<string, { value: number; positions: Map<string, number> }> = {
     'Self-Custody': { value: 0, positions: new Map() },
     'DeFi': { value: 0, positions: new Map() },
+    'Perp DEX': { value: 0, positions: new Map() },
     'CEX': { value: 0, positions: new Map() },
     'Banks & Brokers': { value: 0, positions: new Map() },
     'Manual': { value: 0, positions: new Map() },
@@ -729,8 +730,8 @@ export function calculateCustodyBreakdown(assets: AssetWithPrice[]): CustodyBrea
     if (asset.protocol?.startsWith('cex:')) {
       category = 'CEX';
     } else if (isPerpProtocol(asset.protocol)) {
-      // Perp exchanges are centralized custody (like CEX)
-      category = 'CEX';
+      // Perp DEXes (Hyperliquid, Vertex, Drift, etc.) are decentralized
+      category = 'Perp DEX';
     } else if (asset.type === 'stock' || asset.type === 'cash') {
       category = 'Banks & Brokers';
     } else if (asset.walletAddress) {
