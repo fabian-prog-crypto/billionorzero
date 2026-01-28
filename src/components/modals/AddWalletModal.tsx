@@ -201,7 +201,7 @@ export default function AddWalletModal({ isOpen, onClose }: AddWalletModalProps)
           <h2 className="text-xl font-semibold">Add Wallet{mode === 'bulk' ? 's' : ''}</h2>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-[var(--background-secondary)] rounded-lg transition-colors"
+            className="p-2 hover:bg-[var(--background-secondary)]  transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -212,7 +212,7 @@ export default function AddWalletModal({ isOpen, onClose }: AddWalletModalProps)
           <button
             type="button"
             onClick={() => setMode('single')}
-            className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
+            className={`flex-1 py-2 px-4  text-sm font-medium transition-colors ${
               mode === 'single'
                 ? 'bg-[var(--accent-primary)] text-white'
                 : 'bg-[var(--background-secondary)] text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
@@ -223,7 +223,7 @@ export default function AddWalletModal({ isOpen, onClose }: AddWalletModalProps)
           <button
             type="button"
             onClick={() => setMode('bulk')}
-            className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
+            className={`flex-1 py-2 px-4  text-sm font-medium transition-colors ${
               mode === 'bulk'
                 ? 'bg-[var(--accent-primary)] text-white'
                 : 'bg-[var(--background-secondary)] text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
@@ -236,8 +236,8 @@ export default function AddWalletModal({ isOpen, onClose }: AddWalletModalProps)
         {mode === 'single' ? (
           <form onSubmit={handleSingleSubmit} className="space-y-4">
             {/* Wallet icon and info */}
-            <div className="flex items-center gap-3 p-4 bg-[var(--background-secondary)] rounded-lg">
-              <div className="w-12 h-12 bg-[var(--accent-primary)] rounded-full flex items-center justify-center">
+            <div className="flex items-center gap-3 p-4 bg-[var(--background-secondary)] ">
+              <div className="w-12 h-12 bg-[var(--accent-primary)]  flex items-center justify-center">
                 <Wallet className="w-6 h-6 text-white" />
               </div>
               <div>
@@ -256,7 +256,7 @@ export default function AddWalletModal({ isOpen, onClose }: AddWalletModalProps)
                 placeholder="e.g., Main Wallet, DeFi Wallet"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full"
+                className="form-input w-full"
                 required
               />
             </div>
@@ -286,7 +286,7 @@ export default function AddWalletModal({ isOpen, onClose }: AddWalletModalProps)
                     key={exchange.id}
                     type="button"
                     onClick={() => togglePerpExchange(exchange.id)}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                    className={`px-3 py-1.5  text-sm font-medium transition-colors ${
                       selectedPerpExchanges.includes(exchange.id)
                         ? 'bg-[var(--accent-primary)] text-white'
                         : 'bg-[var(--background-secondary)] text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
@@ -315,8 +315,8 @@ export default function AddWalletModal({ isOpen, onClose }: AddWalletModalProps)
         ) : (
           <form onSubmit={handleBulkSubmit} className="space-y-4">
             {/* Bulk input instructions */}
-            <div className="flex items-center gap-3 p-4 bg-[var(--background-secondary)] rounded-lg">
-              <div className="w-12 h-12 bg-[var(--accent-primary)] rounded-full flex items-center justify-center">
+            <div className="flex items-center gap-3 p-4 bg-[var(--background-secondary)] ">
+              <div className="w-12 h-12 bg-[var(--accent-primary)]  flex items-center justify-center">
                 <Plus className="w-6 h-6 text-white" />
               </div>
               <div>
@@ -351,7 +351,7 @@ export default function AddWalletModal({ isOpen, onClose }: AddWalletModalProps)
                     key={exchange.id}
                     type="button"
                     onClick={() => togglePerpExchange(exchange.id, true)}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                    className={`px-3 py-1.5  text-sm font-medium transition-colors ${
                       bulkPerpExchanges.includes(exchange.id)
                         ? 'bg-[var(--accent-primary)] text-white'
                         : 'bg-[var(--background-secondary)] text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
@@ -369,11 +369,11 @@ export default function AddWalletModal({ isOpen, onClose }: AddWalletModalProps)
                 <p className="text-sm font-medium">
                   Preview ({validWallets.length} valid, {invalidWallets.length} invalid)
                 </p>
-                <div className="max-h-40 overflow-y-auto space-y-1 p-2 bg-[var(--background-secondary)] rounded-lg">
+                <div className="max-h-40 overflow-y-auto space-y-1 p-2 bg-[var(--background-secondary)] ">
                   {parsedWallets.map((wallet, index) => (
                     <div
                       key={index}
-                      className={`flex items-center justify-between text-sm p-2 rounded ${
+                      className={`flex items-center justify-between text-sm p-2  ${
                         wallet.isValid
                           ? 'bg-[var(--positive-light)]'
                           : 'bg-[var(--negative-light)]'

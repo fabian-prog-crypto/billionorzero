@@ -99,14 +99,14 @@ export default function PerformancePage() {
     <div className="space-y-6">
       {/* Time period selector */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1 p-1 bg-[var(--background-secondary)] rounded-lg">
+        <div className="flex items-center gap-1 p-1 bg-[var(--background-secondary)] ">
           {(['1w', '1mon', '3mon', '1year', 'ytd'] as TimePeriod[]).map((p) => (
             <button
               key={p}
               onClick={() => setPeriod(p)}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              className={`px-4 py-2  text-sm font-medium transition-colors ${
                 period === p
-                  ? 'bg-[var(--card-bg)] text-[var(--foreground)] shadow-sm'
+                  ? 'bg-[var(--background)] text-[var(--foreground)] shadow-sm'
                   : 'text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
               }`}
             >
@@ -139,14 +139,14 @@ export default function PerformancePage() {
           </div>
 
           {/* View mode toggle */}
-          <div className="flex gap-1 p-1 bg-[var(--background-secondary)] rounded-lg">
+          <div className="flex gap-1 p-1 bg-[var(--background-secondary)] ">
             {(['value', 'assets', 'pnl'] as ViewMode[]).map((mode) => (
               <button
                 key={mode}
                 onClick={() => setViewMode(mode)}
-                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                className={`px-4 py-1.5  text-sm font-medium transition-colors ${
                   viewMode === mode
-                    ? 'bg-[var(--card-bg)] text-[var(--foreground)] shadow-sm'
+                    ? 'bg-[var(--background)] text-[var(--foreground)] shadow-sm'
                     : 'text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
                 }`}
               >
@@ -292,7 +292,7 @@ export default function PerformancePage() {
                 <tr key={asset.id} className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--background-secondary)] transition-colors">
                   <td className="py-2">
                     <div className="flex items-center gap-2">
-                      <div className="w-5 h-5 bg-[var(--tag-bg)] rounded-full flex items-center justify-center text-[10px] font-semibold">
+                      <div className="w-5 h-5 bg-[var(--tag-bg)]  flex items-center justify-center text-[10px] font-semibold">
                         {asset.symbol.slice(0, 1).toUpperCase()}
                       </div>
                       <span className="text-[13px] font-medium">{asset.symbol.toUpperCase()}</span>

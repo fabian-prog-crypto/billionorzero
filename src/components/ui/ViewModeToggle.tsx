@@ -23,12 +23,12 @@ export default function ViewModeToggle({
   className = '',
 }: ViewModeToggleProps) {
   return (
-    <div className={`flex gap-1 p-1 bg-[var(--background-secondary)] rounded-lg ${className}`}>
+    <div className={`flex gap-1 p-1 bg-[var(--background-secondary)] ${className}`}>
       {modes.map((mode) => (
         <button
           key={mode.id}
           onClick={() => onChange(mode.id)}
-          className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors flex items-center gap-1.5 ${
+          className={`px-3 py-1.5 text-sm font-medium transition-colors flex items-center gap-1.5 ${
             activeMode === mode.id
               ? 'bg-[var(--card-bg)] text-[var(--foreground)] shadow-sm'
               : 'text-[var(--foreground-muted)] hover:text-[var(--foreground)]'

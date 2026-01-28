@@ -210,7 +210,7 @@ function MetricCard({ label, value, color }: { label: string; value: string; col
   return (
     <div>
       <div className="flex items-center gap-1.5 mb-1">
-        {color && <div className="w-2 h-2 rounded-sm" style={{ backgroundColor: color }} />}
+        {color && <div className="w-2 h-2 " style={{ backgroundColor: color }} />}
         <span className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)]">{label}</span>
       </div>
       <p className="text-2xl font-semibold">{value}</p>
@@ -239,13 +239,13 @@ function CryptoAllocationSection({
         {allocation.map((item) => (
           <div key={item.category} className="flex items-center gap-3">
             <div
-              className="w-2.5 h-2.5 rounded-sm flex-shrink-0"
+              className="w-2.5 h-2.5  flex-shrink-0"
               style={{ backgroundColor: item.color }}
             />
             <span className="text-[13px] font-medium w-24">{item.label}</span>
-            <div className="flex-1 h-1.5 bg-[var(--background-secondary)] rounded-full overflow-hidden">
+            <div className="flex-1 h-1.5 bg-[var(--background-secondary)]  overflow-hidden">
               <div
-                className="h-full rounded-full"
+                className="h-full "
                 style={{
                   width: `${Math.max(0, Math.min(100, item.percentage))}%`,
                   backgroundColor: item.color,

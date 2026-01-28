@@ -184,7 +184,7 @@ export default function CryptoIcon({ symbol, size = 32, className = '', isDebt =
   if (allFailed || allUrls.length === 0) {
     return (
       <div
-        className={`rounded-full flex items-center justify-center text-xs font-semibold ${
+        className={` flex items-center justify-center text-xs font-semibold ${
           isDebt ? 'bg-[var(--negative)] text-white' : 'bg-[var(--tag-bg)]'
         } ${className}`}
         style={{ width: size, height: size }}
@@ -200,7 +200,7 @@ export default function CryptoIcon({ symbol, size = 32, className = '', isDebt =
       alt={symbol}
       width={size}
       height={size}
-      className={`rounded-full object-cover bg-[var(--tag-bg)] ${isDebt ? 'ring-2 ring-[var(--negative)]' : ''} ${className}`}
+      className={` object-cover bg-[var(--tag-bg)] ${isDebt ? 'ring-2 ring-[var(--negative)]' : ''} ${className}`}
       style={{ width: size, height: size, minWidth: size, minHeight: size }}
       onError={() => {
         if (urlIndex < allUrls.length - 1) {

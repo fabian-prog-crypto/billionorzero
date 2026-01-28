@@ -46,7 +46,7 @@ export default function FilterChips({
           <button
             key={opt.value}
             onClick={() => onChange(opt.value)}
-            className={`${baseClasses} font-medium rounded-full border transition-colors flex items-center gap-1.5 ${
+            className={`${baseClasses} font-medium border transition-colors flex items-center gap-1.5 ${
               isActive
                 ? 'bg-[var(--accent-primary)] text-white border-[var(--accent-primary)]'
                 : 'bg-[var(--background)] border-[var(--border)] hover:border-[var(--foreground-muted)] text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
@@ -54,7 +54,7 @@ export default function FilterChips({
           >
             {opt.color && (
               <span
-                className={`${dotSize} rounded-full`}
+                className={`${dotSize}`}
                 style={{ backgroundColor: isActive ? 'white' : opt.color }}
               />
             )}

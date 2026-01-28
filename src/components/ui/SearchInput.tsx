@@ -16,21 +16,21 @@ export default function SearchInput({
   className = '',
 }: SearchInputProps) {
   return (
-    <div className={`relative min-w-[160px] ${className}`}>
-      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--foreground-muted)]" />
+    <div className={`relative ${className}`} style={{ width: '120px' }}>
+      <Search className="absolute left-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-[var(--foreground-muted)]" />
       <input
         type="text"
         placeholder={placeholder}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="pl-10 pr-8 w-full text-sm py-2"
+        className="search-input w-full"
       />
       {value && (
         <button
           onClick={() => onChange('')}
-          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-[var(--background-secondary)] rounded"
+          className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 hover:bg-[var(--background-secondary)]"
         >
-          <X className="w-3 h-3 text-[var(--foreground-muted)]" />
+          <X className="w-2.5 h-2.5 text-[var(--foreground-muted)]" />
         </button>
       )}
     </div>

@@ -24,7 +24,7 @@ export default function MetricCard({
       <div className="flex items-center gap-2 mb-1">
         {color && (
           <div
-            className="w-2.5 h-2.5 rounded-sm shrink-0"
+            className="w-2.5 h-2.5 shrink-0"
             style={{ backgroundColor: color }}
           />
         )}

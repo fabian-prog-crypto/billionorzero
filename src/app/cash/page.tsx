@@ -205,7 +205,7 @@ export default function CashPage() {
     return (
       <div>
         <div className="flex flex-col items-center justify-center py-20">
-          <div className="w-14 h-14 rounded-full bg-[var(--background-secondary)] flex items-center justify-center mb-4">
+          <div className="w-14 h-14  bg-[var(--background-secondary)] flex items-center justify-center mb-4">
             <Banknote className="w-6 h-6 text-[var(--foreground-muted)]" />
           </div>
           <h2 className="text-[15px] font-semibold mb-2">No cash positions</h2>
@@ -247,7 +247,7 @@ export default function CashPage() {
               type="checkbox"
               checked={includeStablecoins}
               onChange={(e) => setIncludeStablecoins(e.target.checked)}
-              className="w-4 h-4 rounded border-[var(--border)] text-[var(--accent-primary)] focus:ring-[var(--accent-primary)] focus:ring-offset-0 bg-[var(--background-secondary)]"
+              className="w-4 h-4  border-[var(--border)] text-[var(--accent-primary)] focus:ring-[var(--accent-primary)] focus:ring-offset-0 bg-[var(--background-secondary)]"
             />
             <span className="text-[12px] text-[var(--foreground-muted)]">Include Stablecoins</span>
           </label>

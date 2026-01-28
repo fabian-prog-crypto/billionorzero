@@ -98,7 +98,7 @@ export default function AllocationChart({ assets, size = 180 }: AllocationChartP
         {data.map((item, index) => (
           <div key={item.name} className="flex items-center gap-2 text-sm">
             <div
-              className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+              className="w-2.5 h-2.5  flex-shrink-0"
               style={{ backgroundColor: COLORS[index % COLORS.length] }}
             />
             <span className="font-medium">{item.name}</span>

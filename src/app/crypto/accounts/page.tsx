@@ -111,7 +111,7 @@ export default function AccountsPage() {
       <hr className="border-[var(--border)] mb-6" />
 
       {syncError && (
-        <div className="mb-6 p-4 bg-[var(--negative-light)] border border-[var(--negative)] rounded-lg">
+        <div className="mb-6 p-4 bg-[var(--negative-light)] border border-[var(--negative)] ">
           <div className="flex items-center gap-2 text-[var(--negative)]">
             <AlertCircle className="w-5 h-5" />
             <span>{syncError}</span>
@@ -121,9 +121,12 @@ export default function AccountsPage() {
 
       {/* Accounts List */}
       {accounts.length === 0 ? (
-        <div className="text-center py-12">
-          <p className="text-[var(--foreground-muted)] mb-2">No CEX accounts connected</p>
-          <p className="text-[13px] text-[var(--foreground-muted)] mb-4">
+        <div className="flex flex-col items-center justify-center py-16">
+          <div className="w-14 h-14 bg-[var(--background-secondary)]  flex items-center justify-center mb-4">
+            <Plus className="w-6 h-6 text-[var(--foreground-muted)]" />
+          </div>
+          <p className="text-[15px] font-semibold mb-2">No CEX accounts connected</p>
+          <p className="text-[13px] text-[var(--foreground-muted)] mb-4 text-center">
             Connect your Binance account to automatically track your holdings.
           </p>
           <button onClick={() => setShowAddModal(true)} className="btn btn-primary">
@@ -141,36 +144,36 @@ export default function AccountsPage() {
               <div key={account.id} className="border-b border-[var(--border)] last:border-0 pb-6 mb-6 last:pb-0 last:mb-0">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-[var(--accent-primary)] rounded-full flex items-center justify-center text-white font-semibold">
+                    <div className="w-8 h-8 bg-[var(--accent-primary)]  flex items-center justify-center text-white text-[13px] font-semibold">
                       {exchangeInfo.logo}
                     </div>
                     <div>
-                      <h3 className="text-[15px] font-medium">{account.name}</h3>
-                      <p className="text-[13px] text-[var(--foreground-muted)]">{exchangeInfo.name}</p>
+                      <h3 className="text-[13px] font-medium">{account.name}</h3>
+                      <p className="text-[11px] text-[var(--foreground-muted)]">{exchangeInfo.name}</p>
                     </div>
                     {account.isActive ? (
-                      <span className="flex items-center gap-1 text-xs text-[var(--positive)]">
-                        <CheckCircle className="w-3 h-3" /> Active
+                      <span className="flex items-center gap-1 text-[10px] text-[var(--positive)]">
+                        <CheckCircle className="w-2.5 h-2.5" /> Active
                       </span>
                     ) : (
-                      <span className="flex items-center gap-1 text-xs text-[var(--foreground-muted)]">
+                      <span className="flex items-center gap-1 text-[10px] text-[var(--foreground-muted)]">
                         Inactive
                       </span>
                     )}
                   </div>
                   <div className="flex items-center gap-4">
                     <div className="text-right">
-                      <p className="font-semibold">{hideBalances ? '••••' : formatCurrency(accountValue)}</p>
-                      <p className="text-xs text-[var(--foreground-muted)]">
+                      <p className="text-[13px] font-semibold">{hideBalances ? '••••' : formatCurrency(accountValue)}</p>
+                      <p className="text-[10px] text-[var(--foreground-muted)]">
                         {accountPositions.length} asset{accountPositions.length !== 1 ? 's' : ''}
                       </p>
                     </div>
                     <button
                       onClick={() => handleRemoveAccount(account.id)}
-                      className="p-2 hover:bg-[var(--negative-light)] text-[var(--negative)] rounded-lg transition-colors"
+                      className="p-1.5 hover:bg-[var(--negative-light)] text-[var(--negative)] transition-colors"
                       title="Remove account"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>
@@ -195,7 +198,7 @@ export default function AccountsPage() {
                               <tr key={position.id} className="border-b border-[var(--border)] last:border-0">
                                 <td className="py-2">
                                   <div className="flex items-center gap-2">
-                                    <div className="w-6 h-6 bg-[var(--tag-bg)] rounded-full flex items-center justify-center text-xs font-semibold">
+                                    <div className="w-6 h-6 bg-[var(--tag-bg)]  flex items-center justify-center text-xs font-semibold">
                                       {position.symbol.slice(0, 1).toUpperCase()}
                                     </div>
                                     <span className="font-medium">{position.symbol.toUpperCase()}</span>
@@ -321,7 +324,7 @@ function AddAccountModal({ onClose }: { onClose: () => void }) {
                   type="button"
                   onClick={() => info.supported && setExchange(key as CexExchange)}
                   disabled={!info.supported}
-                  className={`p-3 rounded-lg border text-left transition-colors ${
+                  className={`p-3  border text-left transition-colors ${
                     exchange === key
                       ? 'border-[var(--accent-primary)] bg-[var(--accent-primary)] bg-opacity-10'
                       : info.supported
@@ -330,7 +333,7 @@ function AddAccountModal({ onClose }: { onClose: () => void }) {
                   }`}
                 >
                   <div className="flex items-center gap-2">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-semibold ${
+                    <div className={`w-8 h-8  flex items-center justify-center text-white font-semibold ${
                       info.supported ? 'bg-[var(--accent-primary)]' : 'bg-[var(--foreground-subtle)]'
                     }`}>
                       {info.logo}
@@ -393,7 +396,7 @@ function AddAccountModal({ onClose }: { onClose: () => void }) {
           </div>
 
           {/* Security note */}
-          <div className="mb-4 p-3 bg-[var(--background-secondary)] rounded-lg text-sm text-[var(--foreground-muted)]">
+          <div className="mb-4 p-3 bg-[var(--background-secondary)]  text-sm text-[var(--foreground-muted)]">
             <p className="font-medium mb-1">Security Note:</p>
             <ul className="list-disc list-inside space-y-1">
               <li>Use read-only API keys (no trading/withdrawal permissions)</li>
@@ -403,7 +406,7 @@ function AddAccountModal({ onClose }: { onClose: () => void }) {
           </div>
 
           {error && (
-            <div className="mb-4 p-3 bg-[var(--negative-light)] rounded-lg text-[var(--negative)] text-sm flex items-center gap-2">
+            <div className="mb-4 p-3 bg-[var(--negative-light)]  text-[var(--negative)] text-sm flex items-center gap-2">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
               {error}
             </div>

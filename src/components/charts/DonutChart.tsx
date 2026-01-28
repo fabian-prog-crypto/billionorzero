@@ -123,7 +123,7 @@ export default function DonutChart({
         <h4 className="text-[15px] font-medium mb-3">{title}</h4>
         <div className="flex items-center gap-5">
           <div
-            className="rounded-full bg-[var(--background-secondary)] flex items-center justify-center"
+            className=" bg-[var(--background-secondary)] flex items-center justify-center"
             style={{ width: size, height: size }}
           >
             <span className="text-[11px] text-[var(--foreground-muted)]">No data</span>
@@ -213,7 +213,7 @@ export default function DonutChart({
               >
                 <div className="flex items-center gap-1.5 min-w-0">
                   <div
-                    className="w-2 h-2 rounded-sm flex-shrink-0"
+                    className="w-2 h-2  flex-shrink-0"
                     style={{ backgroundColor: item.color }}
                   />
                   <span className="text-[12px] truncate">{item.label}</span>

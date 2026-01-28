@@ -235,7 +235,7 @@ export default function AssetDetailPage() {
             <div className="flex items-center gap-2">
               <h1 className="text-[15px] font-semibold">{assetData.symbol.toUpperCase()}</h1>
               <span
-                className="px-1.5 py-0.5 text-[10px] font-medium rounded"
+                className="px-1.5 py-0.5 text-[10px] font-medium "
                 style={{
                   backgroundColor: `${assetData.exposureCategoryColor}20`,
                   color: assetData.exposureCategoryColor,
@@ -253,7 +253,7 @@ export default function AssetDetailPage() {
                   {formatCurrency(assetData.currentPrice)}
                 </span>
                 {assetData.hasCustomPrice && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]" />
+                  <span className="w-1.5 h-1.5  bg-[var(--accent-primary)]" />
                 )}
                 <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity" />
               </button>
@@ -390,15 +390,15 @@ export default function AssetDetailPage() {
                   <td className="py-1.5">
                     <div className="flex items-center gap-1">
                       {group.chain && (
-                        <span className="text-[10px] px-1 py-0 rounded bg-[var(--background-tertiary)] text-[var(--foreground-muted)]">{group.chain}</span>
+                        <span className="text-[10px] px-1 py-0  bg-[var(--background-tertiary)] text-[var(--foreground-muted)]">{group.chain}</span>
                       )}
                       {group.protocol && (
-                        <span className="text-[10px] px-1 py-0 rounded bg-[var(--accent-primary)] text-white">
+                        <span className="text-[10px] px-1 py-0  bg-[var(--accent-primary)] text-white">
                           {group.protocol}
                         </span>
                       )}
                       {group.isDebt && (
-                        <span className="px-1 py-0 text-[9px] font-semibold bg-[var(--negative)] text-white rounded">
+                        <span className="px-1 py-0 text-[9px] font-semibold bg-[var(--negative)] text-white ">
                           DEBT
                         </span>
                       )}

@@ -130,8 +130,8 @@ export default function LoginScreen() {
   return (
     <div className="fixed inset-0 landing-bg grid-bg overflow-hidden">
       {/* Ambient glow elements */}
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-[var(--accent-primary)] opacity-[0.03] rounded-full blur-3xl" />
-      <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-purple-500 opacity-[0.03] rounded-full blur-3xl" />
+      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-[var(--accent-primary)] opacity-[0.03]  blur-3xl" />
+      <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-purple-500 opacity-[0.03]  blur-3xl" />
 
       <div className="relative z-10 min-h-screen flex flex-col items-center justify-center p-6">
         {/* Main content */}
@@ -143,10 +143,10 @@ export default function LoginScreen() {
           >
             {/* Logo */}
             <div className="relative inline-flex mb-8">
-              <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-[var(--accent-primary)] to-purple-600 flex items-center justify-center animate-float">
+              <div className="w-20 h-20  bg-gradient-to-br from-[var(--accent-primary)] to-purple-600 flex items-center justify-center animate-float">
                 <TrendingUp className="w-10 h-10 text-white" strokeWidth={2.5} />
               </div>
-              <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-[var(--accent-primary)] to-purple-600 blur-xl opacity-40" />
+              <div className="absolute inset-0  bg-gradient-to-br from-[var(--accent-primary)] to-purple-600 blur-xl opacity-40" />
             </div>
 
             {/* Title */}
@@ -169,7 +169,7 @@ export default function LoginScreen() {
           >
             {!supported ? (
               <div className="text-center">
-                <div className="w-16 h-16 rounded-full bg-[var(--background-tertiary)] flex items-center justify-center mx-auto mb-6">
+                <div className="w-16 h-16  bg-[var(--background-tertiary)] flex items-center justify-center mx-auto mb-6">
                   <AlertCircle className="w-8 h-8 text-[var(--foreground-muted)]" />
                 </div>
                 <h2 className="font-poppins text-xl font-semibold mb-2">Passkeys not supported</h2>
@@ -183,10 +183,10 @@ export default function LoginScreen() {
             ) : hasPasskey ? (
               <div className="text-center">
                 <div className="relative inline-flex mb-6">
-                  <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[var(--accent-primary)]/20 to-purple-600/20 flex items-center justify-center">
+                  <div className="w-20 h-20  bg-gradient-to-br from-[var(--accent-primary)]/20 to-purple-600/20 flex items-center justify-center">
                     <Fingerprint className="w-10 h-10 text-[var(--accent-primary)]" />
                   </div>
-                  <div className="absolute inset-0 rounded-full animate-glow-pulse opacity-30" />
+                  <div className="absolute inset-0  animate-glow-pulse opacity-30" />
                 </div>
                 <h2 className="font-poppins text-2xl font-semibold mb-2">Welcome back</h2>
                 <p className="text-[var(--foreground-muted)] mb-8 text-sm">
@@ -194,7 +194,7 @@ export default function LoginScreen() {
                 </p>
 
                 {error && (
-                  <div className="mb-6 p-4 bg-[var(--negative-light)] border border-[var(--negative)]/20 rounded-xl text-[var(--negative)] text-sm">
+                  <div className="mb-6 p-4 bg-[var(--negative-light)] border border-[var(--negative)]/20  text-[var(--negative)] text-sm">
                     {error}
                   </div>
                 )}
@@ -206,7 +206,7 @@ export default function LoginScreen() {
                 >
                   {isLoading ? (
                     <span className="flex items-center justify-center gap-3">
-                      <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span className="w-5 h-5 border-2 border-white/30 border-t-white  animate-spin" />
                       Authenticating...
                     </span>
                   ) : (
@@ -220,7 +220,7 @@ export default function LoginScreen() {
             ) : (
               <div className="text-center">
                 <div className="relative inline-flex mb-6">
-                  <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[var(--accent-primary)]/20 to-purple-600/20 flex items-center justify-center">
+                  <div className="w-20 h-20  bg-gradient-to-br from-[var(--accent-primary)]/20 to-purple-600/20 flex items-center justify-center">
                     <KeyRound className="w-10 h-10 text-[var(--accent-primary)]" />
                   </div>
                 </div>
@@ -230,7 +230,7 @@ export default function LoginScreen() {
                 </p>
 
                 {error && (
-                  <div className="mb-6 p-4 bg-[var(--negative-light)] border border-[var(--negative)]/20 rounded-xl text-[var(--negative)] text-sm">
+                  <div className="mb-6 p-4 bg-[var(--negative-light)] border border-[var(--negative)]/20  text-[var(--negative)] text-sm">
                     {error}
                   </div>
                 )}
@@ -242,7 +242,7 @@ export default function LoginScreen() {
                 >
                   {isLoading ? (
                     <span className="flex items-center justify-center gap-3">
-                      <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span className="w-5 h-5 border-2 border-white/30 border-t-white  animate-spin" />
                       Setting up...
                     </span>
                   ) : (
@@ -269,19 +269,19 @@ export default function LoginScreen() {
             style={{ animationDelay: '0.5s', animationFillMode: 'forwards' }}
           >
             <div className="text-center">
-              <div className="w-10 h-10 rounded-xl bg-[var(--background-tertiary)] flex items-center justify-center mx-auto mb-3">
+              <div className="w-10 h-10  bg-[var(--background-tertiary)] flex items-center justify-center mx-auto mb-3">
                 <TrendingUp className="w-5 h-5 text-[var(--accent-primary)]" />
               </div>
               <p className="text-xs text-[var(--foreground-muted)]">Real-time Tracking</p>
             </div>
             <div className="text-center">
-              <div className="w-10 h-10 rounded-xl bg-[var(--background-tertiary)] flex items-center justify-center mx-auto mb-3">
+              <div className="w-10 h-10  bg-[var(--background-tertiary)] flex items-center justify-center mx-auto mb-3">
                 <Shield className="w-5 h-5 text-[var(--accent-primary)]" />
               </div>
               <p className="text-xs text-[var(--foreground-muted)]">Local & Secure</p>
             </div>
             <div className="text-center">
-              <div className="w-10 h-10 rounded-xl bg-[var(--background-tertiary)] flex items-center justify-center mx-auto mb-3">
+              <div className="w-10 h-10  bg-[var(--background-tertiary)] flex items-center justify-center mx-auto mb-3">
                 <Zap className="w-5 h-5 text-[var(--accent-primary)]" />
               </div>
               <p className="text-xs text-[var(--foreground-muted)]">Multi-Chain</p>

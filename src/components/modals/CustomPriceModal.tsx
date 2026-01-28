@@ -65,7 +65,7 @@ export default function CustomPriceModal({
       <div className="modal-content max-w-md" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-[var(--accent-primary)] rounded-full flex items-center justify-center">
+            <div className="w-10 h-10 bg-[var(--accent-primary)]  flex items-center justify-center">
               <DollarSign className="w-5 h-5 text-white" />
             </div>
             <div>
@@ -77,14 +77,14 @@ export default function CustomPriceModal({
           </div>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-[var(--background-secondary)] rounded-lg transition-colors"
+            className="p-2 hover:bg-[var(--background-secondary)]  transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Market price info */}
-        <div className="p-3 bg-[var(--background-secondary)] rounded-lg mb-4">
+        <div className="p-3 bg-[var(--background-secondary)]  mb-4">
           <div className="flex items-center justify-between">
             <span className="text-sm text-[var(--foreground-muted)]">Market Price</span>
             <div className="flex items-center gap-2">
@@ -138,7 +138,7 @@ export default function CustomPriceModal({
               placeholder="e.g., OTC deal, locked tokens, vesting..."
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              className="w-full"
+              className="form-input w-full"
             />
           </div>
 

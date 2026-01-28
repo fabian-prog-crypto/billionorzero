@@ -163,7 +163,7 @@ export default function AddPositionModal({
           <h2 className="text-xl font-semibold">Add Position</h2>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-[var(--background-secondary)] rounded-lg transition-colors"
+            className="p-2 hover:bg-[var(--background-secondary)]  transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -180,7 +180,7 @@ export default function AddPositionModal({
                 setSearchResults([]);
                 setSelectedAsset(null);
               }}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              className={`px-4 py-2  text-sm font-medium transition-colors ${
                 tab === t
                   ? 'bg-[var(--accent-primary)] text-white'
                   : 'bg-[var(--tag-bg)] text-[var(--tag-text)] hover:bg-[var(--border)]'
@@ -197,7 +197,7 @@ export default function AddPositionModal({
             <button
               type="button"
               onClick={() => setEquityType('stock')}
-              className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+              className={`px-3 py-1.5  text-sm font-medium transition-colors ${
                 equityType === 'stock'
                   ? 'bg-[#E91E63] text-white'
                   : 'bg-[var(--background-secondary)] text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
@@ -208,7 +208,7 @@ export default function AddPositionModal({
             <button
               type="button"
               onClick={() => setEquityType('etf')}
-              className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+              className={`px-3 py-1.5  text-sm font-medium transition-colors ${
                 equityType === 'etf'
                   ? 'bg-[#9C27B0] text-white'
                   : 'bg-[var(--background-secondary)] text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
@@ -230,7 +230,7 @@ export default function AddPositionModal({
                   placeholder="e.g., Revolut, Chase Savings"
                   value={cashAccountName}
                   onChange={(e) => setCashAccountName(e.target.value)}
-                  className="w-full"
+                  className="form-input w-full"
                   required
                 />
               </div>
@@ -240,7 +240,7 @@ export default function AddPositionModal({
                   <select
                     value={cashCurrency}
                     onChange={(e) => setCashCurrency(e.target.value)}
-                    className="w-full"
+                    className="form-input w-full"
                   >
                     <option value="USD">USD ($)</option>
                     <option value="EUR">EUR (€)</option>
@@ -259,7 +259,7 @@ export default function AddPositionModal({
                     placeholder="0.00"
                     value={cashBalance}
                     onChange={(e) => setCashBalance(e.target.value)}
-                    className="w-full"
+                    className="form-input w-full"
                     required
                   />
                 </div>
@@ -269,22 +269,22 @@ export default function AddPositionModal({
             <>
               {/* Search input */}
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--foreground-muted)]" />
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--foreground-muted)]" />
                 <input
                   type="text"
                   placeholder={`Search ${tab === 'crypto' ? 'cryptocurrencies' : equityType === 'etf' ? 'ETFs' : 'stocks'}...`}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10"
+                  className="form-input w-full pl-8"
                 />
                 {isSearching && (
-                  <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-[var(--foreground-muted)]" />
+                  <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 animate-spin text-[var(--foreground-muted)]" />
                 )}
               </div>
 
               {/* Search results */}
               {searchResults.length > 0 && !selectedAsset && (
-                <div className="border border-[var(--border)] rounded-lg max-h-48 overflow-y-auto">
+                <div className="border border-[var(--border)]  max-h-48 overflow-y-auto">
                   {searchResults.map((result) => (
                     <button
                       key={tab === 'crypto' ? result.id : result.symbol}
@@ -296,7 +296,7 @@ export default function AddPositionModal({
                         <img
                           src={result.image}
                           alt={result.symbol}
-                          className="w-6 h-6 rounded-full"
+                          className="w-6 h-6 "
                         />
                       )}
                       <div>
@@ -314,12 +314,12 @@ export default function AddPositionModal({
 
               {/* Selected asset */}
               {selectedAsset && (
-                <div className="p-3 bg-[var(--background-secondary)] rounded-lg flex items-center gap-3">
+                <div className="p-3 bg-[var(--background-secondary)]  flex items-center gap-3">
                   {tab === 'crypto' && selectedAsset.image && (
                     <img
                       src={selectedAsset.image}
                       alt={selectedAsset.symbol}
-                      className="w-8 h-8 rounded-full"
+                      className="w-8 h-8 "
                     />
                   )}
                   <div className="flex-1">
@@ -335,7 +335,7 @@ export default function AddPositionModal({
                   <button
                     type="button"
                     onClick={() => setSelectedAsset(null)}
-                    className="p-1 hover:bg-[var(--border)] rounded"
+                    className="p-1 hover:bg-[var(--border)] "
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -353,7 +353,7 @@ export default function AddPositionModal({
                     placeholder="e.g., GOLD"
                     value={manualSymbol}
                     onChange={(e) => setManualSymbol(e.target.value)}
-                    className="w-full"
+                    className="form-input w-full"
                     required
                   />
                 </div>
@@ -364,7 +364,7 @@ export default function AddPositionModal({
                     placeholder="e.g., Gold"
                     value={manualName}
                     onChange={(e) => setManualName(e.target.value)}
-                    className="w-full"
+                    className="form-input w-full"
                     required
                   />
                 </div>
@@ -377,7 +377,7 @@ export default function AddPositionModal({
                   placeholder="0.00"
                   value={manualPrice}
                   onChange={(e) => setManualPrice(e.target.value)}
-                  className="w-full"
+                  className="form-input w-full"
                   required
                 />
               </div>
@@ -396,7 +396,7 @@ export default function AddPositionModal({
                     placeholder="0.00"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
-                    className="w-full"
+                    className="form-input w-full"
                     required
                   />
                 </div>
@@ -410,7 +410,7 @@ export default function AddPositionModal({
                     placeholder="Total cost in USD"
                     value={costBasis}
                     onChange={(e) => setCostBasis(e.target.value)}
-                    className="w-full"
+                    className="form-input w-full"
                   />
                 </div>
               </div>
@@ -422,7 +422,7 @@ export default function AddPositionModal({
                   type="date"
                   value={purchaseDate}
                   onChange={(e) => setPurchaseDate(e.target.value)}
-                  className="w-full"
+                  className="form-input w-full"
                   max={new Date().toISOString().split('T')[0]}
                 />
               </div>

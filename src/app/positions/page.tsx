@@ -346,16 +346,11 @@ export default function PositionsPage() {
             </span>
           </div>
         </div>
-        <div className="flex gap-6 text-right">
-          <div>
-            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-0.5">Positions</p>
-            <p className="text-[13px] font-medium">{totalPositionCount}</p>
-          </div>
-          <div>
-            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-0.5">Assets</p>
-            <p className="text-[13px] font-medium">{uniqueAssetCount}</p>
-          </div>
-        </div>
+        <SearchInput
+          value={searchQuery}
+          onChange={setSearchQuery}
+          placeholder="Search..."
+        />
       </div>
 
       <hr className="border-[var(--border)] mb-6" />
@@ -371,7 +366,7 @@ export default function PositionsPage() {
               <button
                 key={opt.value}
                 onClick={() => toggleFilter(opt.value)}
-                className={`px-3 py-1.5 text-sm font-medium rounded-full border transition-colors flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 text-sm font-medium  border transition-colors flex items-center gap-1.5 ${
                   isActive
                     ? 'bg-[var(--accent-primary)] text-white border-[var(--accent-primary)]'
                     : 'bg-[var(--background)] border-[var(--border)] hover:border-[var(--foreground-muted)] text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
@@ -379,7 +374,7 @@ export default function PositionsPage() {
               >
                 {opt.color && (
                   <span
-                    className="w-2 h-2 rounded-full"
+                    className="w-2 h-2 "
                     style={{ backgroundColor: isActive ? 'white' : opt.color }}
                   />
                 )}
@@ -407,7 +402,7 @@ export default function PositionsPage() {
                 <button
                   key={sub.value}
                   onClick={() => toggleFilter(sub.value)}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-full border transition-colors flex items-center gap-1 ${
+                  className={`px-2.5 py-1 text-xs font-medium  border transition-colors flex items-center gap-1 ${
                     isActive
                       ? 'bg-[var(--accent-primary)] text-white border-[var(--accent-primary)]'
                       : 'bg-[var(--background-secondary)] border-[var(--border)] hover:border-[var(--foreground-muted)] text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
@@ -415,7 +410,7 @@ export default function PositionsPage() {
                 >
                   {sub.color && (
                     <span
-                      className="w-1.5 h-1.5 rounded-full"
+                      className="w-1.5 h-1.5 "
                       style={{ backgroundColor: isActive ? 'white' : sub.color }}
                     />
                   )}
@@ -441,13 +436,6 @@ export default function PositionsPage() {
 
           {/* Spacer */}
           <div className="flex-1" />
-
-          {/* Search */}
-          <SearchInput
-            value={searchQuery}
-            onChange={setSearchQuery}
-            placeholder="Search..."
-          />
 
           {/* Actions */}
           <button
@@ -554,7 +542,7 @@ export default function PositionsPage() {
                           <div className="flex items-center gap-2">
                             <p className="font-medium text-sm hover:text-[var(--accent-primary)] transition-colors">{position.symbol.toUpperCase()}</p>
                             {isDebt && (
-                              <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-[var(--negative)] text-white rounded">
+                              <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-[var(--negative)] text-white ">
                                 DEBT
                               </span>
                             )}
@@ -592,7 +580,7 @@ export default function PositionsPage() {
                         >
                           {position.currentPrice > 0 ? formatCurrency(position.currentPrice) : '-'}
                           {position.hasCustomPrice && (
-                            <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]" title="Custom price" />
+                            <span className="w-1.5 h-1.5  bg-[var(--accent-primary)]" title="Custom price" />
                           )}
                           <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity" />
                         </button>
@@ -632,7 +620,7 @@ export default function PositionsPage() {
                       <td className="py-2 text-right">
                         <button
                           onClick={() => handleDelete(position.id, isWalletPosition)}
-                          className={`p-2 rounded-lg transition-colors ${
+                          className={`p-2  transition-colors ${
                             isWalletPosition
                               ? 'text-[var(--foreground-muted)] cursor-not-allowed opacity-50'
                               : 'hover:bg-[var(--negative-light)] text-[var(--negative)]'
@@ -714,7 +702,7 @@ export default function PositionsPage() {
                       >
                         {formatCurrency(asset.currentPrice)}
                         {asset.hasCustomPrice && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]" title="Custom price" />
+                          <span className="w-1.5 h-1.5  bg-[var(--accent-primary)]" title="Custom price" />
                         )}
                         <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity" />
                       </button>

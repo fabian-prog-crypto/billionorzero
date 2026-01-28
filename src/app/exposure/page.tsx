@@ -93,7 +93,7 @@ export default function ExposurePage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: EXPOSURE_COLORS.stablecoins }} />
+            <div className="w-2.5 h-2.5 " style={{ backgroundColor: EXPOSURE_COLORS.stablecoins }} />
             <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)]">CASH & EQUIVALENTS</p>
           </div>
           <p className="text-xl font-semibold">{hideBalances ? '••••' : formatCurrency(cashItem?.value || 0)}</p>
@@ -101,7 +101,7 @@ export default function ExposurePage() {
         </div>
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: CRYPTO_COLORS.btc }} />
+            <div className="w-2.5 h-2.5 " style={{ backgroundColor: CRYPTO_COLORS.btc }} />
             <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)]">BTC</p>
           </div>
           <p className="text-xl font-semibold">{hideBalances ? '••••' : formatCurrency(btcItem?.value || 0)}</p>
@@ -109,7 +109,7 @@ export default function ExposurePage() {
         </div>
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: CRYPTO_COLORS.eth }} />
+            <div className="w-2.5 h-2.5 " style={{ backgroundColor: CRYPTO_COLORS.eth }} />
             <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)]">ETH</p>
           </div>
           <p className="text-xl font-semibold">{hideBalances ? '••••' : formatCurrency(ethItem?.value || 0)}</p>
@@ -117,7 +117,7 @@ export default function ExposurePage() {
         </div>
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: EXPOSURE_COLORS.other }} />
+            <div className="w-2.5 h-2.5 " style={{ backgroundColor: EXPOSURE_COLORS.other }} />
             <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)]">TOKENS</p>
           </div>
           <p className="text-xl font-semibold">{hideBalances ? '••••' : formatCurrency(tokensItem?.value || 0)}</p>
@@ -242,7 +242,7 @@ export default function ExposurePage() {
                 <div className="flex items-center justify-between py-2 border-b border-[var(--border)]">
                   <div className="flex items-center gap-2">
                     <div
-                      className="w-2.5 h-2.5 rounded-sm"
+                      className="w-2.5 h-2.5 "
                       style={{ backgroundColor: cat.color }}
                     />
                     <span className="text-[13px] font-semibold">{cat.label}</span>
@@ -269,7 +269,7 @@ export default function ExposurePage() {
                       <div key={sub.category} className="flex items-center justify-between text-[13px]">
                         <div className="flex items-center gap-2">
                           <div
-                            className="w-2 h-2 rounded-full"
+                            className="w-2 h-2 "
                             style={{ backgroundColor: sub.color }}
                           />
                           <span className="text-[var(--foreground-muted)]">{sub.label}</span>
@@ -410,7 +410,7 @@ export default function ExposurePage() {
                 >
                   <td className="py-3">
                     <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 bg-[var(--tag-bg)] rounded-full flex items-center justify-center text-xs font-semibold">
+                      <div className="w-6 h-6 bg-[var(--tag-bg)]  flex items-center justify-center text-xs font-semibold">
                         {asset.symbol.slice(0, 1)}
                       </div>
                       <span className="text-[13px] font-medium">{asset.symbol.toUpperCase()}</span>

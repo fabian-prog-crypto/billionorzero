@@ -94,7 +94,7 @@ export default function OverviewPage() {
             {hideBalances ? '••••••••' : formatCurrency(summary.totalValue)}
           </h2>
           <div className="flex items-center gap-3">
-            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg ${
+            <div className={`flex items-center gap-1.5 px-3 py-1.5  ${
               summary.changePercent24h >= 0 ? 'bg-[var(--positive-light)]' : 'bg-[var(--negative-light)]'
             }`}>
               {summary.changePercent24h >= 0 ? (

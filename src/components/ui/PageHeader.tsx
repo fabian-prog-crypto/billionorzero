@@ -91,21 +91,21 @@ export default function PageHeader({
       {/* Category Filters */}
       {hasFilters && (
         <div className="flex items-center gap-2 mb-4">
-          <div className="flex items-center gap-1 p-1 bg-[var(--background-secondary)] rounded-lg">
+          <div className="flex items-center gap-1 p-1 bg-[var(--background-secondary)]">
             {filterOptions.map((opt) => {
               const isSelected = selectedFilters?.has(opt.value);
               return (
                 <button
                   key={opt.value}
                   onClick={() => onFilterToggle(opt.value)}
-                  className={`px-3 py-1.5 text-[11px] font-medium rounded-md transition-all flex items-center gap-1.5 ${
+                  className={`px-3 py-1.5 text-[11px] font-medium transition-all flex items-center gap-1.5 ${
                     isSelected
                       ? 'bg-[var(--background)] text-[var(--foreground)] shadow-sm'
                       : 'text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
                   }`}
                 >
                   <span
-                    className="w-2 h-2 rounded-full"
+                    className="w-2 h-2"
                     style={{ backgroundColor: opt.color }}
                   />
                   {opt.label}
@@ -129,12 +129,12 @@ export default function PageHeader({
       <div className="flex flex-wrap items-center gap-3">
         {/* Tabs */}
         {tabs && tabs.length > 0 && onTabChange && (
-          <div className="flex gap-1 p-1 bg-[var(--background-secondary)] rounded-lg">
+          <div className="flex gap-1 p-1 bg-[var(--background-secondary)]">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => onTabChange(tab.id)}
-                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 text-sm font-medium transition-colors flex items-center gap-1.5 ${
                   activeTab === tab.id
                     ? 'bg-[var(--background)] text-[var(--foreground)] shadow-sm'
                     : 'text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
@@ -159,7 +159,7 @@ export default function PageHeader({
               type="checkbox"
               checked={hideDust}
               onChange={() => onToggleHideDust()}
-              className="w-4 h-4 rounded border-[var(--border)] text-[var(--accent-primary)] focus:ring-[var(--accent-primary)]"
+              className="w-4 h-4 border-[var(--border)] text-[var(--accent-primary)] focus:ring-[var(--accent-primary)]"
             />
             Hide dust
           </label>
@@ -167,14 +167,14 @@ export default function PageHeader({
 
         {/* Search */}
         {onSearchChange && (
-          <div className="relative min-w-[160px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--foreground-muted)]" />
+          <div className="relative" style={{ width: '120px' }}>
+            <Search className="absolute left-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-[var(--foreground-muted)]" />
             <input
               type="text"
               placeholder={searchPlaceholder}
               value={searchQuery || ''}
               onChange={(e) => onSearchChange(e.target.value)}
-              className="pl-10 w-full text-sm py-2"
+              className="search-input w-full"
             />
           </div>
         )}

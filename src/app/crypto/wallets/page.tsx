@@ -118,11 +118,11 @@ export default function WalletsPage() {
 
       {wallets.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16">
-          <div className="w-16 h-16 bg-[var(--background-secondary)] rounded-full flex items-center justify-center mb-4">
-            <Wallet className="w-8 h-8 text-[var(--foreground-muted)]" />
+          <div className="w-14 h-14 bg-[var(--background-secondary)]  flex items-center justify-center mb-4">
+            <Wallet className="w-6 h-6 text-[var(--foreground-muted)]" />
           </div>
-          <h3 className="text-lg font-semibold mb-2">No wallets connected</h3>
-          <p className="text-[var(--foreground-muted)] mb-4 text-center max-w-md">
+          <h3 className="text-[15px] font-semibold mb-2">No wallets connected</h3>
+          <p className="text-[13px] text-[var(--foreground-muted)] mb-4 text-center max-w-md">
             Connect a wallet to automatically track your crypto holdings across multiple chains.
           </p>
           <button
@@ -181,17 +181,17 @@ export default function WalletsPage() {
                     onClick={() => handleRowClick(wallet.id)}
                     className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--background-secondary)] transition-colors cursor-pointer"
                   >
-                    <td className="py-4">
+                    <td className="py-2">
                       <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 bg-[var(--tag-bg)] rounded-lg flex items-center justify-center">
-                          <Wallet className="w-4 h-4 text-[var(--foreground-muted)]" />
+                        <div className="w-6 h-6 bg-[var(--tag-bg)]  flex items-center justify-center">
+                          <Wallet className="w-3 h-3 text-[var(--foreground-muted)]" />
                         </div>
-                        <span className="font-medium">{wallet.name}</span>
+                        <span className="text-[13px] font-medium">{wallet.name}</span>
                       </div>
                     </td>
-                    <td className="py-4">
+                    <td className="py-2">
                       <div className="flex items-center gap-2">
-                        <code className="text-sm text-[var(--foreground-muted)] font-mono">
+                        <code className="text-[11px] text-[var(--foreground-muted)] font-mono">
                           {formatAddress(wallet.address, 8)}
                         </code>
                         <button
@@ -199,12 +199,12 @@ export default function WalletsPage() {
                             e.stopPropagation();
                             copyAddress(wallet.address);
                           }}
-                          className="p-1 hover:bg-[var(--border)] rounded"
+                          className="p-1 hover:bg-[var(--border)] "
                         >
                           {copiedAddress === wallet.address ? (
-                            <Check className="w-3 h-3 text-[var(--positive)]" />
+                            <Check className="w-2.5 h-2.5 text-[var(--positive)]" />
                           ) : (
-                            <Copy className="w-3 h-3 text-[var(--foreground-muted)]" />
+                            <Copy className="w-2.5 h-2.5 text-[var(--foreground-muted)]" />
                           )}
                         </button>
                         <a
@@ -212,36 +212,36 @@ export default function WalletsPage() {
                           target="_blank"
                           rel="noopener noreferrer"
                           onClick={(e) => e.stopPropagation()}
-                          className="p-1 hover:bg-[var(--border)] rounded"
+                          className="p-1 hover:bg-[var(--border)] "
                         >
-                          <ExternalLink className="w-3 h-3 text-[var(--foreground-muted)]" />
+                          <ExternalLink className="w-2.5 h-2.5 text-[var(--foreground-muted)]" />
                         </a>
                       </div>
                     </td>
-                    <td className="py-4">
+                    <td className="py-2">
                       <div className="flex gap-1 flex-wrap">
                         {(() => {
                           const detectedChains = getWalletChains(wallet.address);
                           const perpExchanges = wallet.perpExchanges || [];
                           if (detectedChains.length === 0 && perpExchanges.length === 0) {
-                            return <span className="text-xs text-[var(--foreground-muted)]">Syncing...</span>;
+                            return <span className="text-[10px] text-[var(--foreground-muted)]">Syncing...</span>;
                           }
                           return (
                             <>
                               {detectedChains.slice(0, 3).map((chain) => (
-                                <span key={chain} className="tag text-xs">
+                                <span key={chain} className="text-[10px] px-1 py-0  bg-[var(--tag-bg)] text-[var(--foreground-muted)]">
                                   {getChainName(chain)}
                                 </span>
                               ))}
                               {detectedChains.length > 3 && (
-                                <span className="tag text-xs">
+                                <span className="text-[10px] px-1 py-0  bg-[var(--tag-bg)] text-[var(--foreground-muted)]">
                                   +{detectedChains.length - 3}
                                 </span>
                               )}
                               {perpExchanges.map((exchangeId) => (
                                 <span
                                   key={exchangeId}
-                                  className="tag text-xs bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
+                                  className="text-[10px] px-1 py-0  bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
                                 >
                                   {getPerpExchangeName(exchangeId)}
                                 </span>
@@ -251,28 +251,28 @@ export default function WalletsPage() {
                         })()}
                       </div>
                     </td>
-                    <td className="py-4 text-right">
-                      <span className="text-sm">
+                    <td className="py-2 text-right">
+                      <span className="text-[11px]">
                         {walletPositions.length}
                       </span>
                     </td>
-                    <td className="py-4 text-right">
-                      <span className="font-semibold">
-                        {hideBalances ? '******' : formatCurrency(walletValue)}
+                    <td className="py-2 text-right">
+                      <span className="text-[13px] font-semibold">
+                        {hideBalances ? '••••••' : formatCurrency(walletValue)}
                       </span>
                     </td>
-                    <td className="py-4 text-right">
+                    <td className="py-2 text-right">
                       <div className="flex items-center justify-end gap-1">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             handleDelete(wallet.id);
                           }}
-                          className="p-2 hover:bg-[var(--negative-light)] rounded-lg text-[var(--negative)] transition-colors"
+                          className="p-1.5 hover:bg-[var(--negative-light)]  text-[var(--negative)] transition-colors"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
-                        <ChevronRight className="w-4 h-4 text-[var(--foreground-muted)]" />
+                        <ChevronRight className="w-3.5 h-3.5 text-[var(--foreground-muted)]" />
                       </div>
                     </td>
                   </tr>
@@ -286,9 +286,9 @@ export default function WalletsPage() {
       <hr className="border-[var(--border)] my-6" />
 
       {/* Info note */}
-      <div className="p-4 bg-[var(--background-secondary)] rounded-lg">
-        <h4 className="text-[13px] font-medium mb-2">About Wallet Tracking</h4>
-        <p className="text-[13px] text-[var(--foreground-muted)]">
+      <div>
+        <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">About Wallet Tracking</p>
+        <p className="text-[11px] text-[var(--foreground-muted)]">
           Wallets are tracked using the DeBank API. For perp exchange positions (Hyperliquid, Lighter, Ethereal),
           click on a wallet to enable specific exchanges. Only enabled exchanges will be queried for positions.
         </p>

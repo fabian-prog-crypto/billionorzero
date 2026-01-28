@@ -145,12 +145,12 @@ export default function SettingsPage() {
           </p>
 
           {!passkeySupported ? (
-            <div className="p-3 bg-[var(--background-secondary)] rounded-lg text-[13px] text-[var(--foreground-muted)]">
+            <div className="p-3 bg-[var(--background-secondary)]  text-[13px] text-[var(--foreground-muted)]">
               Passkeys are not supported in this browser.
             </div>
           ) : hasPasskey ? (
             <div className="space-y-4">
-              <div className="flex items-center justify-between p-3 bg-[var(--positive-light)] rounded-lg">
+              <div className="flex items-center justify-between p-3 bg-[var(--positive-light)] ">
                 <div className="flex items-center gap-2">
                   <Fingerprint className="w-5 h-5 text-[var(--positive)]" />
                   <span className="text-[13px] font-medium text-[var(--positive)]">Passkey enabled</span>
@@ -171,7 +171,7 @@ export default function SettingsPage() {
           ) : (
             <div className="space-y-4">
               {passkeyError && (
-                <div className="p-3 bg-[var(--negative-light)] rounded-lg text-[var(--negative)] text-[13px]">
+                <div className="p-3 bg-[var(--negative-light)]  text-[var(--negative)] text-[13px]">
                   {passkeyError}
                 </div>
               )}
@@ -183,7 +183,7 @@ export default function SettingsPage() {
               >
                 {passkeyLoading ? (
                   <span className="flex items-center gap-2">
-                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent  animate-spin" />
                     Setting up...
                   </span>
                 ) : (
@@ -396,7 +396,7 @@ export default function SettingsPage() {
             Portfolio data is automatically refreshed once per day.
           </p>
           <div className="flex items-center gap-3">
-            <div className="w-2 h-2 bg-[var(--positive)] rounded-full animate-pulse"></div>
+            <div className="w-2 h-2 bg-[var(--positive)]  animate-pulse"></div>
             <span className="text-[13px]">Auto-refresh enabled (daily)</span>
           </div>
         </div>
@@ -409,7 +409,7 @@ export default function SettingsPage() {
           <p className="text-[13px] text-[var(--foreground-muted)] mb-4">
             A snapshot of your portfolio value is taken once per day to track historical performance.
           </p>
-          <div className="flex items-center justify-between p-3 bg-[var(--background-secondary)] rounded-lg">
+          <div className="flex items-center justify-between p-3 bg-[var(--background-secondary)] ">
             <span className="text-[13px]">Total snapshots recorded</span>
             <span className="font-semibold">{snapshots.length}</span>
           </div>

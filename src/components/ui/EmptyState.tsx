@@ -13,19 +13,19 @@ interface EmptyStateProps {
 const sizeClasses = {
   sm: 'py-12',
   md: 'py-16',
-  lg: 'py-32',
+  lg: 'py-20',
 };
 
 const iconContainerSizes = {
-  sm: 'w-16 h-16',
-  md: 'w-16 h-16',
-  lg: 'w-20 h-20',
+  sm: 'w-12 h-12',
+  md: 'w-14 h-14',
+  lg: 'w-14 h-14',
 };
 
 const iconSizes = {
-  sm: 'w-8 h-8',
-  md: 'w-8 h-8',
-  lg: 'w-10 h-10',
+  sm: 'w-5 h-5',
+  md: 'w-6 h-6',
+  lg: 'w-6 h-6',
 };
 
 export default function EmptyState({
@@ -37,13 +37,13 @@ export default function EmptyState({
 }: EmptyStateProps) {
   return (
     <div className={`flex flex-col items-center justify-center ${sizeClasses[size]}`}>
-      <div className={`${iconContainerSizes[size]} rounded-2xl bg-[var(--background-tertiary)] flex items-center justify-center mb-6`}>
+      <div className={`${iconContainerSizes[size]} bg-[var(--background-secondary)] flex items-center justify-center mb-4`}>
         <div className={`${iconSizes[size]} text-[var(--foreground-muted)]`}>
           {icon}
         </div>
       </div>
-      <h2 className="text-xl font-semibold mb-2">{title}</h2>
-      <p className="text-[var(--foreground-muted)] text-center max-w-md mb-4">
+      <h2 className="text-[15px] font-semibold mb-2">{title}</h2>
+      <p className="text-[13px] text-[var(--foreground-muted)] text-center max-w-md mb-4">
         {description}
       </p>
       {action}

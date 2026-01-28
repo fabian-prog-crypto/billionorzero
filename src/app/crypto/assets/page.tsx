@@ -223,12 +223,12 @@ export default function CryptoPositionsPage() {
   if (breakdownData.cryptoPositions.length === 0) {
     return (
       <div>
-        <div className="flex flex-col items-center justify-center py-32">
-          <div className="w-20 h-20 rounded-2xl bg-[var(--background-tertiary)] flex items-center justify-center mb-6">
-            <Coins className="w-10 h-10 text-[var(--foreground-muted)]" />
+        <div className="flex flex-col items-center justify-center py-20">
+          <div className="w-14 h-14  bg-[var(--background-secondary)] flex items-center justify-center mb-4">
+            <Coins className="w-6 h-6 text-[var(--foreground-muted)]" />
           </div>
-          <h2 className="text-xl font-semibold mb-2">No crypto positions</h2>
-          <p className="text-[var(--foreground-muted)] text-center max-w-md">
+          <h2 className="text-[15px] font-semibold mb-2">No crypto positions</h2>
+          <p className="text-[13px] text-[var(--foreground-muted)] text-center max-w-md">
             Add crypto positions or connect a wallet to track your holdings.
           </p>
         </div>
@@ -252,16 +252,11 @@ export default function CryptoPositionsPage() {
           )}
         </div>
 
-        <div className="flex gap-6 text-right">
-          <div>
-            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-0.5">Positions</p>
-            <p className="text-[13px] font-medium">{breakdownData.cryptoPositions.length}</p>
-          </div>
-          <div>
-            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-0.5">Assets</p>
-            <p className="text-[13px] font-medium">{uniqueAssets}</p>
-          </div>
-        </div>
+        <SearchInput
+          value={searchQuery}
+          onChange={setSearchQuery}
+          placeholder="Search..."
+        />
       </div>
 
       <hr className="border-[var(--border)] mb-6" />
@@ -282,10 +277,10 @@ export default function CryptoPositionsPage() {
             {breakdownData.chartData.slice(0, 6).map((item) => (
               <div key={item.label}>
                 <div className="flex items-center gap-2 mb-2">
-                  <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: item.color }} />
+                  <div className="w-3 h-3 " style={{ backgroundColor: item.color }} />
                   <span className="text-[13px] font-medium">{item.label}</span>
                 </div>
-                <p className="text-lg font-semibold mb-0.5">
+                <p className="text-xl font-semibold mb-0.5">
                   {hideBalances ? '••••' : formatCurrency(item.value)}
                 </p>
                 <p className="text-[12px] text-[var(--foreground-muted)]">
@@ -303,7 +298,7 @@ export default function CryptoPositionsPage() {
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <button
           onClick={() => toggleCategory('all')}
-          className={`px-3 py-1.5 text-[12px] font-medium rounded-lg transition-all ${
+          className={`px-3 py-1.5 text-[12px] font-medium  transition-all ${
             selectedCategories.has('all')
               ? 'bg-[var(--accent-primary)] text-white'
               : 'bg-[var(--background-secondary)] text-[var(--foreground)] hover:bg-[var(--background-tertiary)]'
@@ -317,14 +312,14 @@ export default function CryptoPositionsPage() {
             <button
               key={opt.value}
               onClick={() => toggleCategory(opt.value)}
-              className={`px-3 py-1.5 text-[12px] font-medium rounded-lg transition-all flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 text-[12px] font-medium  transition-all flex items-center gap-1.5 ${
                 isSelected
                   ? 'bg-[var(--accent-primary)] text-white'
                   : 'bg-[var(--background-secondary)] text-[var(--foreground)] hover:bg-[var(--background-tertiary)]'
               }`}
             >
               <span
-                className="w-2 h-2 rounded-full"
+                className="w-2 h-2 "
                 style={{ backgroundColor: isSelected ? 'white' : opt.color }}
               />
               {opt.label}
@@ -354,14 +349,6 @@ export default function CryptoPositionsPage() {
         />
 
         <div className="flex-1" />
-
-        {/* Search */}
-        <SearchInput
-          value={searchQuery}
-          onChange={setSearchQuery}
-          placeholder="Search..."
-          className="flex-1 max-w-xs"
-        />
 
         {/* Export */}
         <button onClick={exportCSV} className="btn btn-secondary p-2" title="Export CSV">
@@ -430,7 +417,7 @@ export default function CryptoPositionsPage() {
                         <div className="flex items-center gap-2">
                           <p className="font-medium hover:text-[var(--accent-primary)] transition-colors">{position.symbol.toUpperCase()}</p>
                           {isDebt && (
-                            <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-[var(--negative)] text-white rounded">
+                            <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-[var(--negative)] text-white">
                               DEBT
                             </span>
                           )}
@@ -469,7 +456,7 @@ export default function CryptoPositionsPage() {
                       >
                         {position.currentPrice > 0 ? formatCurrency(position.currentPrice) : '-'}
                         {position.hasCustomPrice && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]" />
+                          <span className="w-1.5 h-1.5  bg-[var(--accent-primary)]" />
                         )}
                         <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity" />
                       </button>
@@ -487,7 +474,7 @@ export default function CryptoPositionsPage() {
                       {!isWalletPosition && !isCexPosition && (
                         <button
                           onClick={() => handleDelete(position.id, false)}
-                          className="p-2 rounded-lg hover:bg-[var(--negative-light)] text-[var(--negative)] transition-colors"
+                          className="p-2  hover:bg-[var(--negative-light)] text-[var(--negative)] transition-colors"
                           title="Delete position"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -551,13 +538,13 @@ export default function CryptoPositionsPage() {
                       const config = getExposureCategoryConfig(exposureCat);
                       return (
                         <span
-                          className="px-1.5 py-0.5 text-[10px] font-medium rounded inline-flex items-center gap-1"
+                          className="px-1.5 py-0.5 text-[10px] font-medium inline-flex items-center gap-1"
                           style={{
                             backgroundColor: `${config.color}1A`,
                             color: config.color,
                           }}
                         >
-                          <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: config.color }} />
+                          <span className="w-1.5 h-1.5 " style={{ backgroundColor: config.color }} />
                           {config.label}
                         </span>
                       );
@@ -573,7 +560,7 @@ export default function CryptoPositionsPage() {
                     >
                       {formatCurrency(asset.currentPrice)}
                       {asset.hasCustomPrice && (
-                        <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]" />
+                        <span className="w-1.5 h-1.5  bg-[var(--accent-primary)]" />
                       )}
                       <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity" />
                     </button>

@@ -1,11 +1,12 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Wallet, ExternalLink, Copy, Check } from 'lucide-react';
-import { useState } from 'react';
+import Link from 'next/link';
+import { ArrowLeft, Wallet, ExternalLink, Copy, Check, ChevronRight } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import { calculateAllPositionsWithPrices, calculatePortfolioSummary } from '@/services';
+import CryptoIcon from '@/components/ui/CryptoIcon';
 import {
   formatCurrency,
   formatPercent,
@@ -23,7 +24,7 @@ export default function WalletDetailPage() {
   const walletId = params.id as string;
   const [copiedAddress, setCopiedAddress] = useState(false);
 
-  const { wallets, positions, prices, hideBalances, updateWallet } = usePortfolioStore();
+  const { wallets, positions, prices, customPrices, hideBalances, updateWallet } = usePortfolioStore();
 
   const wallet = wallets.find((w) => w.id === walletId);
 
@@ -45,17 +46,16 @@ export default function WalletDetailPage() {
 
   // Calculate positions with prices
   const positionsWithPrices = useMemo(() => {
-    return calculateAllPositionsWithPrices(walletPositions, prices);
-  }, [walletPositions, prices]);
+    return calculateAllPositionsWithPrices(walletPositions, prices, customPrices);
+  }, [walletPositions, prices, customPrices]);
 
   // Get wallet summary from centralized service (single source of truth)
   const walletSummary = useMemo(() => {
-    return calculatePortfolioSummary(walletPositions, prices);
-  }, [walletPositions, prices]);
+    return calculatePortfolioSummary(walletPositions, prices, customPrices);
+  }, [walletPositions, prices, customPrices]);
 
   // Extract values from service - no local calculations
   const totalValue = walletSummary.totalValue;
-  const totalChange24h = walletSummary.change24h;
   const changePercent24h = walletSummary.changePercent24h;
 
   // Group by chain
@@ -80,19 +80,15 @@ export default function WalletDetailPage() {
 
   if (!wallet) {
     return (
-      <div>
-        <div className="card text-center py-12">
-          <p className="text-[var(--foreground-muted)] mb-4">
-            This wallet could not be found.
-          </p>
-          <button
-            onClick={() => router.push('/wallets')}
-            className="btn btn-primary"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Wallets
-          </button>
-        </div>
+      <div className="text-center py-20">
+        <p className="text-[var(--foreground-muted)] text-sm mb-4">Wallet not found</p>
+        <button
+          onClick={() => router.push('/crypto/wallets')}
+          className="btn btn-secondary text-sm"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          Back
+        </button>
       </div>
     );
   }
@@ -101,141 +97,141 @@ export default function WalletDetailPage() {
     <div>
       {/* Back button */}
       <button
-        onClick={() => router.push('/wallets')}
-        className="flex items-center gap-2 text-[var(--foreground-muted)] hover:text-[var(--foreground)] mb-6 transition-colors"
+        onClick={() => router.back()}
+        className="flex items-center gap-1.5 text-sm text-[var(--foreground-muted)] hover:text-[var(--foreground)] transition-colors mb-4"
       >
-        <ArrowLeft className="w-4 h-4" />
-        Back to Wallets
+        <ArrowLeft className="w-3.5 h-3.5" />
+        Back
       </button>
 
-      {/* Wallet info card */}
-      <div className="card mb-6">
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-[var(--accent-primary)] rounded-xl flex items-center justify-center">
-              <Wallet className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h2 className="text-xl font-semibold">{wallet.name}</h2>
-              <div className="flex items-center gap-2 mt-1">
-                <code className="text-sm text-[var(--foreground-muted)] font-mono">
-                  {formatAddress(wallet.address, 10)}
-                </code>
-                <button
-                  onClick={copyAddress}
-                  className="p-1 hover:bg-[var(--background-secondary)] rounded"
-                >
-                  {copiedAddress ? (
-                    <Check className="w-3.5 h-3.5 text-[var(--positive)]" />
-                  ) : (
-                    <Copy className="w-3.5 h-3.5 text-[var(--foreground-muted)]" />
-                  )}
-                </button>
-                <a
-                  href={`https://etherscan.io/address/${wallet.address}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-1 hover:bg-[var(--background-secondary)] rounded"
-                >
-                  <ExternalLink className="w-3.5 h-3.5 text-[var(--foreground-muted)]" />
-                </a>
-              </div>
-            </div>
+      {/* Header */}
+      <div className="flex items-start justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 bg-[var(--accent-primary)]  flex items-center justify-center">
+            <Wallet className="w-4 h-4 text-white" />
           </div>
-          <div className="text-right">
-            <p className="text-2xl font-bold">
-              {hideBalances ? '******' : formatCurrency(totalValue)}
-            </p>
-            <p className={`text-sm ${getChangeColor(changePercent24h)}`}>
-              {formatPercent(changePercent24h)} ({hideBalances ? '****' : formatCurrency(Math.abs(totalChange24h))}) 24h
-            </p>
-          </div>
-        </div>
-
-        {/* Chain badges - derived from actual positions (auto-detected by DeBank) */}
-        <div className="flex gap-2 mt-4 flex-wrap">
-          {Object.keys(positionsByChain).length > 0 ? (
-            Object.keys(positionsByChain).map((chain) => (
-              <span
-                key={chain}
-                className="px-2 py-1 text-xs rounded-full"
-                style={{
-                  backgroundColor: `${getChainColor(chain)}20`,
-                  color: getChainColor(chain),
-                }}
+          <div>
+            <h1 className="text-[15px] font-semibold">{wallet.name}</h1>
+            <div className="flex items-center gap-2 mt-0.5">
+              <button
+                onClick={copyAddress}
+                className="flex items-center gap-1 font-mono text-[11px] text-[var(--foreground-muted)] hover:text-[var(--foreground)] transition-colors"
               >
-                {chain.toUpperCase()}
-              </span>
-            ))
-          ) : (
-            <span className="text-xs text-[var(--foreground-muted)]">No assets detected</span>
-          )}
+                {formatAddress(wallet.address, 6)}
+                {copiedAddress ? (
+                  <Check className="w-2.5 h-2.5 text-[var(--positive)]" />
+                ) : (
+                  <Copy className="w-2.5 h-2.5 opacity-50" />
+                )}
+              </button>
+              <a
+                href={`https://etherscan.io/address/${wallet.address}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[var(--foreground-muted)] hover:text-[var(--foreground)]"
+              >
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+          </div>
         </div>
 
-        {/* Perp Exchange Settings */}
-        <div className="mt-4 pt-4 border-t border-[var(--border)]">
-          <p className="text-sm font-medium mb-2">Perp Exchanges</p>
-          <p className="text-xs text-[var(--foreground-muted)] mb-3">
-            Enable to fetch positions from perpetual futures exchanges
+        <div className="text-right">
+          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-0.5">Total Value</p>
+          <p className="text-[15px] font-semibold">
+            {hideBalances ? '••••••' : formatCurrency(totalValue)}
           </p>
-          <div className="flex flex-wrap gap-2">
-            {getSupportedPerpExchanges().map((exchange) => {
-              const isEnabled = wallet.perpExchanges?.includes(exchange.id) || false;
-              return (
-                <button
-                  key={exchange.id}
-                  onClick={() => togglePerpExchange(exchange.id)}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                    isEnabled
-                      ? 'bg-[var(--accent-primary)] text-white'
-                      : 'bg-[var(--background-secondary)] text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
-                  }`}
+          <p className={`text-[11px] ${getChangeColor(changePercent24h)}`}>
+            {formatPercent(changePercent24h)} 24h
+          </p>
+        </div>
+      </div>
+
+      <hr className="border-[var(--border)] mb-6" />
+
+      {/* Stats Row */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-6">
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-0.5">Assets</p>
+          <p className="text-[13px] font-medium">{positionsWithPrices.length}</p>
+        </div>
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-0.5">Chains</p>
+          <p className="text-[13px] font-medium">{Object.keys(positionsByChain).length}</p>
+        </div>
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-0.5">Added</p>
+          <p className="text-[13px] font-medium">{new Date(wallet.addedAt).toLocaleDateString()}</p>
+        </div>
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-0.5">Active Chains</p>
+          <div className="flex gap-1 flex-wrap mt-1">
+            {Object.keys(positionsByChain).length > 0 ? (
+              Object.keys(positionsByChain).map((chain) => (
+                <span
+                  key={chain}
+                  className="px-1 py-0 text-[10px] "
+                  style={{
+                    backgroundColor: `${getChainColor(chain)}20`,
+                    color: getChainColor(chain),
+                  }}
                 >
-                  {exchange.name}
-                </button>
-              );
-            })}
+                  {chain}
+                </span>
+              ))
+            ) : (
+              <span className="text-[10px] text-[var(--foreground-muted)]">--</span>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Stats row */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
-        <div className="card">
-          <p className="text-sm text-[var(--foreground-muted)] mb-1">Total Assets</p>
-          <p className="text-xl font-semibold">{positionsWithPrices.length}</p>
-        </div>
-        <div className="card">
-          <p className="text-sm text-[var(--foreground-muted)] mb-1">Chains</p>
-          <p className="text-xl font-semibold">{Object.keys(positionsByChain).length}</p>
-        </div>
-        <div className="card">
-          <p className="text-sm text-[var(--foreground-muted)] mb-1">Added</p>
-          <p className="text-xl font-semibold">
-            {new Date(wallet.addedAt).toLocaleDateString()}
-          </p>
+      {/* Perp Exchange Settings */}
+      <div className="mb-6">
+        <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">Perp Exchanges</p>
+        <div className="flex flex-wrap gap-1.5">
+          {getSupportedPerpExchanges().map((exchange) => {
+            const isEnabled = wallet.perpExchanges?.includes(exchange.id) || false;
+            return (
+              <button
+                key={exchange.id}
+                onClick={() => togglePerpExchange(exchange.id)}
+                className={`px-2 py-1  text-[11px] font-medium transition-colors ${
+                  isEnabled
+                    ? 'bg-[var(--accent-primary)] text-white'
+                    : 'bg-[var(--background-secondary)] text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
+                }`}
+              >
+                {exchange.name}
+              </button>
+            );
+          })}
         </div>
       </div>
+
+      <hr className="border-[var(--border)] mb-6" />
 
       {/* Assets table */}
-      <div className="card">
-        <h3 className="font-semibold mb-4">Assets ({positionsWithPrices.length})</h3>
+      <div>
+        <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">
+          Assets ({positionsWithPrices.length})
+        </p>
 
         {positionsWithPrices.length === 0 ? (
-          <p className="text-center py-8 text-[var(--foreground-muted)]">
-            No assets found in this wallet. Try syncing to fetch the latest data.
+          <p className="text-center py-8 text-[11px] text-[var(--foreground-muted)]">
+            No assets found in this wallet.
           </p>
         ) : (
           <table className="w-full">
             <thead>
               <tr className="border-b border-[var(--border)]">
-                <th className="table-header text-left pb-3">Asset</th>
-                <th className="table-header text-left pb-3">Chain</th>
-                <th className="table-header text-right pb-3">Amount</th>
-                <th className="table-header text-right pb-3">Price</th>
-                <th className="table-header text-right pb-3">Value</th>
-                <th className="table-header text-right pb-3">24h</th>
-                <th className="table-header text-right pb-3">%</th>
+                <th className="text-[11px] font-medium text-[var(--foreground-muted)] text-left pb-2">Asset</th>
+                <th className="text-[11px] font-medium text-[var(--foreground-muted)] text-left pb-2">Location</th>
+                <th className="text-[11px] font-medium text-[var(--foreground-muted)] text-right pb-2">Amount</th>
+                <th className="text-[11px] font-medium text-[var(--foreground-muted)] text-right pb-2">Price</th>
+                <th className="text-[11px] font-medium text-[var(--foreground-muted)] text-right pb-2">Value</th>
+                <th className="text-[11px] font-medium text-[var(--foreground-muted)] text-right pb-2">24h</th>
+                <th className="text-[11px] font-medium text-[var(--foreground-muted)] text-right pb-2">%</th>
               </tr>
             </thead>
             <tbody>
@@ -248,55 +244,58 @@ export default function WalletDetailPage() {
                       isDebt ? 'bg-[var(--negative-light)]' : ''
                     }`}
                   >
-                    <td className="py-3">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold ${
-                          isDebt ? 'bg-[var(--negative)] text-white' : 'bg-[var(--tag-bg)]'
-                        }`}>
-                          {position.symbol.slice(0, 2).toUpperCase()}
+                    <td className="py-1.5">
+                      <Link
+                        href={`/assets/${position.symbol.toLowerCase()}`}
+                        className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+                      >
+                        <CryptoIcon symbol={position.symbol} size={20} isDebt={isDebt} logoUrl={position.logo} />
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[11px] font-medium hover:text-[var(--accent-primary)] transition-colors">
+                            {position.symbol.toUpperCase()}
+                          </span>
+                          {isDebt && (
+                            <span className="px-1 py-0 text-[9px] font-semibold bg-[var(--negative)] text-white ">
+                              DEBT
+                            </span>
+                          )}
+                          <ChevronRight className="w-2.5 h-2.5 opacity-40" />
                         </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <p className="font-medium">{position.symbol.toUpperCase()}</p>
-                            {isDebt && (
-                              <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-[var(--negative)] text-white rounded">
-                                DEBT
-                              </span>
-                            )}
-                            {position.protocol && (
-                              <span className="px-1.5 py-0.5 text-[10px] font-medium bg-[var(--accent-primary)] text-white rounded">
-                                {position.protocol}
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-xs text-[var(--foreground-muted)]">{position.name}</p>
-                        </div>
+                      </Link>
+                    </td>
+                    <td className="py-1.5">
+                      <div className="flex items-center gap-1">
+                        {position.chain && (
+                          <span
+                            className="px-1 py-0 text-[10px] "
+                            style={{
+                              backgroundColor: `${getChainColor(position.chain)}20`,
+                              color: getChainColor(position.chain),
+                            }}
+                          >
+                            {position.chain}
+                          </span>
+                        )}
+                        {position.protocol && (
+                          <span className="px-1 py-0 text-[10px]  bg-[var(--accent-primary)] text-white">
+                            {position.protocol}
+                          </span>
+                        )}
                       </div>
                     </td>
-                    <td className="py-3">
-                      <span
-                        className="px-2 py-0.5 text-xs rounded-full"
-                        style={{
-                          backgroundColor: `${getChainColor(position.chain || 'eth')}20`,
-                          color: getChainColor(position.chain || 'eth'),
-                        }}
-                      >
-                        {(position.chain || 'eth').toUpperCase()}
-                      </span>
+                    <td className="py-1.5 text-right font-mono text-[11px]">
+                      {hideBalances ? '••••' : formatNumber(position.amount)}
                     </td>
-                    <td className="py-3 text-right font-mono text-sm">
-                      {hideBalances ? '***' : formatNumber(position.amount)}
-                    </td>
-                    <td className="py-3 text-right font-mono text-sm">
+                    <td className="py-1.5 text-right font-mono text-[11px]">
                       {position.currentPrice > 0 ? formatCurrency(position.currentPrice) : '-'}
                     </td>
-                    <td className={`py-3 text-right font-semibold ${isDebt ? 'text-[var(--negative)]' : ''}`}>
-                      {hideBalances ? '****' : position.value !== 0 ? formatCurrency(position.value) : '-'}
+                    <td className={`py-1.5 text-right text-[11px] font-medium ${isDebt ? 'text-[var(--negative)]' : ''}`}>
+                      {hideBalances ? '••••' : position.value !== 0 ? formatCurrency(position.value) : '-'}
                     </td>
-                    <td className={`py-3 text-right ${getChangeColor(position.changePercent24h)}`}>
+                    <td className={`py-1.5 text-right text-[11px] ${getChangeColor(position.changePercent24h)}`}>
                       {position.currentPrice > 0 ? formatPercent(position.changePercent24h) : '-'}
                     </td>
-                    <td className={`py-3 text-right ${isDebt ? 'text-[var(--negative)]' : 'text-[var(--foreground-muted)]'}`}>
+                    <td className={`py-1.5 text-right text-[10px] ${isDebt ? 'text-[var(--negative)]' : 'text-[var(--foreground-muted)]'}`}>
                       {position.allocation.toFixed(1)}%
                     </td>
                   </tr>
@@ -305,6 +304,16 @@ export default function WalletDetailPage() {
             </tbody>
           </table>
         )}
+
+        {/* Summary Footer */}
+        <div className="mt-2 pt-2 border-t border-[var(--border)] flex justify-between items-center">
+          <span className="text-[10px] text-[var(--foreground-muted)]">
+            {positionsWithPrices.length} asset{positionsWithPrices.length !== 1 ? 's' : ''} across {Object.keys(positionsByChain).length} chain{Object.keys(positionsByChain).length !== 1 ? 's' : ''}
+          </span>
+          <span className="text-xs font-medium">
+            {hideBalances ? '••••••' : formatCurrency(totalValue)}
+          </span>
+        </div>
       </div>
     </div>
   );

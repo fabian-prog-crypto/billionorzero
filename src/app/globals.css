@@ -180,8 +180,6 @@ body {
 input, select {
   background: var(--background);
   border: 1px solid var(--border);
-  padding: 10px 12px;
-  font-size: 16px;
   color: var(--foreground);
   transition: border-color 0.15s ease;
 }
@@ -189,11 +187,23 @@ input, select {
 input:focus, select:focus {
   outline: none;
   border-color: var(--accent-primary);
-  box-shadow: 0 0 0 3px var(--accent-glow);
 }
 
 input::placeholder {
   color: var(--foreground-subtle);
+}
+
+/* Search input - compact */
+.search-input {
+  padding: 4px 6px 4px 24px;
+  font-size: 11px;
+  height: 26px;
+}
+
+/* Form input - standard size */
+.form-input {
+  padding: 8px 12px;
+  font-size: 14px;
 }
 
 /* Buttons - clean, compact */
@@ -341,17 +351,17 @@ input::placeholder {
   position: absolute;
   top: 100%;
   right: 0;
-  margin-top: 8px;
-  padding: 8px 12px;
+  margin-top: 4px;
+  padding: 4px 8px;
   background: var(--background-tertiary);
   border: 1px solid var(--border);
-  font-size: 14px;
+  font-size: 10px;
   white-space: nowrap;
   opacity: 0;
   visibility: hidden;
   transition: opacity 0.15s, visibility 0.15s;
   z-index: 50;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .group:hover .tooltip {
@@ -426,7 +436,6 @@ input::placeholder {
   width: 6px;
   height: 6px;
   background: var(--positive);
-  border-radius: 50%;
   animation: pulse 2s infinite;
 }
 
@@ -728,7 +737,6 @@ input::placeholder {
 .empty-state-icon {
   width: 80px;
   height: 80px;
-  border-radius: 16px;
   background: var(--background-tertiary);
   display: flex;
   align-items: center;
@@ -764,7 +772,6 @@ input::placeholder {
   align-items: flex-start;
   gap: 8px;
   padding: 12px;
-  border-radius: 8px;
 }
 
 .alert-info {
@@ -795,7 +802,6 @@ input::placeholder {
   padding: 6px 12px;
   font-size: 14px;
   font-weight: 500;
-  border-radius: 9999px;
   transition: all 0.15s ease;
   cursor: pointer;
   border: 1px solid var(--border);
@@ -823,14 +829,12 @@ input::placeholder {
   gap: 4px;
   padding: 4px;
   background: var(--background-secondary);
-  border-radius: 8px;
 }
 
 .view-toggle-btn {
   padding: 6px 12px;
   font-size: 14px;
   font-weight: 500;
-  border-radius: 6px;
   transition: all 0.15s ease;
   display: flex;
   align-items: center;

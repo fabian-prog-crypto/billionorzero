@@ -73,7 +73,7 @@ export default function CurrencyIcon({ symbol, size = 24, className = '', logoUr
   // Fallback to letter avatar
   return (
     <div
-      className={`rounded-full flex items-center justify-center text-xs font-semibold bg-[var(--tag-bg)] ${className}`}
+      className={` flex items-center justify-center text-xs font-semibold bg-[var(--tag-bg)] ${className}`}
       style={{ width: size, height: size, fontSize: size * 0.35 }}
     >
       {symbol.slice(0, 2).toUpperCase()}

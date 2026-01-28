@@ -34,7 +34,7 @@ export default function AuthProvider({ children }: AuthProviderProps) {
   if (!_hasHydrated) {
     return (
       <div className="min-h-screen bg-[var(--background)] flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-[var(--accent-primary)] border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-2 border-[var(--accent-primary)] border-t-transparent  animate-spin" />
       </div>
     );
   }

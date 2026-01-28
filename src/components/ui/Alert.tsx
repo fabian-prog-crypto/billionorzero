@@ -57,7 +57,7 @@ export default function Alert({
 
   return (
     <div
-      className={`p-3 ${styles.bg} border ${styles.border} rounded-lg flex items-start gap-2 ${className}`}
+      className={`p-3 ${styles.bg} border ${styles.border} flex items-start gap-2 ${className}`}
     >
       <div className={`${styles.iconColor} mt-0.5 shrink-0`}>
         {displayIcon}

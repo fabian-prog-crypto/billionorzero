@@ -116,11 +116,11 @@ export default function PerpsPage() {
     <div>
       {!hasPerps ? (
         <div className="flex flex-col items-center justify-center py-16">
-          <div className="w-16 h-16 bg-[var(--background-secondary)] rounded-full flex items-center justify-center mb-4">
-            <TrendingUp className="w-8 h-8 text-[var(--foreground-muted)]" />
+          <div className="w-14 h-14 bg-[var(--background-secondary)]  flex items-center justify-center mb-4">
+            <TrendingUp className="w-6 h-6 text-[var(--foreground-muted)]" />
           </div>
-          <h3 className="text-lg font-semibold mb-2">No perpetual positions</h3>
-          <p className="text-[var(--foreground-muted)] text-center max-w-md">
+          <h3 className="text-[15px] font-semibold mb-2">No perpetual positions</h3>
+          <p className="text-[13px] text-[var(--foreground-muted)] text-center max-w-md">
             Connect a wallet with positions on Hyperliquid, Lighter, or Ethereal to see them here.
           </p>
         </div>
@@ -211,25 +211,25 @@ export default function PerpsPage() {
                 <tbody>
                   {exchangeStats.map((stat) => (
                     <tr key={stat.exchange} className="border-b border-[var(--border)] last:border-0">
-                      <td className="py-3">
+                      <td className="py-2">
                         <span className="font-medium">{stat.exchange}</span>
                       </td>
-                      <td className="py-3 text-right">
+                      <td className="py-2 text-right">
                         {hideBalances ? '****' : formatCurrency(stat.margin)}
                       </td>
-                      <td className="py-3 text-right text-[var(--accent-primary)]">
+                      <td className="py-2 text-right text-[var(--accent-primary)]">
                         {hideBalances ? '****' : stat.spot > 0 ? formatCurrency(stat.spot) : '-'}
                       </td>
-                      <td className="py-3 text-right text-[var(--positive)]">
+                      <td className="py-2 text-right text-[var(--positive)]">
                         {hideBalances ? '****' : stat.longs > 0 ? formatCurrency(stat.longs) : '-'}
                       </td>
-                      <td className="py-3 text-right text-[var(--negative)]">
+                      <td className="py-2 text-right text-[var(--negative)]">
                         {hideBalances ? '****' : stat.shorts > 0 ? `-${formatCurrency(stat.shorts)}` : '-'}
                       </td>
-                      <td className={`py-3 text-right font-semibold ${stat.net >= 0 ? '' : 'text-[var(--negative)]'}`}>
+                      <td className={`py-2 text-right font-semibold ${stat.net >= 0 ? '' : 'text-[var(--negative)]'}`}>
                         {hideBalances ? '****' : formatCurrency(stat.net)}
                       </td>
-                      <td className="py-3 text-right text-[var(--foreground-muted)]">
+                      <td className="py-2 text-right text-[var(--foreground-muted)]">
                         {stat.positionCount}
                       </td>
                     </tr>
@@ -270,27 +270,27 @@ export default function PerpsPage() {
                         key={position.id}
                         className={`border-b border-[var(--border)] last:border-0 hover:bg-[var(--background-secondary)] transition-colors`}
                       >
-                        <td className="py-3">
-                          <div className="flex items-center gap-3">
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold text-white ${
+                        <td className="py-2">
+                          <div className="flex items-center gap-2">
+                            <div className={`w-6 h-6  flex items-center justify-center text-[10px] font-semibold text-white ${
                               position.isDebt ? 'bg-[var(--negative)]' : 'bg-[var(--positive)]'
                             }`}>
                               {position.symbol.slice(0, 2).toUpperCase()}
                             </div>
                             <div>
-                              <p className="font-medium">{position.symbol.toUpperCase()}</p>
-                              <p className="text-xs text-[var(--foreground-muted)]">{position.name}</p>
+                              <p className="text-[13px] font-medium">{position.symbol.toUpperCase()}</p>
+                              <p className="text-[10px] text-[var(--foreground-muted)]">{position.name}</p>
                             </div>
                           </div>
                         </td>
-                        <td className="py-3">
+                        <td className="py-2">
                           <div className="flex items-center gap-1.5">
                             <Wallet className="w-3.5 h-3.5 text-[var(--accent-primary)]" />
                             <span className="tag text-xs">{position.protocol}</span>
                           </div>
                         </td>
-                        <td className="py-3">
-                          <span className={`px-2 py-1 text-xs font-semibold rounded ${
+                        <td className="py-2">
+                          <span className={`px-2 py-1 text-xs font-semibold  ${
                             position.isDebt
                               ? 'bg-[var(--negative-light)] text-[var(--negative)]'
                               : 'bg-[var(--positive-light)] text-[var(--positive)]'
@@ -298,16 +298,16 @@ export default function PerpsPage() {
                             {position.isDebt ? 'SHORT' : 'LONG'}
                           </span>
                         </td>
-                        <td className="py-3 text-right font-mono text-sm">
+                        <td className="py-2 text-right font-mono text-sm">
                           {hideBalances ? '***' : formatNumber(position.amount)}
                         </td>
-                        <td className="py-3 text-right font-mono text-sm">
+                        <td className="py-2 text-right font-mono text-sm">
                           {position.currentPrice > 0 ? formatCurrency(position.currentPrice) : '-'}
                         </td>
-                        <td className={`py-3 text-right font-semibold ${position.isDebt ? 'text-[var(--negative)]' : 'text-[var(--positive)]'}`}>
+                        <td className={`py-2 text-right font-semibold ${position.isDebt ? 'text-[var(--negative)]' : 'text-[var(--positive)]'}`}>
                           {hideBalances ? '****' : formatCurrency(position.value)}
                         </td>
-                        <td className={`py-3 text-right ${getChangeColor(position.changePercent24h)}`}>
+                        <td className={`py-2 text-right ${getChangeColor(position.changePercent24h)}`}>
                           {position.currentPrice > 0 ? formatPercent(position.changePercent24h) : '-'}
                         </td>
                       </tr>
@@ -345,27 +345,27 @@ export default function PerpsPage() {
                         key={position.id}
                         className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--background-secondary)] transition-colors"
                       >
-                        <td className="py-3">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 bg-[var(--tag-bg)] rounded-full flex items-center justify-center text-xs font-semibold">
+                        <td className="py-2">
+                          <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 bg-[var(--tag-bg)]  flex items-center justify-center text-[10px] font-semibold">
                               {position.symbol.slice(0, 2).toUpperCase()}
                             </div>
                             <div>
-                              <p className="font-medium">{position.symbol.toUpperCase()}</p>
-                              <p className="text-xs text-[var(--foreground-muted)]">{position.name}</p>
+                              <p className="text-[13px] font-medium">{position.symbol.toUpperCase()}</p>
+                              <p className="text-[10px] text-[var(--foreground-muted)]">{position.name}</p>
                             </div>
                           </div>
                         </td>
-                        <td className="py-3">
+                        <td className="py-2">
                           <div className="flex items-center gap-1.5">
                             <Wallet className="w-3.5 h-3.5 text-[var(--accent-primary)]" />
                             <span className="tag text-xs">{position.protocol}</span>
                           </div>
                         </td>
-                        <td className="py-3 text-right font-mono text-sm">
+                        <td className="py-2 text-right font-mono text-sm">
                           {hideBalances ? '***' : formatNumber(position.amount)}
                         </td>
-                        <td className="py-3 text-right font-semibold">
+                        <td className="py-2 text-right font-semibold">
                           {hideBalances ? '****' : formatCurrency(position.value)}
                         </td>
                       </tr>
@@ -404,30 +404,30 @@ export default function PerpsPage() {
                         key={position.id}
                         className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--background-secondary)] transition-colors"
                       >
-                        <td className="py-3">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 bg-[var(--accent-primary)] text-white rounded-full flex items-center justify-center text-xs font-semibold">
+                        <td className="py-2">
+                          <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 bg-[var(--accent-primary)] text-white  flex items-center justify-center text-[10px] font-semibold">
                               {position.symbol.slice(0, 2).toUpperCase()}
                             </div>
                             <div>
-                              <p className="font-medium">{position.symbol.toUpperCase()}</p>
-                              <p className="text-xs text-[var(--foreground-muted)]">{position.name}</p>
+                              <p className="text-[13px] font-medium">{position.symbol.toUpperCase()}</p>
+                              <p className="text-[10px] text-[var(--foreground-muted)]">{position.name}</p>
                             </div>
                           </div>
                         </td>
-                        <td className="py-3">
+                        <td className="py-2">
                           <div className="flex items-center gap-1.5">
                             <Wallet className="w-3.5 h-3.5 text-[var(--accent-primary)]" />
                             <span className="tag text-xs">{position.protocol}</span>
                           </div>
                         </td>
-                        <td className="py-3 text-right font-mono text-sm">
+                        <td className="py-2 text-right font-mono text-sm">
                           {hideBalances ? '***' : formatNumber(position.amount)}
                         </td>
-                        <td className="py-3 text-right font-mono text-sm">
+                        <td className="py-2 text-right font-mono text-sm">
                           {position.currentPrice > 0 ? formatCurrency(position.currentPrice) : '-'}
                         </td>
-                        <td className="py-3 text-right font-semibold text-[var(--accent-primary)]">
+                        <td className="py-2 text-right font-semibold text-[var(--accent-primary)]">
                           {hideBalances ? '****' : formatCurrency(position.value)}
                         </td>
                       </tr>

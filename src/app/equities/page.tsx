@@ -94,12 +94,12 @@ export default function EquitiesPage() {
   if (breakdownData.equityPositions.length === 0) {
     return (
       <div>
-        <div className="flex flex-col items-center justify-center py-32">
-          <div className="w-20 h-20 rounded-2xl bg-[var(--background-tertiary)] flex items-center justify-center mb-6">
-            <TrendingUp className="w-10 h-10 text-[var(--foreground-muted)]" />
+        <div className="flex flex-col items-center justify-center py-20">
+          <div className="w-14 h-14  bg-[var(--background-secondary)] flex items-center justify-center mb-4">
+            <TrendingUp className="w-6 h-6 text-[var(--foreground-muted)]" />
           </div>
-          <h2 className="text-xl font-semibold mb-2">No equity positions</h2>
-          <p className="text-[var(--foreground-muted)] text-center max-w-md">
+          <h2 className="text-[15px] font-semibold mb-2">No equity positions</h2>
+          <p className="text-[13px] text-[var(--foreground-muted)] text-center max-w-md">
             Add stock or ETF positions to track your equity portfolio.
           </p>
         </div>
@@ -121,16 +121,11 @@ export default function EquitiesPage() {
           </p>
         </div>
 
-        <div className="flex gap-6 text-right">
-          <div>
-            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-0.5">Stocks</p>
-            <p className="text-[13px] font-medium">{breakdownData.stocks.count}</p>
-          </div>
-          <div>
-            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-0.5">ETFs</p>
-            <p className="text-[13px] font-medium">{breakdownData.etfs.count}</p>
-          </div>
-        </div>
+        <SearchInput
+          value={searchQuery}
+          onChange={setSearchQuery}
+          placeholder="Search..."
+        />
       </div>
 
       <hr className="border-[var(--border)] mb-6" />
@@ -150,7 +145,7 @@ export default function EquitiesPage() {
           <div className="grid grid-cols-2 gap-6">
             <div>
               <div className="flex items-center gap-2 mb-2">
-                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: SUBCATEGORY_COLORS.equities_stocks }} />
+                <div className="w-3 h-3 " style={{ backgroundColor: SUBCATEGORY_COLORS.equities_stocks }} />
                 <span className="text-[13px] font-medium">Individual Stocks</span>
               </div>
               <p className="text-xl font-semibold mb-1">
@@ -162,7 +157,7 @@ export default function EquitiesPage() {
             </div>
             <div>
               <div className="flex items-center gap-2 mb-2">
-                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: SUBCATEGORY_COLORS.equities_etfs }} />
+                <div className="w-3 h-3 " style={{ backgroundColor: SUBCATEGORY_COLORS.equities_etfs }} />
                 <span className="text-[13px] font-medium">ETFs</span>
               </div>
               <p className="text-xl font-semibold mb-1">
@@ -178,18 +173,6 @@ export default function EquitiesPage() {
 
       <hr className="border-[var(--border)] mb-6" />
 
-      {/* Search */}
-      <div className="flex items-center gap-3 mb-4">
-        <SearchInput
-          value={searchQuery}
-          onChange={setSearchQuery}
-          placeholder="Search positions..."
-          className="flex-1 max-w-xs"
-        />
-        <span className="text-[13px] text-[var(--foreground-muted)]">
-          {filteredPositions.length} position{filteredPositions.length !== 1 ? 's' : ''}
-        </span>
-      </div>
 
       {/* Positions Table */}
       <div className="table-scroll">
@@ -252,7 +235,7 @@ export default function EquitiesPage() {
                   <td className="py-2">
                     <div className="flex items-center gap-2">
                       <div
-                        className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-semibold text-white"
+                        className="w-6 h-6  flex items-center justify-center text-[10px] font-semibold text-white"
                         style={{ backgroundColor: isETF ? SUBCATEGORY_COLORS.equities_etfs : SUBCATEGORY_COLORS.equities_stocks }}
                       >
                         {position.symbol.slice(0, 2).toUpperCase()}
@@ -267,7 +250,7 @@ export default function EquitiesPage() {
                   </td>
                   <td className="py-2">
                     <span
-                      className="px-1.5 py-0.5 text-[10px] font-medium rounded"
+                      className="px-1.5 py-0.5 text-[10px] font-medium"
                       style={{
                         backgroundColor: isETF ? `${SUBCATEGORY_COLORS.equities_etfs}1A` : `${SUBCATEGORY_COLORS.equities_stocks}1A`,
                         color: isETF ? SUBCATEGORY_COLORS.equities_etfs : SUBCATEGORY_COLORS.equities_stocks,

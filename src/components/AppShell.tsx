@@ -205,19 +205,15 @@ export default function AppShell({ children }: AppShellProps) {
                 onClick={refresh}
                 disabled={isRefreshing}
                 className="btn-ghost p-1.5"
+                title="Sync"
               >
                 <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
               </button>
-              <div className="tooltip whitespace-nowrap">
-                {walletCount > 0 ? (
-                  <>
-                    <div>Per sync: {syncCost.units} units (~${syncCost.costPerSync.toFixed(4)})</div>
-                    <div>Est. monthly: ~${syncCost.monthlyCost.toFixed(2)} (1x/day)</div>
-                  </>
-                ) : (
-                  <div>Add wallets to track sync costs</div>
-                )}
-              </div>
+              {walletCount > 0 && (
+                <div className="tooltip">
+                  ~${syncCost.costPerSync.toFixed(3)}/sync · ${syncCost.monthlyCost.toFixed(2)}/mo
+                </div>
+              )}
             </div>
 
             <button

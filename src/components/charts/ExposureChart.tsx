@@ -71,7 +71,7 @@ export default function ExposureChart({ assets, size = 180 }: ExposureChartProps
         {simpleBreakdown.map((item) => (
           <div key={item.id} className="flex items-center gap-2 text-sm">
             <div
-              className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+              className="w-2.5 h-2.5  flex-shrink-0"
               style={{ backgroundColor: item.color }}
             />
             <span className="font-medium">{item.label}</span>
