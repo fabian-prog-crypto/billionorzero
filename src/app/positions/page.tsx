@@ -349,11 +349,6 @@ export default function PositionsPage() {
             </span>
           </div>
         </div>
-        <SearchInput
-          value={searchQuery}
-          onChange={setSearchQuery}
-          placeholder="Search..."
-        />
       </div>
 
       <hr className="border-[var(--border)] mb-6" />
@@ -439,6 +434,13 @@ export default function PositionsPage() {
 
           {/* Spacer */}
           <div className="flex-1" />
+
+          {/* Search */}
+          <SearchInput
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder="Search..."
+          />
 
           {/* Actions */}
           <button

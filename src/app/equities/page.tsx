@@ -121,11 +121,6 @@ export default function EquitiesPage() {
           </p>
         </div>
 
-        <SearchInput
-          value={searchQuery}
-          onChange={setSearchQuery}
-          placeholder="Search..."
-        />
       </div>
 
       <hr className="border-[var(--border)] mb-6" />
@@ -173,6 +168,17 @@ export default function EquitiesPage() {
 
       <hr className="border-[var(--border)] mb-6" />
 
+      {/* Controls Row */}
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <div className="flex-1" />
+
+        {/* Search */}
+        <SearchInput
+          value={searchQuery}
+          onChange={setSearchQuery}
+          placeholder="Search..."
+        />
+      </div>
 
       {/* Positions Table */}
       <div className="table-scroll">

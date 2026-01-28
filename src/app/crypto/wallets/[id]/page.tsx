@@ -226,18 +226,21 @@ export default function WalletDetailPage() {
 
       <hr className="border-[var(--border)] mb-6" />
 
+      {/* Controls Row */}
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)]">
+          Assets ({filteredPositions.length}{searchQuery && ` of ${positionsWithPrices.length}`})
+        </p>
+        <div className="flex-1" />
+        <SearchInput
+          value={searchQuery}
+          onChange={setSearchQuery}
+          placeholder="Search..."
+        />
+      </div>
+
       {/* Assets table */}
       <div>
-        <div className="flex items-center justify-between mb-2">
-          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)]">
-            Assets ({filteredPositions.length}{searchQuery && ` of ${positionsWithPrices.length}`})
-          </p>
-          <SearchInput
-            value={searchQuery}
-            onChange={setSearchQuery}
-            placeholder="Search..."
-          />
-        </div>
 
         {filteredPositions.length === 0 ? (
           <p className="text-center py-8 text-[11px] text-[var(--foreground-muted)]">
