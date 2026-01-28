@@ -7,7 +7,19 @@ export function formatCurrency(value: number): string {
   const absValue = Math.abs(value);
   const prefix = isNegative ? '-$' : '$';
 
-  // Format with commas, no decimals, no abbreviations
+  // Sub-penny prices: show 4 significant figures
+  if (absValue > 0 && absValue < 0.01) {
+    return `${prefix}${absValue.toPrecision(4)}`;
+  }
+  // Sub-dollar prices: show 4 decimals
+  if (absValue > 0 && absValue < 1) {
+    return `${prefix}${absValue.toFixed(4)}`;
+  }
+  // Under $10: show 2 decimals
+  if (absValue < 10) {
+    return `${prefix}${absValue.toFixed(2)}`;
+  }
+  // $10+: whole numbers with commas
   return `${prefix}${Math.round(absValue).toLocaleString('en-US')}`;
 }
 

@@ -249,25 +249,25 @@ export default function EquitiesPage() {
                   key={position.id}
                   className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--background-secondary)] transition-colors"
                 >
-                  <td className="py-3">
-                    <div className="flex items-center gap-3">
+                  <td className="py-2">
+                    <div className="flex items-center gap-2">
                       <div
-                        className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold text-white"
+                        className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-semibold text-white"
                         style={{ backgroundColor: isETF ? SUBCATEGORY_COLORS.equities_etfs : SUBCATEGORY_COLORS.equities_stocks }}
                       >
                         {position.symbol.slice(0, 2).toUpperCase()}
                       </div>
                       <div>
-                        <p className="font-medium">{position.symbol.toUpperCase()}</p>
-                        <p className="text-xs text-[var(--foreground-muted)] truncate max-w-[150px]">
+                        <p className="font-medium text-sm">{position.symbol.toUpperCase()}</p>
+                        <p className="text-[11px] text-[var(--foreground-muted)] truncate max-w-[150px]">
                           {position.name}
                         </p>
                       </div>
                     </div>
                   </td>
-                  <td className="py-3">
+                  <td className="py-2">
                     <span
-                      className="px-2 py-1 text-xs font-medium rounded"
+                      className="px-1.5 py-0.5 text-[10px] font-medium rounded"
                       style={{
                         backgroundColor: isETF ? `${SUBCATEGORY_COLORS.equities_etfs}1A` : `${SUBCATEGORY_COLORS.equities_stocks}1A`,
                         color: isETF ? SUBCATEGORY_COLORS.equities_etfs : SUBCATEGORY_COLORS.equities_stocks,
@@ -276,16 +276,16 @@ export default function EquitiesPage() {
                       {isETF ? 'ETF' : 'Stock'}
                     </span>
                   </td>
-                  <td className="py-3 text-right font-mono text-sm">
+                  <td className="py-2 text-right font-mono text-xs">
                     {hideBalances ? '••••' : formatNumber(position.amount)}
                   </td>
-                  <td className="py-3 text-right font-mono text-sm">
+                  <td className="py-2 text-right font-mono text-xs">
                     {position.currentPrice > 0 ? formatCurrency(position.currentPrice) : '-'}
                   </td>
-                  <td className="py-3 text-right font-semibold">
+                  <td className="py-2 text-right font-semibold text-sm">
                     {hideBalances ? '••••' : formatCurrency(position.value)}
                   </td>
-                  <td className={`py-3 text-right ${getChangeColor(position.changePercent24h)}`}>
+                  <td className={`py-2 text-right text-xs ${getChangeColor(position.changePercent24h)}`}>
                     {position.currentPrice > 0 ? formatPercent(position.changePercent24h) : '-'}
                   </td>
                 </tr>

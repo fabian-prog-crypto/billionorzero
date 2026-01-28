@@ -964,10 +964,13 @@ export function calculateCryptoAllocation(assets: AssetWithPrice[]): CryptoAlloc
 export function calculateExposureBreakdown(assets: AssetWithPrice[]): CryptoAllocationItem[] {
   const categoryService = getCategoryService();
 
-  // Filter to crypto only (all values including debt)
+  // Filter to crypto assets AND perp protocol positions (perps count towards underlying exposure)
   const cryptoAssets = assets.filter((a) => {
     const mainCat = categoryService.getMainCategory(a.symbol, a.type);
-    return mainCat === 'crypto';
+    if (mainCat === 'crypto') return true;
+    // Include perp protocol positions - they represent underlying asset exposure
+    if (a.protocol && isPerpProtocol(a.protocol)) return true;
+    return false;
   });
 
   // Get all exposure category configs from the centralized service
@@ -984,10 +987,21 @@ export function calculateExposureBreakdown(assets: AssetWithPrice[]): CryptoAllo
   cryptoAssets.forEach((asset) => {
     const value = asset.value; // Can be negative for debt
 
-    // For perp trades, classify by the underlying asset symbol (e.g., BTC-PERP -> btc)
+    // For perp trades, extract the underlying asset from the name (e.g., "BTC Long (Hyperliquid)" -> btc)
     // For collateral on perp protocols, classify normally (e.g., USDC collateral -> stablecoins)
     // This gives true underlying exposure rather than treating perps as a separate category
-    const exposureCat = categoryService.getExposureCategory(asset.symbol, asset.type);
+    let exposureCat = categoryService.getExposureCategory(asset.symbol, asset.type);
+
+    // For perp trades, try to extract underlying asset from name
+    const { isPerpTrade } = detectPerpTrade(asset.name);
+    if (isPerpTrade && asset.protocol && isPerpProtocol(asset.protocol)) {
+      // Extract underlying asset from name like "BTC Long (Hyperliquid)" or "ETH Short"
+      const underlyingMatch = asset.name.match(/^(\w+)\s+(long|short)/i);
+      if (underlyingMatch) {
+        const underlyingSymbol = underlyingMatch[1].toLowerCase();
+        exposureCat = categoryService.getExposureCategory(underlyingSymbol, 'crypto');
+      }
+    }
 
     // Get config for this category
     const config = allConfigs[exposureCat as keyof typeof allConfigs] || allConfigs.tokens;
@@ -1003,7 +1017,15 @@ export function calculateExposureBreakdown(assets: AssetWithPrice[]): CryptoAllo
     exposureMap[exposureCat].value += value;
 
     // Track individual asset values (aggregate by symbol)
-    const symbolKey = asset.symbol.toUpperCase();
+    // For perp trades, use the underlying symbol with a suffix to distinguish
+    let symbolKey = asset.symbol.toUpperCase();
+    if (isPerpTrade && asset.protocol && isPerpProtocol(asset.protocol)) {
+      const underlyingMatch = asset.name.match(/^(\w+)\s+(long|short)/i);
+      if (underlyingMatch) {
+        const direction = underlyingMatch[2].toLowerCase();
+        symbolKey = `${underlyingMatch[1].toUpperCase()} ${direction === 'long' ? 'Long' : 'Short'}`;
+      }
+    }
     const currentAssetValue = exposureMap[exposureCat].assets.get(symbolKey) || 0;
     exposureMap[exposureCat].assets.set(symbolKey, currentAssetValue + value);
   });

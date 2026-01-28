@@ -20,11 +20,11 @@ import {
   getAssetTypeLabel,
   formatAddress,
 } from '@/lib/utils';
-import { MainCategory, getCategoryLabel, isPerpProtocol, getCategoryService, AssetCategory, getPerpProtocolsWithPositions } from '@/services';
+import { MainCategory, getCategoryLabel, isPerpProtocol, getCategoryService, AssetCategory, getPerpProtocolsWithPositions, ExposureCategoryType } from '@/services';
 import { AssetWithPrice } from '@/types';
 
 type ViewMode = 'positions' | 'assets';
-type CategoryFilter = MainCategory | AssetCategory | 'all';
+type CategoryFilter = MainCategory | AssetCategory | ExposureCategoryType | 'all';
 type SortField = 'symbol' | 'value' | 'amount' | 'change';
 type SortDirection = 'asc' | 'desc';
 
@@ -35,16 +35,40 @@ interface CategoryOption {
   isSubcategory?: boolean;
   parent?: MainCategory;
   color?: string;
+  isExposureCategory?: boolean;
 }
 
 export default function PositionsPage() {
   const searchParams = useSearchParams();
   const [showAddPosition, setShowAddPosition] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('positions');
-  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
+  const [categoryFilters, setCategoryFilters] = useState<Set<CategoryFilter>>(new Set(['all']));
   const [searchQuery, setSearchQuery] = useState('');
   const [sortField, setSortField] = useState<SortField>('value');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+
+  // Helper to toggle a filter
+  const toggleFilter = (value: CategoryFilter) => {
+    setCategoryFilters(prev => {
+      const newFilters = new Set(prev);
+      if (value === 'all') {
+        // Selecting 'all' clears other filters
+        return new Set(['all']);
+      }
+      // Remove 'all' when selecting specific filters
+      newFilters.delete('all');
+      if (newFilters.has(value)) {
+        newFilters.delete(value);
+        // If no filters left, go back to 'all'
+        if (newFilters.size === 0) {
+          return new Set(['all']);
+        }
+      } else {
+        newFilters.add(value);
+      }
+      return newFilters;
+    });
+  };
 
   // Custom price modal state
   const [customPriceModal, setCustomPriceModal] = useState<{
@@ -59,10 +83,10 @@ export default function PositionsPage() {
   const categoryOptions = useMemo((): CategoryOption[] => {
     const categoryService = getCategoryService();
     const options: CategoryOption[] = [
-      { value: 'all', label: 'All Categories' }
+      { value: 'all', label: 'All' }
     ];
 
-    // Add main categories with their subcategories
+    // Add main categories
     categoryService.getMainCategories().forEach((mainCat) => {
       options.push({
         value: mainCat,
@@ -70,17 +94,32 @@ export default function PositionsPage() {
         color: categoryService.getCategoryColor(mainCat as AssetCategory)
       });
 
-      // Add subcategories
-      categoryService.getSubCategories(mainCat).forEach((subCat) => {
-        const catKey = `${mainCat}_${subCat}` as AssetCategory;
-        options.push({
-          value: catKey,
-          label: getCategoryLabel(catKey),
-          isSubcategory: true,
-          parent: mainCat,
-          color: categoryService.getCategoryColor(catKey)
+      // For crypto, use exposure categories (RWA, AI, DeFi, etc.)
+      if (mainCat === 'crypto') {
+        const exposureConfigs = categoryService.getAllExposureCategoryConfigs();
+        Object.entries(exposureConfigs).forEach(([key, config]) => {
+          options.push({
+            value: key as ExposureCategoryType,
+            label: config.label,
+            isSubcategory: true,
+            isExposureCategory: true,
+            parent: 'crypto',
+            color: config.color
+          });
         });
-      });
+      } else {
+        // For non-crypto, use regular subcategories
+        categoryService.getSubCategories(mainCat).forEach((subCat) => {
+          const catKey = `${mainCat}_${subCat}` as AssetCategory;
+          options.push({
+            value: catKey,
+            label: getCategoryLabel(catKey),
+            isSubcategory: true,
+            parent: mainCat,
+            color: categoryService.getCategoryColor(catKey)
+          });
+        });
+      }
     });
 
     return options;
@@ -92,7 +131,7 @@ export default function PositionsPage() {
     if (categoryParam) {
       const validOption = categoryOptions.find(o => o.value === categoryParam);
       if (validOption) {
-        setCategoryFilter(categoryParam as CategoryFilter);
+        setCategoryFilters(new Set([categoryParam as CategoryFilter]));
       }
     }
   }, [searchParams, categoryOptions]);
@@ -115,40 +154,65 @@ export default function PositionsPage() {
   const filteredPositions = useMemo(() => {
     let filtered = allPositionsWithPrices;
 
-    // Apply category filter
-    if (categoryFilter !== 'all') {
+    // Apply category filters (multiple selection supported)
+    if (!categoryFilters.has('all')) {
       const categoryService = getCategoryService();
       const perpProtocolsWithPositions = getPerpProtocolsWithPositions(allPositionsWithPrices);
+      const exposureCategories = Object.keys(categoryService.getAllExposureCategoryConfigs());
 
       filtered = filtered.filter((p) => {
         const mainCat = categoryService.getMainCategory(p.symbol, p.type);
         const subCat = categoryService.getSubCategory(p.symbol, p.type);
+        const exposureCat = categoryService.getExposureCategory(p.symbol, p.type);
         const isOnPerpProtocol = p.protocol && isPerpProtocol(p.protocol);
 
-        // Handle perp protocol positions specially
-        if (isOnPerpProtocol) {
-          const hasActivePositions = perpProtocolsWithPositions.has(p.protocol!.toLowerCase());
-
-          if (categoryFilter === 'crypto_perps') {
-            if (subCat === 'stablecoins') {
-              return hasActivePositions;
+        // Check each active filter - position matches if ANY filter matches
+        for (const filter of categoryFilters) {
+          // Check if filter is an exposure category
+          if (exposureCategories.includes(filter)) {
+            // For crypto assets, check exposure category
+            if (mainCat === 'crypto' && exposureCat === filter) {
+              return true;
             }
+            continue;
+          }
+
+          // Handle perp protocol positions specially
+          if (isOnPerpProtocol) {
+            const hasActivePositions = perpProtocolsWithPositions.has(p.protocol!.toLowerCase());
+
+            if (filter === 'crypto_perps') {
+              if (subCat === 'stablecoins') {
+                if (hasActivePositions) return true;
+              } else {
+                return true;
+              }
+              continue;
+            }
+
+            if (filter === 'crypto') {
+              return true;
+            }
+
+            if (filter === 'crypto_stablecoins' && subCat === 'stablecoins' && !hasActivePositions) {
+              return true;
+            }
+
+            continue;
+          }
+
+          // Main category match
+          if (filter === mainCat) {
             return true;
           }
 
-          if (categoryFilter === 'crypto') {
+          // Sub-category match
+          if (categoryService.isAssetInCategory(p.symbol, filter as AssetCategory, p.type)) {
             return true;
           }
-
-          if (categoryFilter === 'crypto_stablecoins' && subCat === 'stablecoins' && !hasActivePositions) {
-            return true;
-          }
-
-          return false;
         }
 
-        // Non-perp positions
-        return categoryService.isAssetInCategory(p.symbol, categoryFilter as AssetCategory, p.type);
+        return false;
       });
     }
 
@@ -183,7 +247,7 @@ export default function PositionsPage() {
     });
 
     return filtered;
-  }, [allPositionsWithPrices, categoryFilter, searchQuery, sortField, sortDirection]);
+  }, [allPositionsWithPrices, categoryFilters, searchQuery, sortField, sortDirection]);
 
   // Aggregate assets by symbol
   const aggregatedAssets = useMemo(() => {
@@ -303,17 +367,12 @@ export default function PositionsPage() {
         {categoryOptions
           .filter(opt => !opt.isSubcategory)
           .map((opt) => {
-            // Check if this main category or any of its subcategories is selected
-            const isMainSelected = categoryFilter === opt.value;
-            const isSubcategorySelected = categoryOptions.some(
-              sub => sub.parent === opt.value && categoryFilter === sub.value
-            );
-            const isActive = isMainSelected || isSubcategorySelected;
+            const isActive = categoryFilters.has(opt.value);
 
             return (
               <button
                 key={opt.value}
-                onClick={() => setCategoryFilter(opt.value)}
+                onClick={() => toggleFilter(opt.value)}
                 className={`px-3 py-1.5 text-sm font-medium rounded-full border transition-colors flex items-center gap-1.5 ${
                   isActive
                     ? 'bg-[var(--accent-primary)] text-white border-[var(--accent-primary)]'
@@ -332,41 +391,40 @@ export default function PositionsPage() {
           })}
       </div>
 
-      {/* Subcategory Quick Selectors - show when a main category is selected */}
+      {/* Subcategory Quick Selectors - show for crypto when crypto or exposure categories are selected */}
       {(() => {
-        // Find the current main category (either directly selected or parent of selected subcategory)
-        const selectedOption = categoryOptions.find(opt => opt.value === categoryFilter);
-        const currentMainCategory = selectedOption?.isSubcategory
-          ? selectedOption.parent
-          : (selectedOption?.value !== 'all' ? selectedOption?.value : null);
+        // Show crypto subcategories if crypto main category is selected OR any crypto exposure category
+        const cryptoSubcategories = categoryOptions.filter(opt => opt.parent === 'crypto');
+        const hasCryptoFilter = categoryFilters.has('crypto') ||
+          cryptoSubcategories.some(sub => categoryFilters.has(sub.value));
 
-        if (!currentMainCategory) return null;
-
-        const subcategories = categoryOptions.filter(opt => opt.parent === currentMainCategory);
-        if (subcategories.length === 0) return null;
+        if (!hasCryptoFilter || categoryFilters.has('all')) return null;
 
         return (
           <div className="flex flex-wrap items-center gap-2 mb-3 pl-2 border-l-2 border-[var(--accent-primary)]">
-            <span className="text-xs text-[var(--foreground-muted)] mr-1">Subcategory:</span>
-            {subcategories.map((sub) => (
-              <button
-                key={sub.value}
-                onClick={() => setCategoryFilter(sub.value)}
-                className={`px-2.5 py-1 text-xs font-medium rounded-full border transition-colors flex items-center gap-1 ${
-                  categoryFilter === sub.value
-                    ? 'bg-[var(--accent-primary)] text-white border-[var(--accent-primary)]'
-                    : 'bg-[var(--background-secondary)] border-[var(--border)] hover:border-[var(--foreground-muted)] text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
-                }`}
-              >
-                {sub.color && (
-                  <span
-                    className="w-1.5 h-1.5 rounded-full"
-                    style={{ backgroundColor: categoryFilter === sub.value ? 'white' : sub.color }}
-                  />
-                )}
-                {sub.label}
-              </button>
-            ))}
+            <span className="text-xs text-[var(--foreground-muted)] mr-1">Category:</span>
+            {cryptoSubcategories.map((sub) => {
+              const isActive = categoryFilters.has(sub.value);
+              return (
+                <button
+                  key={sub.value}
+                  onClick={() => toggleFilter(sub.value)}
+                  className={`px-2.5 py-1 text-xs font-medium rounded-full border transition-colors flex items-center gap-1 ${
+                    isActive
+                      ? 'bg-[var(--accent-primary)] text-white border-[var(--accent-primary)]'
+                      : 'bg-[var(--background-secondary)] border-[var(--border)] hover:border-[var(--foreground-muted)] text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
+                  }`}
+                >
+                  {sub.color && (
+                    <span
+                      className="w-1.5 h-1.5 rounded-full"
+                      style={{ backgroundColor: isActive ? 'white' : sub.color }}
+                    />
+                  )}
+                  {sub.label}
+                </button>
+              );
+            })}
           </div>
         );
       })()}
@@ -489,11 +547,11 @@ export default function PositionsPage() {
                         isDebt ? 'bg-[var(--negative-light)]' : ''
                       }`}
                     >
-                      <td className="py-3">
-                        <div className="flex items-center gap-3">
-                          <CryptoIcon symbol={position.symbol} size={32} isDebt={isDebt} />
+                      <td className="py-2">
+                        <div className="flex items-center gap-2">
+                          <CryptoIcon symbol={position.symbol} size={24} isDebt={isDebt} />
                           <div className="flex items-center gap-2">
-                            <p className="font-medium">{position.symbol.toUpperCase()}</p>
+                            <p className="font-medium text-sm">{position.symbol.toUpperCase()}</p>
                             {isDebt && (
                               <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-[var(--negative)] text-white rounded">
                                 DEBT
@@ -502,11 +560,11 @@ export default function PositionsPage() {
                           </div>
                         </div>
                       </td>
-                      <td className="py-3">
+                      <td className="py-2">
                         {isWalletPosition ? (
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <Wallet className="w-3.5 h-3.5 text-[var(--accent-primary)]" />
-                            <span className="text-xs text-[var(--foreground-muted)]">
+                            <Wallet className="w-3 h-3 text-[var(--accent-primary)]" />
+                            <span className="text-[11px] text-[var(--foreground-muted)]">
                               {formatAddress(position.walletAddress!, 4)}
                             </span>
                             {position.chain && (
@@ -519,16 +577,16 @@ export default function PositionsPage() {
                             )}
                           </div>
                         ) : (
-                          <span className="tag">{getAssetTypeLabel(position.type)}</span>
+                          <span className="tag text-[11px]">{getAssetTypeLabel(position.type)}</span>
                         )}
                       </td>
-                      <td className="py-3 text-right font-mono text-sm">
+                      <td className="py-2 text-right font-mono text-xs">
                         {hideBalances ? '***' : formatNumber(position.amount)}
                       </td>
-                      <td className="py-3 text-right">
+                      <td className="py-2 text-right">
                         <button
                           onClick={() => openCustomPriceModal(position)}
-                          className="group inline-flex items-center gap-1 font-mono text-sm hover:text-[var(--accent-primary)] transition-colors"
+                          className="group inline-flex items-center gap-1 font-mono text-xs hover:text-[var(--accent-primary)] transition-colors"
                           title="Click to set custom price"
                         >
                           {position.currentPrice > 0 ? formatCurrency(position.currentPrice) : '-'}
@@ -538,10 +596,10 @@ export default function PositionsPage() {
                           <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity" />
                         </button>
                       </td>
-                      <td className={`py-3 text-right font-semibold ${isDebt ? 'text-[var(--negative)]' : ''}`}>
+                      <td className={`py-2 text-right font-semibold text-sm ${isDebt ? 'text-[var(--negative)]' : ''}`}>
                         {hideBalances ? '****' : position.value !== 0 ? formatCurrency(position.value) : '-'}
                       </td>
-                      <td className="py-3 text-right">
+                      <td className="py-2 text-right">
                         {(() => {
                           if (hideBalances || !position.costBasis) return <span className="text-[var(--foreground-muted)]">--</span>;
                           const pnlData = calculateUnrealizedPnL(position.value, position.costBasis, position.purchaseDate);
@@ -564,13 +622,13 @@ export default function PositionsPage() {
                           );
                         })()}
                       </td>
-                      <td className={`py-3 text-right ${getChangeColor(position.changePercent24h)}`}>
+                      <td className={`py-2 text-right text-xs ${getChangeColor(position.changePercent24h)}`}>
                         {position.currentPrice > 0 ? formatPercent(position.changePercent24h) : '-'}
                       </td>
-                      <td className={`py-3 text-right ${isDebt ? 'text-[var(--negative)]' : 'text-[var(--foreground-muted)]'}`}>
+                      <td className={`py-2 text-right text-xs ${isDebt ? 'text-[var(--negative)]' : 'text-[var(--foreground-muted)]'}`}>
                         {position.allocation.toFixed(1)}%
                       </td>
-                      <td className="py-3 text-right">
+                      <td className="py-2 text-right">
                         <button
                           onClick={() => handleDelete(position.id, isWalletPosition)}
                           className={`p-2 rounded-lg transition-colors ${
@@ -601,7 +659,7 @@ export default function PositionsPage() {
                       {sortField === 'symbol' && <ArrowUpDown className="w-3 h-3" />}
                     </span>
                   </th>
-                  <th className="table-header text-left pb-3">Type</th>
+                  <th className="table-header text-left pb-3">Category</th>
                   <th className="table-header text-right pb-3 cursor-pointer" onClick={() => toggleSort('amount')}>
                     <span className="flex items-center justify-end gap-1">
                       Amount
@@ -630,24 +688,24 @@ export default function PositionsPage() {
                     key={`${asset.symbol}-${index}`}
                     className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--background-secondary)] transition-colors"
                   >
-                    <td className="py-3">
-                      <div className="flex items-center gap-3">
-                        <CryptoIcon symbol={asset.symbol} size={32} />
-                        <p className="font-medium">{asset.symbol.toUpperCase()}</p>
+                    <td className="py-2">
+                      <div className="flex items-center gap-2">
+                        <CryptoIcon symbol={asset.symbol} size={24} />
+                        <p className="font-medium text-sm">{asset.symbol.toUpperCase()}</p>
                       </div>
                     </td>
-                    <td className="py-3">
-                      <span className="text-sm text-[var(--foreground-muted)]">
+                    <td className="py-2">
+                      <span className="text-xs text-[var(--foreground-muted)]">
                         {getAssetTypeLabel(asset.type)}
                       </span>
                     </td>
-                    <td className="py-3 text-right font-mono text-sm">
+                    <td className="py-2 text-right font-mono text-xs">
                       {hideBalances ? '***' : formatNumber(asset.amount)}
                     </td>
-                    <td className="py-3 text-right">
+                    <td className="py-2 text-right">
                       <button
                         onClick={() => openCustomPriceModal(asset)}
-                        className="group inline-flex items-center gap-1 font-mono text-sm hover:text-[var(--accent-primary)] transition-colors"
+                        className="group inline-flex items-center gap-1 font-mono text-xs hover:text-[var(--accent-primary)] transition-colors"
                         title="Click to set custom price"
                       >
                         {formatCurrency(asset.currentPrice)}
@@ -657,13 +715,13 @@ export default function PositionsPage() {
                         <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity" />
                       </button>
                     </td>
-                    <td className="py-3 text-right font-semibold">
+                    <td className="py-2 text-right font-semibold text-sm">
                       {hideBalances ? '****' : formatCurrency(asset.value)}
                     </td>
-                    <td className={`py-3 text-right ${getChangeColor(asset.changePercent24h)}`}>
+                    <td className={`py-2 text-right text-xs ${getChangeColor(asset.changePercent24h)}`}>
                       {formatPercent(asset.changePercent24h)}
                     </td>
-                    <td className="py-3 text-right text-[var(--foreground-muted)]">
+                    <td className="py-2 text-right text-xs text-[var(--foreground-muted)]">
                       {asset.allocation.toFixed(1)}%
                     </td>
                   </tr>
@@ -681,7 +739,7 @@ export default function PositionsPage() {
           {wallets.length > 0 && ` | ${wallets.length} wallet${wallets.length > 1 ? 's' : ''}`}
         </span>
         <span>
-          {categoryFilter !== 'all' || searchQuery ? (
+          {!categoryFilters.has('all') || searchQuery ? (
             <>
               Filtered: <span className="font-semibold text-[var(--foreground)]">{hideBalances ? '******' : formatCurrency(filteredTotal)}</span>
               <span className="text-[var(--foreground-muted)]"> of {hideBalances ? '******' : formatCurrency(totalNAV)}</span>

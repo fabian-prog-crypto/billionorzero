@@ -275,25 +275,25 @@ export default function CashPage() {
                   key={position.id}
                   className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--background-secondary)] transition-colors"
                 >
-                  <td className="py-3">
-                    <div className="flex items-center gap-3">
+                  <td className="py-2">
+                    <div className="flex items-center gap-2">
                       <div
-                        className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold text-white"
+                        className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-semibold text-white"
                         style={{ backgroundColor: isStable ? CURRENCY_COLORS.USDT : CURRENCY_COLORS.USD }}
                       >
                         {position.symbol.slice(0, 2).toUpperCase()}
                       </div>
                       <div>
-                        <p className="font-medium">{position.symbol.toUpperCase()}</p>
-                        <p className="text-xs text-[var(--foreground-muted)] truncate max-w-[150px]">
+                        <p className="font-medium text-sm">{position.symbol.toUpperCase()}</p>
+                        <p className="text-[11px] text-[var(--foreground-muted)] truncate max-w-[150px]">
                           {position.name}
                         </p>
                       </div>
                     </div>
                   </td>
-                  <td className="py-3">
+                  <td className="py-2">
                     <span
-                      className="px-2 py-1 text-xs font-medium rounded"
+                      className="px-1.5 py-0.5 text-[10px] font-medium rounded"
                       style={{
                         backgroundColor: isStable ? `${CURRENCY_COLORS.USDT}1A` : `${CURRENCY_COLORS.USD}1A`,
                         color: isStable ? CURRENCY_COLORS.USDT : CURRENCY_COLORS.USD,
@@ -302,10 +302,10 @@ export default function CashPage() {
                       {isStable ? 'Stablecoin' : 'Fiat'}
                     </span>
                   </td>
-                  <td className="py-3 text-right font-mono text-sm">
+                  <td className="py-2 text-right font-mono text-xs">
                     {hideBalances ? '••••' : formatNumber(position.amount)}
                   </td>
-                  <td className="py-3 text-right font-semibold">
+                  <td className="py-2 text-right font-semibold text-sm">
                     {hideBalances ? '••••' : formatCurrency(position.value)}
                   </td>
                 </tr>

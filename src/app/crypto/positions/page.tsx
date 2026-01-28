@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import { Trash2, Wallet, ArrowUpDown, ChevronUp, ChevronDown, Layers, Grid3X3, Edit2, Download, Coins } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
-import { calculateAllPositionsWithPrices, aggregatePositionsBySymbol, calculateCryptoBreakdown, getCategoryService } from '@/services';
+import { calculateAllPositionsWithPrices, aggregatePositionsBySymbol, calculateCryptoBreakdown, getCategoryService, ExposureCategoryType, getAllExposureCategoryConfigs, getExposureCategoryConfig } from '@/services';
 import DonutChart from '@/components/charts/DonutChart';
 import CryptoIcon from '@/components/ui/CryptoIcon';
 import CustomPriceModal from '@/components/modals/CustomPriceModal';
@@ -15,34 +15,21 @@ import {
   formatPercent,
   formatNumber,
   getChangeColor,
-  getAssetTypeLabel,
   formatAddress,
 } from '@/lib/utils';
-import { CRYPTO_COLORS } from '@/lib/colors';
 import { AssetWithPrice } from '@/types';
-import { CryptoSubCategory } from '@/lib/assetCategories';
 
 type ViewMode = 'positions' | 'assets';
 type SortField = 'symbol' | 'value' | 'amount' | 'change';
 type SortDirection = 'asc' | 'desc';
-
-const CRYPTO_FILTER_OPTIONS: { value: CryptoSubCategory; label: string; color: string }[] = [
-  { value: 'btc', label: 'BTC', color: CRYPTO_COLORS.btc },
-  { value: 'eth', label: 'ETH', color: CRYPTO_COLORS.eth },
-  { value: 'sol', label: 'SOL', color: CRYPTO_COLORS.sol },
-  { value: 'stablecoins', label: 'Stables', color: CRYPTO_COLORS.stablecoins },
-  { value: 'tokens', label: 'Tokens', color: CRYPTO_COLORS.tokens },
-  { value: 'perps', label: 'Perps', color: CRYPTO_COLORS.perps },
-];
+type CategoryFilter = ExposureCategoryType | 'all';
 
 export default function CryptoPositionsPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('assets');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortField, setSortField] = useState<SortField>('value');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
-  const [selectedCategories, setSelectedCategories] = useState<Set<CryptoSubCategory>>(
-    new Set(CRYPTO_FILTER_OPTIONS.map(opt => opt.value))
-  );
+  const [selectedCategories, setSelectedCategories] = useState<Set<CategoryFilter>>(new Set(['all']));
 
   const [customPriceModal, setCustomPriceModal] = useState<{
     isOpen: boolean;
@@ -51,6 +38,16 @@ export default function CryptoPositionsPage() {
 
   const { positions, prices, customPrices, removePosition, hideBalances } = usePortfolioStore();
   const categoryService = getCategoryService();
+
+  // Get exposure category options from service
+  const filterOptions = useMemo(() => {
+    const configs = getAllExposureCategoryConfigs();
+    return Object.entries(configs).map(([key, config]) => ({
+      value: key as ExposureCategoryType,
+      label: config.label,
+      color: config.color,
+    }));
+  }, []);
 
   // Calculate all positions with current prices
   const allPositionsWithPrices = useMemo(() => {
@@ -66,11 +63,11 @@ export default function CryptoPositionsPage() {
   const filteredPositions = useMemo(() => {
     let filtered = breakdownData.cryptoPositions;
 
-    // Filter by category
-    if (selectedCategories.size < CRYPTO_FILTER_OPTIONS.length) {
+    // Filter by category (multi-select - 'all' means show all)
+    if (!selectedCategories.has('all')) {
       filtered = filtered.filter((p) => {
-        const subCat = categoryService.getSubCategory(p.symbol, p.type);
-        return selectedCategories.has(subCat as CryptoSubCategory);
+        const exposureCat = categoryService.getExposureCategory(p.symbol, p.type);
+        return selectedCategories.has(exposureCat);
       });
     }
 
@@ -133,21 +130,28 @@ export default function CryptoPositionsPage() {
     return assets;
   }, [filteredPositions, sortField, sortDirection]);
 
-  // Category filter handlers
-  const toggleCategory = (category: CryptoSubCategory) => {
-    setSelectedCategories((prev) => {
-      const next = new Set(prev);
-      if (next.has(category)) {
-        next.delete(category);
-      } else {
-        next.add(category);
+  // Category filter handlers (multi-select)
+  const toggleCategory = (category: CategoryFilter) => {
+    setSelectedCategories(prev => {
+      const newFilters = new Set(prev);
+      if (category === 'all') {
+        return new Set(['all']);
       }
-      return next;
+      newFilters.delete('all');
+      if (newFilters.has(category)) {
+        newFilters.delete(category);
+        if (newFilters.size === 0) {
+          return new Set(['all']);
+        }
+      } else {
+        newFilters.add(category);
+      }
+      return newFilters;
     });
   };
 
   const clearFilters = () => {
-    setSelectedCategories(new Set(CRYPTO_FILTER_OPTIONS.map(opt => opt.value)));
+    setSelectedCategories(new Set(['all']));
   };
 
   const toggleSort = (field: SortField) => {
@@ -208,7 +212,7 @@ export default function CryptoPositionsPage() {
   };
 
   const displayData = viewMode === 'assets' ? aggregatedAssets : sortedPositions;
-  const hasActiveFilter = selectedCategories.size < CRYPTO_FILTER_OPTIONS.length;
+  const hasActiveFilter = !selectedCategories.has('all');
   // Only sum positive values (assets) to match pie chart calculation
   const filteredValue = filteredPositions.filter(p => p.value > 0).reduce((sum, p) => sum + p.value, 0);
   const uniqueAssets = new Set(breakdownData.cryptoPositions.map(p => p.symbol.toLowerCase())).size;
@@ -293,9 +297,19 @@ export default function CryptoPositionsPage() {
 
       <hr className="border-[var(--border)] mb-6" />
 
-      {/* Filter Chips */}
+      {/* Filter Chips - Multi-select by category */}
       <div className="flex flex-wrap items-center gap-2 mb-4">
-        {CRYPTO_FILTER_OPTIONS.map((opt) => {
+        <button
+          onClick={() => toggleCategory('all')}
+          className={`px-3 py-1.5 text-[12px] font-medium rounded-lg transition-all ${
+            selectedCategories.has('all')
+              ? 'bg-[var(--accent-primary)] text-white'
+              : 'bg-[var(--background-secondary)] text-[var(--foreground)] hover:bg-[var(--background-tertiary)]'
+          }`}
+        >
+          All
+        </button>
+        {filterOptions.map((opt) => {
           const isSelected = selectedCategories.has(opt.value);
           return (
             <button
@@ -303,13 +317,13 @@ export default function CryptoPositionsPage() {
               onClick={() => toggleCategory(opt.value)}
               className={`px-3 py-1.5 text-[12px] font-medium rounded-lg transition-all flex items-center gap-1.5 ${
                 isSelected
-                  ? 'bg-[var(--background-secondary)] text-[var(--foreground)]'
-                  : 'bg-transparent text-[var(--foreground-muted)] opacity-50'
+                  ? 'bg-[var(--accent-primary)] text-white'
+                  : 'bg-[var(--background-secondary)] text-[var(--foreground)] hover:bg-[var(--background-tertiary)]'
               }`}
             >
               <span
                 className="w-2 h-2 rounded-full"
-                style={{ backgroundColor: opt.color }}
+                style={{ backgroundColor: isSelected ? 'white' : opt.color }}
               />
               {opt.label}
             </button>
@@ -405,9 +419,9 @@ export default function CryptoPositionsPage() {
                       isDebt ? 'bg-[var(--negative-light)]' : ''
                     }`}
                   >
-                    <td className="py-3">
-                      <div className="flex items-center gap-3">
-                        <CryptoIcon symbol={position.symbol} size={32} isDebt={isDebt} />
+                    <td className="py-2">
+                      <div className="flex items-center gap-2">
+                        <CryptoIcon symbol={position.symbol} size={24} isDebt={isDebt} />
                         <div className="flex items-center gap-2">
                           <p className="font-medium">{position.symbol.toUpperCase()}</p>
                           {isDebt && (
@@ -418,11 +432,11 @@ export default function CryptoPositionsPage() {
                         </div>
                       </div>
                     </td>
-                    <td className="py-3">
+                    <td className="py-2">
                       {isWalletPosition ? (
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <Wallet className="w-3.5 h-3.5 text-[var(--accent-primary)]" />
-                          <span className="text-xs text-[var(--foreground-muted)]">
+                          <Wallet className="w-3 h-3 text-[var(--accent-primary)]" />
+                          <span className="text-[11px] text-[var(--foreground-muted)]">
                             {formatAddress(position.walletAddress!, 4)}
                           </span>
                           {position.chain && (
@@ -435,18 +449,18 @@ export default function CryptoPositionsPage() {
                           )}
                         </div>
                       ) : isCexPosition ? (
-                        <span className="tag">CEX</span>
+                        <span className="tag text-[11px]">CEX</span>
                       ) : (
-                        <span className="tag">{getAssetTypeLabel(position.type)}</span>
+                        <span className="tag text-[11px]">{getAssetTypeLabel(position.type)}</span>
                       )}
                     </td>
-                    <td className="py-3 text-right font-mono text-sm">
+                    <td className="py-2 text-right font-mono text-xs">
                       {hideBalances ? '•••' : formatNumber(position.amount)}
                     </td>
-                    <td className="py-3 text-right">
+                    <td className="py-2 text-right">
                       <button
                         onClick={() => openCustomPriceModal(position)}
-                        className="group inline-flex items-center gap-1 font-mono text-sm hover:text-[var(--accent-primary)] transition-colors"
+                        className="group inline-flex items-center gap-1 font-mono text-xs hover:text-[var(--accent-primary)] transition-colors"
                       >
                         {position.currentPrice > 0 ? formatCurrency(position.currentPrice) : '-'}
                         {position.hasCustomPrice && (
@@ -455,16 +469,16 @@ export default function CryptoPositionsPage() {
                         <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity" />
                       </button>
                     </td>
-                    <td className={`py-3 text-right font-semibold ${isDebt ? 'text-[var(--negative)]' : ''}`}>
+                    <td className={`py-2 text-right font-semibold text-sm ${isDebt ? 'text-[var(--negative)]' : ''}`}>
                       {hideBalances ? '••••' : formatCurrency(position.value)}
                     </td>
-                    <td className={`py-3 text-right ${getChangeColor(position.changePercent24h)}`}>
+                    <td className={`py-2 text-right text-xs ${getChangeColor(position.changePercent24h)}`}>
                       {formatPercent(position.changePercent24h)}
                     </td>
-                    <td className={`py-3 text-right ${isDebt ? 'text-[var(--negative)]' : 'text-[var(--foreground-muted)]'}`}>
+                    <td className={`py-2 text-right text-xs ${isDebt ? 'text-[var(--negative)]' : 'text-[var(--foreground-muted)]'}`}>
                       {position.allocation.toFixed(1)}%
                     </td>
-                    <td className="py-3 text-right">
+                    <td className="py-2 text-right">
                       {!isWalletPosition && !isCexPosition && (
                         <button
                           onClick={() => handleDelete(position.id, false)}
@@ -491,7 +505,7 @@ export default function CryptoPositionsPage() {
                     Asset <SortIcon field="symbol" />
                   </button>
                 </th>
-                <th className="table-header text-left pb-3">Type</th>
+                <th className="table-header text-left pb-3">Category</th>
                 <th className="table-header text-right pb-3">
                   <button onClick={() => toggleSort('amount')} className="flex items-center gap-1 ml-auto hover:text-[var(--foreground)] transition-colors">
                     Amount <SortIcon field="amount" />
@@ -517,24 +531,37 @@ export default function CryptoPositionsPage() {
                   key={`${asset.symbol}-${index}`}
                   className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--background-secondary)] transition-colors"
                 >
-                  <td className="py-3">
-                    <div className="flex items-center gap-3">
-                      <CryptoIcon symbol={asset.symbol} size={32} />
-                      <p className="font-medium">{asset.symbol.toUpperCase()}</p>
+                  <td className="py-2">
+                    <div className="flex items-center gap-2">
+                      <CryptoIcon symbol={asset.symbol} size={24} />
+                      <p className="font-medium text-sm">{asset.symbol.toUpperCase()}</p>
                     </div>
                   </td>
-                  <td className="py-3">
-                    <span className="text-sm text-[var(--foreground-muted)]">
-                      {getAssetTypeLabel(asset.type)}
-                    </span>
+                  <td className="py-2">
+                    {(() => {
+                      const exposureCat = categoryService.getExposureCategory(asset.symbol, asset.type);
+                      const config = getExposureCategoryConfig(exposureCat);
+                      return (
+                        <span
+                          className="px-1.5 py-0.5 text-[10px] font-medium rounded inline-flex items-center gap-1"
+                          style={{
+                            backgroundColor: `${config.color}1A`,
+                            color: config.color,
+                          }}
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: config.color }} />
+                          {config.label}
+                        </span>
+                      );
+                    })()}
                   </td>
-                  <td className="py-3 text-right font-mono text-sm">
+                  <td className="py-2 text-right font-mono text-xs">
                     {hideBalances ? '•••' : formatNumber(asset.amount)}
                   </td>
-                  <td className="py-3 text-right">
+                  <td className="py-2 text-right">
                     <button
                       onClick={() => openCustomPriceModal(asset)}
-                      className="group inline-flex items-center gap-1 font-mono text-sm hover:text-[var(--accent-primary)] transition-colors"
+                      className="group inline-flex items-center gap-1 font-mono text-xs hover:text-[var(--accent-primary)] transition-colors"
                     >
                       {formatCurrency(asset.currentPrice)}
                       {asset.hasCustomPrice && (
@@ -543,13 +570,13 @@ export default function CryptoPositionsPage() {
                       <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity" />
                     </button>
                   </td>
-                  <td className="py-3 text-right font-semibold">
+                  <td className="py-2 text-right font-semibold text-sm">
                     {hideBalances ? '••••' : formatCurrency(asset.value)}
                   </td>
-                  <td className={`py-3 text-right ${getChangeColor(asset.changePercent24h)}`}>
+                  <td className={`py-2 text-right text-xs ${getChangeColor(asset.changePercent24h)}`}>
                     {formatPercent(asset.changePercent24h)}
                   </td>
-                  <td className="py-3 text-right text-[var(--foreground-muted)]">
+                  <td className="py-2 text-right text-xs text-[var(--foreground-muted)]">
                     {asset.allocation.toFixed(1)}%
                   </td>
                 </tr>

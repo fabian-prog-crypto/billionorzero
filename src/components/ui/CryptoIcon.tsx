@@ -71,6 +71,7 @@ const COINGECKO_IMAGES: Record<string, { id: string; img: number }> = {
 
   // DeFi tokens
   aave: { id: 'aave', img: 12645 },
+  lit: { id: 'lit-protocol', img: 70287 },
   crv: { id: 'curve-dao-token', img: 12124 },
   cvx: { id: 'convex-finance', img: 15585 },
   mkr: { id: 'maker', img: 1364 },

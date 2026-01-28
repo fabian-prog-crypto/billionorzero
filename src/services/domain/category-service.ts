@@ -17,7 +17,7 @@ export type EquitiesSubCategory = 'stocks' | 'etfs';
 export type SubCategory = CryptoSubCategory | EquitiesSubCategory | 'none';
 
 // Exposure category types (more granular than sub-categories for crypto exposure analysis)
-// Note: perps are NOT an exposure category - they represent leverage, not underlying asset exposure
+// Perp positions are classified by their underlying asset (e.g., BTC perp -> BTC exposure)
 export type ExposureCategoryType = 'stablecoins' | 'eth' | 'defi' | 'btc' | 'rwa' | 'sol' | 'privacy' | 'ai' | 'meme' | 'tokens';
 
 // Combined category for compatibility (main_sub format)
@@ -89,7 +89,7 @@ export class CategoryService {
   // DeFi protocol tokens
   private defiTokens = new Set([
     // DEXs & AMMs
-    'uni', 'uniswap', 'sushi', 'cake', 'crv', 'bal', 'joe', 'velo', 'aero',
+    'uni', 'uniswap', 'sushi', 'cake', 'crv', 'bal', 'joe', 'velo', 'aero', 'sky',
     'gmx', 'dydx', 'perp', 'rune', 'osmo', 'ray', 'orca', 'jup', 'jupiter',
     '1inch', 'dodo', 'bancor', 'bnt', 'kyber', 'knc', 'swapr', 'camelot',
     'thena', 'solidly', 'velodrome', 'aerodrome', 'trader joe', 'quickswap',
@@ -117,7 +117,7 @@ export class CategoryService {
   // RWA (Real World Assets) tokens
   private rwaTokens = new Set([
     // Tokenized treasuries & bonds
-    'ondo', 'maple', 'mpl', 'goldfinch', 'gfi', 'centrifuge', 'cfg',
+    'ondo', 'maple', 'mpl', 'goldfinch', 'gfi', 'centrifuge', 'cfg', 'syrup',
     'clearpool', 'cpool', 'truefi', 'tru', 'credix',
     // Tokenized commodities
     'paxg', 'xaut', 'tgold', 'dgld', 'pmgt', 'cache', 'cgo',
@@ -142,7 +142,7 @@ export class CategoryService {
 
   // AI & Machine Learning tokens
   private aiTokens = new Set([
-    'fet', 'fetch', 'agix', 'singularitynet', 'ocean', 'oceanprotocol',
+    'fet', 'fetch', 'agix', 'singularitynet', 'ocean', 'oceanprotocol', 'vvv', 'giza',
     'rndr', 'render', 'tao', 'bittensor', 'akt', 'akash', 'grt', 'thegraph',
     'ar', 'arweave', 'fil', 'filecoin', 'storj', 'sia', 'sc',
     'nmt', 'numer', 'numeraire', 'clv', 'cortex', 'ctxc', 'nmr',
@@ -230,18 +230,18 @@ export class CategoryService {
   };
 
   // Exposure category configuration (more granular breakdown for crypto)
-  // Note: perps are excluded - they represent leverage/derivatives, not underlying exposure
+  // Perp positions count towards their underlying asset exposure (e.g., BTC perp -> BTC)
   private exposureCategoryConfig: Record<ExposureCategoryType, ExposureCategoryConfig> = {
-    stablecoins: { color: '#4CAF50', label: 'Stablecoins' },
-    eth: { color: '#627EEA', label: 'ETH' },
-    defi: { color: '#9C27B0', label: 'DeFi' },
-    btc: { color: '#F7931A', label: 'BTC' },
-    rwa: { color: '#43A047', label: 'RWA' },
-    sol: { color: '#9945FF', label: 'SOL' },
-    privacy: { color: '#37474F', label: 'Privacy' },
-    ai: { color: '#2196F3', label: 'AI' },
-    meme: { color: '#FF9800', label: 'Meme' },
-    tokens: { color: '#00BCD4', label: 'Tokens' },
+    stablecoins: { color: '#4CAF50', label: 'Stablecoins' },  // Green - stability
+    eth: { color: '#627EEA', label: 'ETH' },                  // Ethereum blue
+    defi: { color: '#9C27B0', label: 'DeFi' },                // Purple
+    btc: { color: '#F7931A', label: 'BTC' },                  // Bitcoin orange
+    rwa: { color: '#8D6E63', label: 'RWA' },                  // Brown - real world/physical assets
+    sol: { color: '#9945FF', label: 'SOL' },                  // Solana purple
+    privacy: { color: '#37474F', label: 'Privacy' },          // Dark gray - hidden
+    ai: { color: '#2196F3', label: 'AI' },                    // Blue - tech/digital
+    meme: { color: '#E91E63', label: 'Meme' },                // Pink - playful
+    tokens: { color: '#00BCD4', label: 'Tokens' },            // Cyan - generic
   };
 
   /**
