@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Banknote, ArrowUpDown, ChevronDown, ChevronUp, Wallet, Building2, ToggleLeft, ToggleRight } from 'lucide-react';
+import { Banknote, ArrowUpDown, ChevronDown, ChevronUp, Wallet, Building2, Coins } from 'lucide-react';
 import DonutChart, { DonutChartItem } from '@/components/charts/DonutChart';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import {
@@ -251,18 +251,29 @@ export default function CashPage() {
 
       <hr className="border-[var(--border)] mb-6" />
 
-      {/* Stablecoin Toggle */}
-      <div className="flex items-center gap-3 mb-6">
+      {/* View Toggle */}
+      <div className="flex gap-1 p-1 bg-[var(--background-secondary)] rounded-lg w-fit mb-6">
         <button
-          onClick={() => setIncludeStablecoins(!includeStablecoins)}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--background-secondary)] hover:bg-[var(--background-tertiary)] transition-colors"
+          onClick={() => setIncludeStablecoins(true)}
+          className={`px-3 py-1.5 text-[12px] font-medium rounded-md transition-colors flex items-center gap-1.5 ${
+            includeStablecoins
+              ? 'bg-[var(--card-bg)] text-[var(--foreground)] shadow-sm'
+              : 'text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
+          }`}
         >
-          {includeStablecoins ? (
-            <ToggleRight className="w-5 h-5 text-[var(--accent-primary)]" />
-          ) : (
-            <ToggleLeft className="w-5 h-5 text-[var(--foreground-muted)]" />
-          )}
-          <span className="text-[13px] font-medium">Include Stablecoins</span>
+          <Coins className="w-3.5 h-3.5" />
+          All
+        </button>
+        <button
+          onClick={() => setIncludeStablecoins(false)}
+          className={`px-3 py-1.5 text-[12px] font-medium rounded-md transition-colors flex items-center gap-1.5 ${
+            !includeStablecoins
+              ? 'bg-[var(--card-bg)] text-[var(--foreground)] shadow-sm'
+              : 'text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
+          }`}
+        >
+          <Building2 className="w-3.5 h-3.5" />
+          Fiat Only
         </button>
       </div>
 
@@ -275,47 +286,39 @@ export default function CashPage() {
           maxItems={6}
         />
 
-        {/* Summary Cards */}
-        <div className="md:col-span-2 grid grid-cols-2 gap-4">
-          {/* Fiat Summary */}
-          <div className="p-4 rounded-xl bg-[var(--background-secondary)]">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="w-8 h-8 rounded-lg bg-[#4CAF50]/20 flex items-center justify-center">
-                <Building2 className="w-4 h-4 text-[#4CAF50]" />
+        {/* Summary Stats */}
+        <div className="md:col-span-2">
+          <h3 className="text-[15px] font-medium mb-4">Breakdown</h3>
+          <div className="grid grid-cols-2 gap-6">
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <Building2 className="w-3 h-3 text-[#4CAF50]" />
+                <span className="text-[13px] font-medium">Fiat Currencies</span>
               </div>
-              <div>
-                <p className="text-[11px] text-[var(--foreground-muted)]">Fiat Currencies</p>
-                <p className="text-[15px] font-semibold">
-                  {hideBalances ? '••••' : formatCurrency(breakdownData.fiat.value)}
-                </p>
-              </div>
+              <p className="text-xl font-semibold mb-1">
+                {hideBalances ? '••••' : formatCurrency(breakdownData.fiat.value)}
+              </p>
+              <p className="text-[12px] text-[var(--foreground-muted)]">
+                {breakdownData.fiat.count} position{breakdownData.fiat.count !== 1 ? 's' : ''}
+                {breakdownData.total > 0 && (
+                  <span> · {((breakdownData.fiat.value / breakdownData.total) * 100).toFixed(0)}%</span>
+                )}
+              </p>
             </div>
-            <div className="text-[12px] text-[var(--foreground-muted)]">
-              {breakdownData.fiat.count} position{breakdownData.fiat.count !== 1 ? 's' : ''}
-              {breakdownData.total > 0 && (
-                <span> · {((breakdownData.fiat.value / breakdownData.total) * 100).toFixed(0)}%</span>
-              )}
-            </div>
-          </div>
-
-          {/* Stablecoin Summary */}
-          <div className="p-4 rounded-xl bg-[var(--background-secondary)]">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="w-8 h-8 rounded-lg bg-[#2775CA]/20 flex items-center justify-center">
-                <Wallet className="w-4 h-4 text-[#2775CA]" />
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <Wallet className="w-3 h-3 text-[#2775CA]" />
+                <span className="text-[13px] font-medium">Stablecoins</span>
               </div>
-              <div>
-                <p className="text-[11px] text-[var(--foreground-muted)]">Stablecoins</p>
-                <p className="text-[15px] font-semibold">
-                  {hideBalances ? '••••' : formatCurrency(breakdownData.stablecoins.value)}
-                </p>
-              </div>
-            </div>
-            <div className="text-[12px] text-[var(--foreground-muted)]">
-              {breakdownData.stablecoins.count} position{breakdownData.stablecoins.count !== 1 ? 's' : ''}
-              {breakdownData.total > 0 && (
-                <span> · {((breakdownData.stablecoins.value / breakdownData.total) * 100).toFixed(0)}%</span>
-              )}
+              <p className="text-xl font-semibold mb-1">
+                {hideBalances ? '••••' : formatCurrency(breakdownData.stablecoins.value)}
+              </p>
+              <p className="text-[12px] text-[var(--foreground-muted)]">
+                {breakdownData.stablecoins.count} position{breakdownData.stablecoins.count !== 1 ? 's' : ''}
+                {breakdownData.total > 0 && (
+                  <span> · {((breakdownData.stablecoins.value / breakdownData.total) * 100).toFixed(0)}%</span>
+                )}
+              </p>
             </div>
           </div>
         </div>
