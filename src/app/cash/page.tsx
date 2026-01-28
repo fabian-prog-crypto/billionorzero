@@ -7,6 +7,7 @@ import { usePortfolioStore } from '@/store/portfolioStore';
 import {
   calculateAllPositionsWithPrices,
   calculateCashBreakdown,
+  extractCurrencyCode,
 } from '@/services';
 import { formatCurrency, formatNumber, formatAddress } from '@/lib/utils';
 import { CURRENCY_COLORS } from '@/lib/colors';
@@ -141,11 +142,11 @@ export default function CashPage() {
     // Apply search filter
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(
-        (p) =>
-          p.symbol.toLowerCase().includes(query) ||
-          CURRENCY_NAMES[p.symbol.toLowerCase()]?.toLowerCase().includes(query)
-      );
+      filtered = filtered.filter((p) => {
+        const cleanSymbol = extractCurrencyCode(p.symbol).toLowerCase();
+        return cleanSymbol.includes(query) ||
+          CURRENCY_NAMES[cleanSymbol]?.toLowerCase().includes(query);
+      });
     }
 
     // Apply sorting
@@ -183,18 +184,18 @@ export default function CashPage() {
 
   // Build chart data with breakdowns for tooltips
   const chartData = useMemo((): DonutChartItem[] => {
-    // Group positions by currency symbol
+    // Group positions by clean currency code
     const bySymbol = new Map<string, { value: number; positions: { label: string; value: number }[] }>();
 
     cashPositions.forEach((p) => {
-      const symbol = p.symbol.toUpperCase();
-      const existing = bySymbol.get(symbol) || { value: 0, positions: [] };
+      const cleanSymbol = extractCurrencyCode(p.symbol);
+      const existing = bySymbol.get(cleanSymbol) || { value: 0, positions: [] };
       existing.value += p.value;
       existing.positions.push({
         label: getPositionDisplayName(p),
         value: p.value,
       });
-      bySymbol.set(symbol, existing);
+      bySymbol.set(cleanSymbol, existing);
     });
 
     return Array.from(bySymbol.entries()).map(([symbol, data]) => ({
@@ -208,12 +209,12 @@ export default function CashPage() {
   if (breakdownData.fiatPositions.length === 0 && breakdownData.stablecoinPositions.length === 0) {
     return (
       <div>
-        <div className="flex flex-col items-center justify-center py-32">
-          <div className="w-20 h-20 rounded-2xl bg-[var(--background-tertiary)] flex items-center justify-center mb-6">
-            <Banknote className="w-10 h-10 text-[var(--foreground-muted)]" />
+        <div className="flex flex-col items-center justify-center py-20">
+          <div className="w-14 h-14 rounded-full bg-[var(--background-secondary)] flex items-center justify-center mb-4">
+            <Banknote className="w-6 h-6 text-[var(--foreground-muted)]" />
           </div>
-          <h2 className="text-xl font-semibold mb-2">No cash positions</h2>
-          <p className="text-[var(--foreground-muted)] text-center max-w-md">
+          <h2 className="text-[15px] font-semibold mb-2">No cash positions</h2>
+          <p className="text-[13px] text-[var(--foreground-muted)] text-center max-w-md">
             Add cash or stablecoin positions to track your liquid holdings.
           </p>
         </div>
@@ -257,7 +258,7 @@ export default function CashPage() {
           onClick={() => setIncludeStablecoins(true)}
           className={`px-3 py-1.5 text-[12px] font-medium rounded-md transition-colors flex items-center gap-1.5 ${
             includeStablecoins
-              ? 'bg-[var(--card-bg)] text-[var(--foreground)] shadow-sm'
+              ? 'bg-[var(--background)] text-[var(--foreground)] shadow-sm'
               : 'text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
           }`}
         >
@@ -268,7 +269,7 @@ export default function CashPage() {
           onClick={() => setIncludeStablecoins(false)}
           className={`px-3 py-1.5 text-[12px] font-medium rounded-md transition-colors flex items-center gap-1.5 ${
             !includeStablecoins
-              ? 'bg-[var(--card-bg)] text-[var(--foreground)] shadow-sm'
+              ? 'bg-[var(--background)] text-[var(--foreground)] shadow-sm'
               : 'text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
           }`}
         >
@@ -382,7 +383,8 @@ export default function CashPage() {
           <tbody>
             {filteredPositions.map((position) => {
               const percentage = displayTotal > 0 ? (position.value / displayTotal) * 100 : 0;
-              const currencyName = CURRENCY_NAMES[position.symbol.toLowerCase()] || position.symbol.toUpperCase();
+              const cleanSymbol = extractCurrencyCode(position.symbol);
+              const currencyName = CURRENCY_NAMES[cleanSymbol.toLowerCase()] || cleanSymbol;
 
               return (
                 <tr
@@ -392,12 +394,12 @@ export default function CashPage() {
                   <td className="py-2">
                     <div className="flex items-center gap-2">
                       <CurrencyIcon
-                        symbol={position.symbol}
+                        symbol={cleanSymbol}
                         size={24}
                         logoUrl={position.logo}
                       />
                       <div>
-                        <p className="font-medium text-sm">{position.symbol.toUpperCase()}</p>
+                        <p className="font-medium text-sm">{cleanSymbol}</p>
                         <p className="text-[11px] text-[var(--foreground-muted)]">
                           {currencyName}
                         </p>

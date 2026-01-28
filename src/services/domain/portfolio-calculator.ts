@@ -39,6 +39,34 @@ export function detectPerpTrade(name: string): { isPerpTrade: boolean; isLong: b
 }
 
 /**
+ * Extract clean currency code from system-generated symbols
+ * Handles patterns like "CASH_CHF_1769344861626" -> "CHF"
+ */
+export function extractCurrencyCode(symbol: string): string {
+  const upper = symbol.toUpperCase();
+
+  // Pattern: CASH_{CURRENCY}_{ID}
+  const cashMatch = upper.match(/^CASH_([A-Z]{3})_/);
+  if (cashMatch) {
+    return cashMatch[1];
+  }
+
+  // Pattern: {CURRENCY}_{ID}
+  const prefixMatch = upper.match(/^([A-Z]{3})_\d+/);
+  if (prefixMatch) {
+    return prefixMatch[1];
+  }
+
+  // Check if it's already a clean 3-5 letter code
+  if (/^[A-Z]{3,5}$/i.test(symbol)) {
+    return upper;
+  }
+
+  // Return original uppercase if no pattern matches
+  return upper;
+}
+
+/**
  * Asset exposure classification types
  */
 export type ExposureClassification =
@@ -1579,8 +1607,9 @@ export function calculateCashBreakdown(
     : fiatPositions;
 
   // Process ALL positions (including debt) to get NET by currency
+  // Use extractCurrencyCode to clean up system-generated symbols like "CASH_CHF_123456"
   positionsToAnalyze.forEach((p) => {
-    const currency = p.symbol.toUpperCase();
+    const currency = extractCurrencyCode(p.symbol);
     if (!currencyMap[currency]) {
       currencyMap[currency] = { value: 0, count: 0, positions: [] };
     }
