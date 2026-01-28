@@ -101,6 +101,7 @@ export interface WalletBalance {
   chain: string;
   logo?: string;
   isVerified?: boolean;
+  tokenId?: string;
 }
 
 export interface DefiPosition {

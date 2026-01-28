@@ -116,13 +116,13 @@ export class PerpExchangeService {
       try {
         const result = await this.fetchFromExchange(exchangeId, wallet);
         if (result.positions.length > 0) {
-          console.log(`[${this.getExchangeName(exchangeId)}] Found ${result.positions.length} positions for ${wallet.address}`);
+          console.log(`[${this.getExchangeName(exchangeId)}] Found ${result.positions.length} positions for ${wallet.address.slice(0, 8)}...`);
           allPositions.push(...result.positions);
           Object.assign(allPrices, result.prices);
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        console.error(`[${this.getExchangeName(exchangeId)}] Error fetching positions for ${wallet.address}:`, error);
+        console.error(`[${this.getExchangeName(exchangeId)}] Error for ${wallet.address.slice(0, 8)}...:`, errorMessage);
         errors.push({ exchange: exchangeId, error: errorMessage });
       }
     });

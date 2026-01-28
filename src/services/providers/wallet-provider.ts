@@ -161,6 +161,7 @@ export class WalletProvider {
           chain: token.chain,
           logo: token.logo_url,
           isVerified: token.is_verified,
+          tokenId: token.id,
         }))
         .sort((a, b) => b.value - a.value);
 
@@ -230,7 +231,7 @@ export class WalletProvider {
             // Skip spam tokens using pattern matching
             if (isSpamToken(t.symbol, t.name)) continue;
 
-            const key = t.symbol.toLowerCase();
+            const key = `${t.symbol.toLowerCase()}-${t.chain || ''}`;
             const existing = aggregatedSupply.get(key);
             if (existing) {
               existing.amount += t.amount;
@@ -244,7 +245,7 @@ export class WalletProvider {
             // Skip spam tokens using pattern matching
             if (isSpamToken(t.symbol, t.name)) continue;
 
-            const key = t.symbol.toLowerCase();
+            const key = `${t.symbol.toLowerCase()}-${t.chain || ''}`;
             const existing = aggregatedDebt.get(key);
             if (existing) {
               existing.amount += t.amount;
@@ -258,7 +259,7 @@ export class WalletProvider {
             // Skip spam tokens using pattern matching
             if (isSpamToken(t.symbol, t.name)) continue;
 
-            const key = t.symbol.toLowerCase();
+            const key = `${t.symbol.toLowerCase()}-${t.chain || ''}`;
             const existing = aggregatedRewards.get(key);
             if (existing) {
               existing.amount += t.amount;
@@ -274,7 +275,7 @@ export class WalletProvider {
             for (const t of genericTokenList) {
               if (!t?.symbol || isSpamToken(t.symbol, t.name)) continue;
 
-              const key = t.symbol.toLowerCase();
+              const key = `${t.symbol.toLowerCase()}-${t.chain || ''}`;
               // Add to supply if not already there (treat generic tokens as supply/assets)
               if (!aggregatedSupply.has(key) && !aggregatedRewards.has(key)) {
                 aggregatedSupply.set(key, { symbol: t.symbol, amount: t.amount || 0, price: t.price || 0 });
@@ -285,13 +286,19 @@ export class WalletProvider {
 
         // Combine supply tokens and reward tokens (both are assets)
         // Reward tokens include vesting/locked tokens (e.g., Sablier vesting streams)
-        // IMPORTANT: Only include reward tokens that don't already exist in supply
-        // Some protocols (Aave, Compound) include the same token in both supply and reward lists
-        const supplyTokens = Array.from(aggregatedSupply.values());
-        const rewardTokens = Array.from(aggregatedRewards.values()).filter(
-          (reward) => !aggregatedSupply.has(reward.symbol.toLowerCase())
-        );
-        const tokens = [...supplyTokens, ...rewardTokens];
+        // Merge reward amounts into supply when they overlap (same token on same chain)
+        // Only add reward tokens as separate entries when they don't exist in supply
+        for (const [key, reward] of aggregatedRewards.entries()) {
+          const existing = aggregatedSupply.get(key);
+          if (existing) {
+            // Merge reward amount into existing supply entry
+            existing.amount += reward.amount;
+          } else {
+            // Add as new entry
+            aggregatedSupply.set(key, reward);
+          }
+        }
+        const tokens = Array.from(aggregatedSupply.values());
         const debtTokens = Array.from(aggregatedDebt.values());
 
         if (tokens.length > 0 || debtTokens.length > 0) {
@@ -381,15 +388,7 @@ export class WalletProvider {
     const debankPrices: Record<string, { price: number; symbol: string }> = {};
 
     for (const wallet of evmWallets) {
-      // Track tokens that come from protocols to avoid double counting
-      // Use multiple keys for robust matching:
-      // - "symbol-chain" for exact match
-      // - "symbol" for fallback (handles chain ID differences)
-      const protocolTokenKeysByChain = new Set<string>();
-      const protocolTokenSymbols = new Set<string>(); // Track just symbols for fallback
-
       // FIRST: Fetch DeFi protocol positions (including debt)
-      // This must happen before regular tokens to track what's in protocols
       const { positions: protocolPositions } = await this.getWalletProtocols(wallet.address, forceRefresh);
 
       // Track seen position IDs to avoid duplicates within protocols
@@ -404,13 +403,8 @@ export class WalletProvider {
           // Skip spam tokens using pattern matching
           if (isSpamToken(token.symbol)) continue;
 
-          // Track this token as coming from a protocol (for dedup against wallet tokens)
-          const tokenKey = `${token.symbol.toLowerCase()}-${defiPos.chain}`;
-          protocolTokenKeysByChain.add(tokenKey);
-          protocolTokenSymbols.add(token.symbol.toLowerCase());
-
-          // Use protocol + type + symbol for unique ID
-          const positionId = `${wallet.id}-${defiPos.protocol}-${defiPos.type}-${token.symbol}-supply`;
+          // Use protocol + type + symbol + chain for unique ID
+          const positionId = `${wallet.id}-${defiPos.protocol}-${defiPos.type}-${token.symbol}-${defiPos.chain}-supply`;
 
           // Skip if we've already seen this position (aggregate instead)
           if (seenPositionIds.has(positionId)) {
@@ -456,8 +450,8 @@ export class WalletProvider {
             // Skip spam tokens using pattern matching
             if (isSpamToken(token.symbol)) continue;
 
-            // Use protocol + type + symbol for unique ID
-            const positionId = `${wallet.id}-${defiPos.protocol}-${defiPos.type}-${token.symbol}-debt`;
+            // Use protocol + type + symbol + chain for unique ID
+            const positionId = `${wallet.id}-${defiPos.protocol}-${defiPos.type}-${token.symbol}-${defiPos.chain}-debt`;
 
             // Skip if we've already seen this position (aggregate instead)
             if (seenPositionIds.has(positionId)) {
@@ -493,34 +487,12 @@ export class WalletProvider {
         }
       }
 
-      // SECOND: Fetch regular wallet tokens, excluding those already in protocols
+      // SECOND: Fetch regular wallet tokens
+      // DeBank's token API returns wallet balances SEPARATE from protocol deposits,
+      // so there's no double-counting - we include all wallet tokens
       const { tokens } = await this.getWalletTokens(wallet.address, forceRefresh);
 
-      const walletPositions = tokens
-        .filter((token) => {
-          // Skip tokens that are already tracked via protocol positions
-          // This prevents double counting of tokens deposited in DeFi protocols
-          const tokenKey = `${token.symbol.toLowerCase()}-${token.chain}`;
-          const symbolOnly = token.symbol.toLowerCase();
-
-          // First check exact chain match
-          if (protocolTokenKeysByChain.has(tokenKey)) {
-            return false;
-          }
-
-          // Fallback: check if symbol is in protocols on any chain
-          // This handles cases where chain IDs differ between tokens and protocols APIs
-          // But be careful: only skip if it's NOT a major token that could legitimately exist in both places
-          // (e.g., user could have USDC in Aave AND separate USDC in wallet)
-          // Skip this fallback for common tokens that might legitimately exist separately
-          const commonTokens = new Set(['usdc', 'usdt', 'dai', 'weth', 'wbtc', 'eth', 'btc', 'frax', 'lusd']);
-          if (!commonTokens.has(symbolOnly) && protocolTokenSymbols.has(symbolOnly)) {
-            return false;
-          }
-
-          return true;
-        })
-        .map((token, index) => {
+      const walletPositions = tokens.map((token, index) => {
           // Store the price from DeBank
           const priceKey = `debank-${token.symbol.toLowerCase()}-${token.chain}`;
           debankPrices[priceKey] = {
@@ -529,7 +501,7 @@ export class WalletProvider {
           };
 
           return {
-            id: `${wallet.id}-${token.symbol}-${index}`,
+            id: `${wallet.id}-${token.chain}-${token.symbol}-${index}`,
             type: 'crypto' as const,
             symbol: token.symbol,
             name: token.name,
