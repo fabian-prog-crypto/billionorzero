@@ -6,8 +6,6 @@ import Link from 'next/link';
 import {
   ArrowLeft,
   Wallet,
-  TrendingUp,
-  TrendingDown,
   Copy,
   Check,
   Edit2,
@@ -17,15 +15,20 @@ import { usePortfolioStore } from '@/store/portfolioStore';
 import {
   calculateAllPositionsWithPrices,
   calculateAssetSummary,
+  getExposureCategoryConfig,
+  getCategoryService,
 } from '@/services';
 import CryptoIcon from '@/components/ui/CryptoIcon';
+import StockIcon from '@/components/ui/StockIcon';
 import CustomPriceModal from '@/components/modals/CustomPriceModal';
+import SearchInput from '@/components/ui/SearchInput';
 import {
   formatCurrency,
   formatPercent,
   formatNumber,
   formatAddress,
   getChangeColor,
+  getChainColor,
 } from '@/lib/utils';
 import { AssetWithPrice } from '@/types';
 
@@ -49,12 +52,14 @@ export default function AssetDetailPage() {
   const symbol = (params.symbol as string)?.toLowerCase();
 
   const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const [customPriceModal, setCustomPriceModal] = useState<{
     isOpen: boolean;
     asset: AssetWithPrice | null;
   }>({ isOpen: false, asset: null });
 
   const { positions, prices, customPrices, wallets, hideBalances } = usePortfolioStore();
+  const categoryService = getCategoryService();
 
   // Get all positions with prices
   const allPositionsWithPrices = useMemo(() => {
@@ -135,6 +140,19 @@ export default function AssetDetailPage() {
     return Object.values(groups).sort((a, b) => b.value - a.value);
   }, [assetPositions, wallets]);
 
+  // Filter positions by search query
+  const filteredPositions = useMemo(() => {
+    if (!searchQuery) return aggregatedPositions;
+    const query = searchQuery.toLowerCase();
+    return aggregatedPositions.filter(
+      (p) =>
+        p.walletName?.toLowerCase().includes(query) ||
+        p.walletAddress?.toLowerCase().includes(query) ||
+        p.chain?.toLowerCase().includes(query) ||
+        p.protocol?.toLowerCase().includes(query)
+    );
+  }, [aggregatedPositions, searchQuery]);
+
   // Calculate P&L if cost basis exists
   const pnlData = useMemo(() => {
     if (!assetData?.totalCostBasis) return null;
@@ -150,6 +168,13 @@ export default function AssetDetailPage() {
     setCopiedAddress(text);
     setTimeout(() => setCopiedAddress(null), 2000);
   };
+
+  // Get exposure category for this asset
+  const exposureCategory = useMemo(() => {
+    if (!assetData) return null;
+    const cat = categoryService.getExposureCategory(assetData.symbol, assetData.type);
+    return getExposureCategoryConfig(cat);
+  }, [assetData, categoryService]);
 
   const openCustomPriceModal = () => {
     if (assetData) {
@@ -176,11 +201,9 @@ export default function AssetDetailPage() {
     );
   }
 
-  const isPositive = assetData.changePercent24h >= 0;
-
   return (
     <div>
-      {/* Back Navigation */}
+      {/* Back button */}
       <button
         onClick={() => router.back()}
         className="flex items-center gap-1.5 text-sm text-[var(--foreground-muted)] hover:text-[var(--foreground)] transition-colors mb-4"
@@ -192,36 +215,45 @@ export default function AssetDetailPage() {
       {/* Header */}
       <div className="flex items-start justify-between mb-6">
         <div className="flex items-center gap-3">
-          <CryptoIcon symbol={assetData.symbol} size={32} logoUrl={assetData.logo} />
+          {assetData.type === 'stock' || assetData.type === 'etf' ? (
+            <StockIcon
+              symbol={assetData.symbol}
+              size={32}
+              isETF={assetData.type === 'etf'}
+              logoUrl={assetData.logo}
+            />
+          ) : (
+            <CryptoIcon symbol={assetData.symbol} size={32} logoUrl={assetData.logo} />
+          )}
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-[15px] font-semibold">{assetData.symbol.toUpperCase()}</h1>
-              <span
-                className="px-1.5 py-0.5 text-[10px] font-medium "
-                style={{
-                  backgroundColor: `${assetData.exposureCategoryColor}20`,
-                  color: assetData.exposureCategoryColor,
-                }}
-              >
-                {assetData.exposureCategoryLabel}
-              </span>
+              {exposureCategory && (
+                <span
+                  className="px-1.5 py-0.5 text-[10px] font-medium inline-flex items-center gap-1"
+                  style={{
+                    backgroundColor: `${exposureCategory.color}1A`,
+                    color: exposureCategory.color,
+                  }}
+                >
+                  <span className="w-1.5 h-1.5" style={{ backgroundColor: exposureCategory.color }} />
+                  {exposureCategory.label}
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-2 mt-0.5">
               <button
                 onClick={openCustomPriceModal}
-                className="group flex items-center gap-1 hover:text-[var(--accent-primary)] transition-colors"
+                className="group flex items-center gap-1 font-mono text-[11px] hover:text-[var(--accent-primary)] transition-colors"
               >
-                <span className="text-[13px]">
-                  {formatCurrency(assetData.currentPrice)}
-                </span>
+                {formatCurrency(assetData.currentPrice)}
                 {assetData.hasCustomPrice && (
-                  <span className="w-1.5 h-1.5  bg-[var(--accent-primary)]" />
+                  <span className="w-1.5 h-1.5 bg-[var(--accent-primary)]" />
                 )}
                 <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity" />
               </button>
               <span className={`text-[11px] ${getChangeColor(assetData.changePercent24h)}`}>
-                {isPositive ? <TrendingUp className="w-3 h-3 inline mr-0.5" /> : <TrendingDown className="w-3 h-3 inline mr-0.5" />}
-                {formatPercent(assetData.changePercent24h)}
+                {formatPercent(assetData.changePercent24h)} 24h
               </span>
             </div>
           </div>
@@ -232,7 +264,7 @@ export default function AssetDetailPage() {
           <p className="text-[15px] font-semibold">
             {hideBalances ? '••••••' : formatCurrency(assetData.totalValue)}
           </p>
-          <p className="text-[11px] text-[var(--foreground-muted)]">
+          <p className={`text-[11px] ${getChangeColor(assetData.changePercent24h)}`}>
             {assetData.allocation.toFixed(1)}% of portfolio
           </p>
         </div>
@@ -251,11 +283,13 @@ export default function AssetDetailPage() {
         </div>
 
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-0.5">Avg Price</p>
+          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-0.5">Price</p>
           <p className="text-[13px] font-medium">
-            {hideBalances ? '••••' : formatCurrency(assetData.totalValue / assetData.totalAmount)}
+            {formatCurrency(assetData.currentPrice)}
           </p>
-          <p className="text-[10px] text-[var(--foreground-muted)]">per unit</p>
+          <p className={`text-[10px] ${getChangeColor(assetData.changePercent24h)}`}>
+            {formatPercent(assetData.changePercent24h)}
+          </p>
         </div>
 
         {pnlData ? (
@@ -277,34 +311,47 @@ export default function AssetDetailPage() {
         )}
 
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-0.5">Distribution</p>
+          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-0.5">Locations</p>
           <p className="text-[13px] font-medium">{aggregatedPositions.length}</p>
           <p className="text-[10px] text-[var(--foreground-muted)]">
-            {aggregatedPositions.length === 1 ? 'location' : 'locations'}
+            {assetPositions.length} position{assetPositions.length !== 1 ? 's' : ''}
           </p>
         </div>
       </div>
 
       <hr className="border-[var(--border)] mb-6" />
 
-      {/* Holdings Table */}
-      <div>
-        <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">
-          Holdings by Location
+      {/* Controls Row */}
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)]">
+          Holdings ({filteredPositions.length}{searchQuery && ` of ${aggregatedPositions.length}`})
         </p>
+        <div className="flex-1" />
+        <SearchInput
+          value={searchQuery}
+          onChange={setSearchQuery}
+          placeholder="Search..."
+        />
+      </div>
 
+      {/* Holdings Table */}
+      {filteredPositions.length === 0 ? (
+        <p className="text-center py-8 text-[11px] text-[var(--foreground-muted)]">
+          {searchQuery ? 'No holdings match your search.' : 'No holdings found for this asset.'}
+        </p>
+      ) : (
         <table className="w-full">
           <thead>
             <tr className="border-b border-[var(--border)]">
-              <th className="text-[11px] font-medium text-[var(--foreground-muted)] text-left pb-2">Source</th>
-              <th className="text-[11px] font-medium text-[var(--foreground-muted)] text-left pb-2">Location</th>
-              <th className="text-[11px] font-medium text-[var(--foreground-muted)] text-right pb-2">Amount</th>
-              <th className="text-[11px] font-medium text-[var(--foreground-muted)] text-right pb-2">Value</th>
-              <th className="text-[11px] font-medium text-[var(--foreground-muted)] text-right pb-2">%</th>
+              <th className="table-header text-left pb-3">Source</th>
+              <th className="table-header text-left pb-3">Location</th>
+              <th className="table-header text-right pb-3">Amount</th>
+              <th className="table-header text-right pb-3">Value</th>
+              <th className="table-header text-right pb-3">%</th>
             </tr>
           </thead>
           <tbody>
-            {aggregatedPositions.map((group) => {
+            {filteredPositions.map((group) => {
               const percent = assetData.totalValue !== 0
                 ? (group.value / assetData.totalValue) * 100
                 : 0;
@@ -316,10 +363,10 @@ export default function AssetDetailPage() {
                     group.isDebt ? 'bg-[var(--negative-light)]' : ''
                   }`}
                 >
-                  <td className="py-1.5">
+                  <td className="py-2">
                     {group.walletAddress ? (
-                      <div className="flex items-center gap-1.5">
-                        <Wallet className="w-3 h-3 text-[var(--accent-primary)] flex-shrink-0" />
+                      <div className="flex items-center gap-2">
+                        <Wallet className="w-3.5 h-3.5 text-[var(--accent-primary)] flex-shrink-0" />
                         <div className="min-w-0">
                           {group.walletId ? (
                             <Link
@@ -327,7 +374,7 @@ export default function AssetDetailPage() {
                               className="flex items-center gap-1 text-[11px] font-medium hover:text-[var(--accent-primary)] transition-colors"
                             >
                               {group.walletName || 'Wallet'}
-                              <ChevronRight className="w-2.5 h-2.5 opacity-50" />
+                              <ChevronRight className="w-2.5 h-2.5 opacity-40" />
                             </Link>
                           ) : (
                             <span className="text-[11px]">Unknown Wallet</span>
@@ -338,9 +385,9 @@ export default function AssetDetailPage() {
                           >
                             {formatAddress(group.walletAddress, 4)}
                             {copiedAddress === group.walletAddress ? (
-                              <Check className="w-2 h-2 text-[var(--positive)]" />
+                              <Check className="w-2.5 h-2.5 text-[var(--positive)]" />
                             ) : (
-                              <Copy className="w-2 h-2 opacity-40" />
+                              <Copy className="w-2.5 h-2.5 opacity-40" />
                             )}
                           </button>
                         </div>
@@ -349,18 +396,26 @@ export default function AssetDetailPage() {
                       <span className="text-[11px] text-[var(--foreground-muted)]">Manual</span>
                     )}
                   </td>
-                  <td className="py-1.5">
+                  <td className="py-2">
                     <div className="flex items-center gap-1">
                       {group.chain && (
-                        <span className="text-[10px] px-1 py-0  bg-[var(--background-tertiary)] text-[var(--foreground-muted)]">{group.chain}</span>
+                        <span
+                          className="px-1 py-0 text-[10px]"
+                          style={{
+                            backgroundColor: `${getChainColor(group.chain)}20`,
+                            color: getChainColor(group.chain),
+                          }}
+                        >
+                          {group.chain}
+                        </span>
                       )}
                       {group.protocol && (
-                        <span className="text-[10px] px-1 py-0  bg-[var(--accent-primary)] text-white">
+                        <span className="px-1 py-0 text-[10px] bg-[var(--accent-primary)] text-white">
                           {group.protocol}
                         </span>
                       )}
                       {group.isDebt && (
-                        <span className="px-1 py-0 text-[9px] font-semibold bg-[var(--negative)] text-white ">
+                        <span className="px-1 py-0 text-[9px] font-semibold bg-[var(--negative)] text-white">
                           DEBT
                         </span>
                       )}
@@ -369,13 +424,13 @@ export default function AssetDetailPage() {
                       )}
                     </div>
                   </td>
-                  <td className="py-1.5 text-right font-mono text-[11px]">
+                  <td className="py-2 text-right font-mono text-[11px]">
                     {hideBalances ? '••••' : formatNumber(group.amount)}
                   </td>
-                  <td className={`py-1.5 text-right text-[11px] font-medium ${group.isDebt ? 'text-[var(--negative)]' : ''}`}>
+                  <td className={`py-2 text-right text-[11px] font-medium ${group.isDebt ? 'text-[var(--negative)]' : ''}`}>
                     {hideBalances ? '••••' : formatCurrency(group.value)}
                   </td>
-                  <td className="py-1.5 text-right text-[10px] text-[var(--foreground-muted)]">
+                  <td className={`py-2 text-right text-[10px] ${group.isDebt ? 'text-[var(--negative)]' : 'text-[var(--foreground-muted)]'}`}>
                     {percent.toFixed(1)}%
                   </td>
                 </tr>
@@ -383,16 +438,16 @@ export default function AssetDetailPage() {
             })}
           </tbody>
         </table>
+      )}
 
-        {/* Summary Footer */}
-        <div className="mt-2 pt-2 border-t border-[var(--border)] flex justify-between items-center">
-          <span className="text-[10px] text-[var(--foreground-muted)]">
-            {assetPositions.length} position{assetPositions.length !== 1 ? 's' : ''} across {aggregatedPositions.length} location{aggregatedPositions.length !== 1 ? 's' : ''}
-          </span>
-          <span className="text-xs font-medium">
-            {hideBalances ? '••••••' : formatCurrency(assetData.totalValue)}
-          </span>
-        </div>
+      {/* Summary Footer */}
+      <div className="mt-2 pt-2 border-t border-[var(--border)] flex justify-between items-center">
+        <span className="text-[10px] text-[var(--foreground-muted)]">
+          {filteredPositions.length} location{filteredPositions.length !== 1 ? 's' : ''}{searchQuery && ' (filtered)'}
+        </span>
+        <span className="text-xs font-medium">
+          {hideBalances ? '••••••' : formatCurrency(filteredPositions.reduce((sum, p) => sum + p.value, 0))}
+        </span>
       </div>
 
       {/* Custom Price Modal */}

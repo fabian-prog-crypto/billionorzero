@@ -8,6 +8,7 @@ import { usePortfolioStore } from '@/store/portfolioStore';
 import { calculateAllPositionsWithPrices, calculatePortfolioSummary, aggregatePositionsBySymbol, calculateUnrealizedPnL, filterDustPositions, DUST_THRESHOLD } from '@/services';
 import AddPositionModal from '@/components/modals/AddPositionModal';
 import CryptoIcon from '@/components/ui/CryptoIcon';
+import StockIcon from '@/components/ui/StockIcon';
 import CustomPriceModal from '@/components/modals/CustomPriceModal';
 import { useRefresh } from '@/components/PortfolioProvider';
 import SearchInput from '@/components/ui/SearchInput';
@@ -552,7 +553,11 @@ export default function PositionsPage() {
                           href={`/assets/${position.symbol.toLowerCase()}`}
                           className="flex items-center gap-2 hover:opacity-80 transition-opacity"
                         >
-                          <CryptoIcon symbol={position.symbol} size={24} isDebt={isDebt} logoUrl={position.logo} />
+                          {position.type === 'stock' || position.type === 'etf' ? (
+                            <StockIcon symbol={position.symbol} size={24} isETF={position.type === 'etf'} logoUrl={position.logo} />
+                          ) : (
+                            <CryptoIcon symbol={position.symbol} size={24} isDebt={isDebt} logoUrl={position.logo} />
+                          )}
                           <div className="flex items-center gap-2">
                             <p className="font-medium text-sm hover:text-[var(--accent-primary)] transition-colors">{position.symbol.toUpperCase()}</p>
                             {isDebt && (
@@ -696,7 +701,11 @@ export default function PositionsPage() {
                         href={`/assets/${asset.symbol.toLowerCase()}`}
                         className="flex items-center gap-2 hover:opacity-80 transition-opacity"
                       >
-                        <CryptoIcon symbol={asset.symbol} size={24} logoUrl={asset.logo} />
+                        {asset.type === 'stock' || asset.type === 'etf' ? (
+                          <StockIcon symbol={asset.symbol} size={24} isETF={asset.type === 'etf'} logoUrl={asset.logo} />
+                        ) : (
+                          <CryptoIcon symbol={asset.symbol} size={24} logoUrl={asset.logo} />
+                        )}
                         <p className="font-medium text-sm hover:text-[var(--accent-primary)] transition-colors">{asset.symbol.toUpperCase()}</p>
                       </Link>
                     </td>

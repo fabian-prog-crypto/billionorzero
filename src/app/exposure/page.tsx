@@ -399,7 +399,7 @@ export default function ExposurePage() {
               <tr className="border-b border-[var(--border)]">
                 <th className="table-header text-left pb-3">Asset</th>
                 <th className="table-header text-right pb-3">Value</th>
-                <th className="table-header text-right pb-3">Allocation</th>
+                <th className="table-header text-right pb-3">%</th>
               </tr>
             </thead>
             <tbody>
@@ -408,7 +408,7 @@ export default function ExposurePage() {
                   key={asset.symbol}
                   className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--background-secondary)] transition-colors"
                 >
-                  <td className="py-3">
+                  <td className="py-2">
                     <div className="flex items-center gap-2">
                       <div className="w-6 h-6 bg-[var(--tag-bg)]  flex items-center justify-center text-xs font-semibold">
                         {asset.symbol.slice(0, 1)}
@@ -419,12 +419,12 @@ export default function ExposurePage() {
                       )}
                     </div>
                   </td>
-                  <td className="py-3 text-right">
+                  <td className="py-2 text-right">
                     <span className={`text-[13px] ${asset.value >= 0 ? '' : 'text-[var(--negative)]'}`}>
                       {hideBalances ? '••••' : formatCurrency(asset.value)}
                     </span>
                   </td>
-                  <td className="py-3 text-right text-[13px] text-[var(--foreground-muted)]">
+                  <td className="py-2 text-right text-[13px] text-[var(--foreground-muted)]">
                     {asset.allocation.toFixed(1)}%
                   </td>
                 </tr>

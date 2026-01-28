@@ -250,13 +250,13 @@ export default function WalletDetailPage() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-[var(--border)]">
-                <th className="text-[11px] font-medium text-[var(--foreground-muted)] text-left pb-2">Asset</th>
-                <th className="text-[11px] font-medium text-[var(--foreground-muted)] text-left pb-2">Location</th>
-                <th className="text-[11px] font-medium text-[var(--foreground-muted)] text-right pb-2">Amount</th>
-                <th className="text-[11px] font-medium text-[var(--foreground-muted)] text-right pb-2">Price</th>
-                <th className="text-[11px] font-medium text-[var(--foreground-muted)] text-right pb-2">Value</th>
-                <th className="text-[11px] font-medium text-[var(--foreground-muted)] text-right pb-2">24h</th>
-                <th className="text-[11px] font-medium text-[var(--foreground-muted)] text-right pb-2">%</th>
+                <th className="table-header text-left pb-3">Asset</th>
+                <th className="table-header text-left pb-3">Location</th>
+                <th className="table-header text-right pb-3">Amount</th>
+                <th className="table-header text-right pb-3">Price</th>
+                <th className="table-header text-right pb-3">Value</th>
+                <th className="table-header text-right pb-3">24h</th>
+                <th className="table-header text-right pb-3">%</th>
               </tr>
             </thead>
             <tbody>
@@ -269,7 +269,7 @@ export default function WalletDetailPage() {
                       isDebt ? 'bg-[var(--negative-light)]' : ''
                     }`}
                   >
-                    <td className="py-1.5">
+                    <td className="py-2">
                       <Link
                         href={`/assets/${position.symbol.toLowerCase()}`}
                         className="flex items-center gap-2 hover:opacity-80 transition-opacity"
@@ -288,7 +288,7 @@ export default function WalletDetailPage() {
                         </div>
                       </Link>
                     </td>
-                    <td className="py-1.5">
+                    <td className="py-2">
                       <div className="flex items-center gap-1">
                         {position.chain && (
                           <span
@@ -308,19 +308,19 @@ export default function WalletDetailPage() {
                         )}
                       </div>
                     </td>
-                    <td className="py-1.5 text-right font-mono text-[11px]">
+                    <td className="py-2 text-right font-mono text-[11px]">
                       {hideBalances ? '••••' : formatNumber(position.amount)}
                     </td>
-                    <td className="py-1.5 text-right font-mono text-[11px]">
+                    <td className="py-2 text-right font-mono text-[11px]">
                       {position.currentPrice > 0 ? formatCurrency(position.currentPrice) : '-'}
                     </td>
-                    <td className={`py-1.5 text-right text-[11px] font-medium ${isDebt ? 'text-[var(--negative)]' : ''}`}>
+                    <td className={`py-2 text-right text-[11px] font-medium ${isDebt ? 'text-[var(--negative)]' : ''}`}>
                       {hideBalances ? '••••' : position.value !== 0 ? formatCurrency(position.value) : '-'}
                     </td>
-                    <td className={`py-1.5 text-right text-[11px] ${getChangeColor(position.changePercent24h)}`}>
+                    <td className={`py-2 text-right text-[11px] ${getChangeColor(position.changePercent24h)}`}>
                       {position.currentPrice > 0 ? formatPercent(position.changePercent24h) : '-'}
                     </td>
-                    <td className={`py-1.5 text-right text-[10px] ${isDebt ? 'text-[var(--negative)]' : 'text-[var(--foreground-muted)]'}`}>
+                    <td className={`py-2 text-right text-[10px] ${isDebt ? 'text-[var(--negative)]' : 'text-[var(--foreground-muted)]'}`}>
                       {position.allocation.toFixed(1)}%
                     </td>
                   </tr>

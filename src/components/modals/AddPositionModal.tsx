@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { X, Search, Loader2 } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import { searchCoins, getTopCoins, searchStocks } from '@/services';
+import StockIcon from '@/components/ui/StockIcon';
 import { useRefresh } from '@/components/PortfolioProvider';
 import { AssetType } from '@/types';
 
@@ -299,6 +300,13 @@ export default function AddPositionModal({
                           className="w-6 h-6 "
                         />
                       )}
+                      {tab === 'stock' && (
+                        <StockIcon
+                          symbol={result.symbol}
+                          size={24}
+                          isETF={equityType === 'etf'}
+                        />
+                      )}
                       <div>
                         <p className="font-medium text-sm">
                           {tab === 'crypto' ? result.symbol.toUpperCase() : result.symbol}
@@ -320,6 +328,13 @@ export default function AddPositionModal({
                       src={selectedAsset.image}
                       alt={selectedAsset.symbol}
                       className="w-8 h-8 "
+                    />
+                  )}
+                  {tab === 'stock' && (
+                    <StockIcon
+                      symbol={selectedAsset.symbol}
+                      size={32}
+                      isETF={equityType === 'etf'}
                     />
                   )}
                   <div className="flex-1">

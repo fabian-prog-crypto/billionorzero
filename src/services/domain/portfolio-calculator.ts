@@ -431,11 +431,20 @@ export function calculatePositionValue(
   fxRates?: Record<string, number>
 ): AssetWithPrice {
   // Cash positions - apply FX conversion to USD
-  if (position.type === 'cash') {
+  // Check BOTH explicit cash type AND positions that categoryService identifies as cash
+  // (e.g., manual positions with fiat currency symbols like CHF, EUR, GBP)
+  const isCashByType = position.type === 'cash';
+  const isCashByCategory = getMainCategory(position.symbol, position.type) === 'cash';
+
+  if (isCashByType || isCashByCategory) {
     const currency = extractCurrencyCode(position.symbol).toUpperCase();
-    const rates = fxRates || DEFAULT_FX_RATES;
-    const fxRate = rates[currency] ?? 1.0;
+    // Use fxRates only if it has entries, otherwise fall back to DEFAULT_FX_RATES
+    // Empty object {} is truthy but useless, so check for keys
+    const rates = (fxRates && Object.keys(fxRates).length > 0) ? fxRates : DEFAULT_FX_RATES;
+    const fxRate = rates[currency] ?? DEFAULT_FX_RATES[currency] ?? 1.0;
     const valueInUsd = position.amount * fxRate;
+
+    console.log(`[FX] ${position.symbol} -> ${currency}: ${position.amount} × ${fxRate} = $${valueInUsd.toFixed(2)} (using ${fxRates && Object.keys(fxRates).length > 0 ? 'live' : 'default'} rates)`);
 
     return {
       ...position,

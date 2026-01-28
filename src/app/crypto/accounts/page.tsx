@@ -185,9 +185,9 @@ export default function AccountsPage() {
                       <table className="w-full min-w-[400px]">
                         <thead>
                           <tr className="border-b border-[var(--border)]">
-                            <th className="table-header text-left pb-2">Asset</th>
-                            <th className="table-header text-right pb-2">Amount</th>
-                            <th className="table-header text-right pb-2">Value</th>
+                            <th className="table-header text-left pb-3">Asset</th>
+                            <th className="table-header text-right pb-3">Amount</th>
+                            <th className="table-header text-right pb-3">Value</th>
                           </tr>
                         </thead>
                         <tbody>

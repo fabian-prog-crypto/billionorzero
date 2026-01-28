@@ -282,9 +282,9 @@ export default function PerformancePage() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-[var(--border)]">
-                <th className="table-header text-left pb-2">Asset</th>
-                <th className="table-header text-right pb-2">Value</th>
-                <th className="table-header text-right pb-2">24h</th>
+                <th className="table-header text-left pb-3">Asset</th>
+                <th className="table-header text-right pb-3">Value</th>
+                <th className="table-header text-right pb-3">24h</th>
               </tr>
             </thead>
             <tbody>
@@ -316,9 +316,9 @@ export default function PerformancePage() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-[var(--border)]">
-                <th className="table-header text-left pb-2">Asset</th>
-                <th className="table-header text-right pb-2">Price</th>
-                <th className="table-header text-right pb-2">24h</th>
+                <th className="table-header text-left pb-3">Asset</th>
+                <th className="table-header text-right pb-3">Price</th>
+                <th className="table-header text-right pb-3">24h</th>
               </tr>
             </thead>
             <tbody>

@@ -21,6 +21,7 @@ export * from './hyperliquid-provider';
 export * from './lighter-provider';
 export * from './ethereal-provider';
 export * from './cex-provider';
+export * from './stock-logo-service';
 
 // Re-export commonly used constants
 export { SUPPORTED_CHAINS } from './demo-data';

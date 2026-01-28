@@ -13,6 +13,7 @@ import { formatCurrency, formatNumber, formatPercent, getChangeColor } from '@/l
 import { SUBCATEGORY_COLORS } from '@/lib/colors';
 import SearchInput from '@/components/ui/SearchInput';
 import EmptyState from '@/components/ui/EmptyState';
+import StockIcon from '@/components/ui/StockIcon';
 
 type SortField = 'symbol' | 'value' | 'amount' | 'price' | 'change';
 type SortDirection = 'asc' | 'desc';
@@ -190,7 +191,7 @@ export default function EquitiesPage() {
                   onClick={() => handleSort('symbol')}
                   className="flex items-center gap-1 hover:text-[var(--foreground)] transition-colors"
                 >
-                  Symbol <SortIcon field="symbol" />
+                  Asset <SortIcon field="symbol" />
                 </button>
               </th>
               <th className="table-header text-left pb-3">Type</th>
@@ -199,7 +200,7 @@ export default function EquitiesPage() {
                   onClick={() => handleSort('amount')}
                   className="flex items-center gap-1 ml-auto hover:text-[var(--foreground)] transition-colors"
                 >
-                  Shares <SortIcon field="amount" />
+                  Amount <SortIcon field="amount" />
                 </button>
               </th>
               <th className="table-header text-right pb-3">
@@ -226,6 +227,7 @@ export default function EquitiesPage() {
                   24h <SortIcon field="change" />
                 </button>
               </th>
+              <th className="table-header text-right pb-3">%</th>
             </tr>
           </thead>
           <tbody>
@@ -240,12 +242,7 @@ export default function EquitiesPage() {
                 >
                   <td className="py-2">
                     <div className="flex items-center gap-2">
-                      <div
-                        className="w-6 h-6  flex items-center justify-center text-[10px] font-semibold text-white"
-                        style={{ backgroundColor: isETF ? SUBCATEGORY_COLORS.equities_etfs : SUBCATEGORY_COLORS.equities_stocks }}
-                      >
-                        {position.symbol.slice(0, 2).toUpperCase()}
-                      </div>
+                      <StockIcon symbol={position.symbol} size={24} isETF={isETF} />
                       <div>
                         <p className="font-medium text-sm">{position.symbol.toUpperCase()}</p>
                         <p className="text-[11px] text-[var(--foreground-muted)] truncate max-w-[150px]">
@@ -276,6 +273,9 @@ export default function EquitiesPage() {
                   </td>
                   <td className={`py-2 text-right text-xs ${getChangeColor(position.changePercent24h)}`}>
                     {position.currentPrice > 0 ? formatPercent(position.changePercent24h) : '-'}
+                  </td>
+                  <td className="py-2 text-right text-xs text-[var(--foreground-muted)]">
+                    {position.allocation.toFixed(1)}%
                   </td>
                 </tr>
               );
