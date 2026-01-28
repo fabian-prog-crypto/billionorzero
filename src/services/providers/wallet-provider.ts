@@ -537,6 +537,7 @@ export class WalletProvider {
             walletAddress: wallet.address,
             chain: token.chain,
             debankPriceKey: priceKey,
+            logo: token.logo, // Preserve logo URL from DeBank API
             addedAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
           };
@@ -578,6 +579,7 @@ export class WalletProvider {
           walletAddress: wallet.address,
           chain: 'sol',
           debankPriceKey: priceKey,
+          logo: token.logo, // Preserve logo URL from Helius API
           addedAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         };

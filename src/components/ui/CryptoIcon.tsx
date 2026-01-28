@@ -163,15 +163,22 @@ interface CryptoIconProps {
   size?: number;
   className?: string;
   isDebt?: boolean;
+  logoUrl?: string | null; // Priority logo URL from DeBank/Helius API
 }
 
-export default function CryptoIcon({ symbol, size = 32, className = '', isDebt = false }: CryptoIconProps) {
+export default function CryptoIcon({ symbol, size = 32, className = '', isDebt = false, logoUrl }: CryptoIconProps) {
   const [urlIndex, setUrlIndex] = useState(0);
   const [allFailed, setAllFailed] = useState(false);
 
+  // Build URL chain: API logo (priority) -> CoinGecko -> fallbacks
   const coingeckoUrl = getCoinGeckoImageUrl(symbol);
   const fallbackUrls = getFallbackUrls(symbol);
-  const allUrls = coingeckoUrl ? [coingeckoUrl, ...fallbackUrls] : fallbackUrls;
+
+  // Priority order: DeBank/Helius logo -> CoinGecko -> GitHub icons -> CoinCap
+  const allUrls: string[] = [];
+  if (logoUrl) allUrls.push(logoUrl);
+  if (coingeckoUrl) allUrls.push(coingeckoUrl);
+  allUrls.push(...fallbackUrls);
 
   // Fallback to 2-letter avatar
   if (allFailed || allUrls.length === 0) {

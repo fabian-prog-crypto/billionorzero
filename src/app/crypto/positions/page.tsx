@@ -15,6 +15,7 @@ import {
   formatPercent,
   formatNumber,
   getChangeColor,
+  getAssetTypeLabel,
   formatAddress,
 } from '@/lib/utils';
 import { AssetWithPrice } from '@/types';
@@ -421,7 +422,7 @@ export default function CryptoPositionsPage() {
                   >
                     <td className="py-2">
                       <div className="flex items-center gap-2">
-                        <CryptoIcon symbol={position.symbol} size={24} isDebt={isDebt} />
+                        <CryptoIcon symbol={position.symbol} size={24} isDebt={isDebt} logoUrl={position.logo} />
                         <div className="flex items-center gap-2">
                           <p className="font-medium">{position.symbol.toUpperCase()}</p>
                           {isDebt && (
@@ -533,7 +534,7 @@ export default function CryptoPositionsPage() {
                 >
                   <td className="py-2">
                     <div className="flex items-center gap-2">
-                      <CryptoIcon symbol={asset.symbol} size={24} />
+                      <CryptoIcon symbol={asset.symbol} size={24} logoUrl={asset.logo} />
                       <p className="font-medium text-sm">{asset.symbol.toUpperCase()}</p>
                     </div>
                   </td>

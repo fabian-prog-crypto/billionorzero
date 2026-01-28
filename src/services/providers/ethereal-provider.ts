@@ -134,11 +134,13 @@ export class EtherealProvider {
       if (amount <= 0) continue;
 
       hasBalances = true;
-      const symbol = balance.tokenName;
+      // Normalize "USD" to "USDC" - Ethereal API returns "USD" for dollar-denominated margin
+      const rawSymbol = balance.tokenName;
+      const symbol = rawSymbol.toUpperCase() === 'USD' ? 'USDC' : rawSymbol;
       const priceKey = `ethereal-spot-${symbol.toLowerCase()}`;
 
       // USD/USDe/USDC/USDT are stablecoins
-      const isStable = ['USD', 'USDE', 'USDC', 'USDT'].includes(symbol.toUpperCase());
+      const isStable = ['USD', 'USDE', 'USDC', 'USDT'].includes(rawSymbol.toUpperCase());
       prices[priceKey] = {
         price: isStable ? 1 : 0,
         symbol,
