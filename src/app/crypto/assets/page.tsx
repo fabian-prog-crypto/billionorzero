@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
+import Link from 'next/link';
 import { Trash2, Wallet, ArrowUpDown, ChevronUp, ChevronDown, Layers, Grid3X3, Edit2, Download, Coins } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import { calculateAllPositionsWithPrices, aggregatePositionsBySymbol, calculateCryptoBreakdown, getCategoryService, ExposureCategoryType, getAllExposureCategoryConfigs, getExposureCategoryConfig } from '@/services';
@@ -421,17 +422,20 @@ export default function CryptoPositionsPage() {
                     }`}
                   >
                     <td className="py-2">
-                      <div className="flex items-center gap-2">
+                      <Link
+                        href={`/assets/${position.symbol.toLowerCase()}`}
+                        className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+                      >
                         <CryptoIcon symbol={position.symbol} size={24} isDebt={isDebt} logoUrl={position.logo} />
                         <div className="flex items-center gap-2">
-                          <p className="font-medium">{position.symbol.toUpperCase()}</p>
+                          <p className="font-medium hover:text-[var(--accent-primary)] transition-colors">{position.symbol.toUpperCase()}</p>
                           {isDebt && (
                             <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-[var(--negative)] text-white rounded">
                               DEBT
                             </span>
                           )}
                         </div>
-                      </div>
+                      </Link>
                     </td>
                     <td className="py-2">
                       {isWalletPosition ? (
@@ -533,10 +537,13 @@ export default function CryptoPositionsPage() {
                   className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--background-secondary)] transition-colors"
                 >
                   <td className="py-2">
-                    <div className="flex items-center gap-2">
+                    <Link
+                      href={`/assets/${asset.symbol.toLowerCase()}`}
+                      className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+                    >
                       <CryptoIcon symbol={asset.symbol} size={24} logoUrl={asset.logo} />
-                      <p className="font-medium text-sm">{asset.symbol.toUpperCase()}</p>
-                    </div>
+                      <p className="font-medium text-sm hover:text-[var(--accent-primary)] transition-colors">{asset.symbol.toUpperCase()}</p>
+                    </Link>
                   </td>
                   <td className="py-2">
                     {(() => {

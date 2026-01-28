@@ -26,7 +26,7 @@ const sidebarItemsByCategory: Record<SubTab, { path: string; icon: typeof Layers
   ],
   crypto: [
     { path: '', icon: LayoutDashboard, label: 'Overview' },
-    { path: 'positions', icon: Layers, label: 'Assets' },
+    { path: 'assets', icon: Layers, label: 'Assets' },
     { path: 'exposure', icon: PieChart, label: 'Exposure' },
     { path: 'perps', icon: CandlestickChart, label: 'Perps' },
     { path: 'wallets', icon: Wallet, label: 'Wallets' },

@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useState, useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Plus, Trash2, Wallet, RefreshCw, Eye, EyeOff, ArrowUpDown, Download, Layers, Grid3X3, Edit2 } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
@@ -43,7 +43,14 @@ export default function PositionsPage() {
   const searchParams = useSearchParams();
   const [showAddPosition, setShowAddPosition] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('positions');
-  const [categoryFilters, setCategoryFilters] = useState<Set<CategoryFilter>>(new Set(['all']));
+  // Initialize from URL param if present
+  const initialCategory = searchParams.get('category') as CategoryFilter | null;
+  const [categoryFilters, setCategoryFilters] = useState<Set<CategoryFilter>>(() => {
+    if (initialCategory && initialCategory !== 'all') {
+      return new Set([initialCategory]);
+    }
+    return new Set(['all']);
+  });
   const [searchQuery, setSearchQuery] = useState('');
   const [sortField, setSortField] = useState<SortField>('value');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
@@ -126,16 +133,6 @@ export default function PositionsPage() {
     return options;
   }, []);
 
-  // Read category filter from URL params
-  useEffect(() => {
-    const categoryParam = searchParams.get('category');
-    if (categoryParam) {
-      const validOption = categoryOptions.find(o => o.value === categoryParam);
-      if (validOption) {
-        setCategoryFilters(new Set([categoryParam as CategoryFilter]));
-      }
-    }
-  }, [searchParams, categoryOptions]);
 
   // Calculate all positions with current prices (including custom price overrides)
   const allPositionsWithPrices = useMemo(() => {

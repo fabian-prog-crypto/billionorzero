@@ -230,7 +230,7 @@ function CryptoAllocationSection({
     <div>
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-[15px] font-medium">Crypto Allocation</h3>
-        <Link href="/crypto/positions" className="text-[13px] text-[var(--foreground-muted)] flex items-center gap-1 hover:text-[var(--foreground)]">
+        <Link href="/crypto/assets" className="text-[13px] text-[var(--foreground-muted)] flex items-center gap-1 hover:text-[var(--foreground)]">
           Details <ArrowUpRight className="w-3 h-3" />
         </Link>
       </div>

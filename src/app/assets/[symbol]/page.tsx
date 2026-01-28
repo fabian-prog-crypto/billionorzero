@@ -9,7 +9,6 @@ import {
   TrendingDown,
   Copy,
   Check,
-  ExternalLink,
   Edit2,
   PieChart,
   Layers,
@@ -32,7 +31,6 @@ import {
   formatNumber,
   formatAddress,
   getChangeColor,
-  formatDate,
 } from '@/lib/utils';
 import { AssetWithPrice } from '@/types';
 
@@ -128,11 +126,12 @@ export default function AssetDetailPage() {
     const pnl = assetData.totalValue - assetData.totalCostBasis;
     const pnlPercent = (pnl / assetData.totalCostBasis) * 100;
 
-    // Calculate holding period
+    // Calculate holding period (use a fixed reference to avoid hydration issues)
     let holdingDays = 0;
     if (assetData.earliestDate) {
+      const now = new Date();
       holdingDays = Math.floor(
-        (Date.now() - assetData.earliestDate.getTime()) / (1000 * 60 * 60 * 24)
+        (now.getTime() - assetData.earliestDate.getTime()) / (1000 * 60 * 60 * 24)
       );
     }
 
@@ -144,24 +143,6 @@ export default function AssetDetailPage() {
 
     return { pnl, pnlPercent, holdingDays, annualizedReturn };
   }, [assetData]);
-
-  // Group positions by source
-  const positionsBySource = useMemo(() => {
-    const byWallet: Record<string, AssetWithPrice[]> = {};
-    const manual: AssetWithPrice[] = [];
-
-    assetPositions.forEach((p) => {
-      if (p.walletAddress) {
-        const key = p.walletAddress;
-        if (!byWallet[key]) byWallet[key] = [];
-        byWallet[key].push(p);
-      } else {
-        manual.push(p);
-      }
-    });
-
-    return { byWallet, manual };
-  }, [assetPositions]);
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
