@@ -7,6 +7,7 @@ import { ArrowLeft, Wallet, ExternalLink, Copy, Check, ChevronRight } from 'luci
 import { usePortfolioStore } from '@/store/portfolioStore';
 import { calculateAllPositionsWithPrices, calculatePortfolioSummary } from '@/services';
 import CryptoIcon from '@/components/ui/CryptoIcon';
+import SearchInput from '@/components/ui/SearchInput';
 import {
   formatCurrency,
   formatPercent,
@@ -23,6 +24,7 @@ export default function WalletDetailPage() {
   const router = useRouter();
   const walletId = params.id as string;
   const [copiedAddress, setCopiedAddress] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const { wallets, positions, prices, customPrices, hideBalances, updateWallet } = usePortfolioStore();
 
@@ -48,6 +50,19 @@ export default function WalletDetailPage() {
   const positionsWithPrices = useMemo(() => {
     return calculateAllPositionsWithPrices(walletPositions, prices, customPrices);
   }, [walletPositions, prices, customPrices]);
+
+  // Filter positions by search query
+  const filteredPositions = useMemo(() => {
+    if (!searchQuery) return positionsWithPrices;
+    const query = searchQuery.toLowerCase();
+    return positionsWithPrices.filter(
+      (p) =>
+        p.symbol.toLowerCase().includes(query) ||
+        p.name.toLowerCase().includes(query) ||
+        p.chain?.toLowerCase().includes(query) ||
+        p.protocol?.toLowerCase().includes(query)
+    );
+  }, [positionsWithPrices, searchQuery]);
 
   // Get wallet summary from centralized service (single source of truth)
   const walletSummary = useMemo(() => {
@@ -213,13 +228,20 @@ export default function WalletDetailPage() {
 
       {/* Assets table */}
       <div>
-        <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">
-          Assets ({positionsWithPrices.length})
-        </p>
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)]">
+            Assets ({filteredPositions.length}{searchQuery && ` of ${positionsWithPrices.length}`})
+          </p>
+          <SearchInput
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder="Search..."
+          />
+        </div>
 
-        {positionsWithPrices.length === 0 ? (
+        {filteredPositions.length === 0 ? (
           <p className="text-center py-8 text-[11px] text-[var(--foreground-muted)]">
-            No assets found in this wallet.
+            {searchQuery ? 'No assets match your search.' : 'No assets found in this wallet.'}
           </p>
         ) : (
           <table className="w-full">
@@ -235,7 +257,7 @@ export default function WalletDetailPage() {
               </tr>
             </thead>
             <tbody>
-              {positionsWithPrices.map((position) => {
+              {filteredPositions.map((position) => {
                 const isDebt = position.isDebt;
                 return (
                   <tr
@@ -308,10 +330,10 @@ export default function WalletDetailPage() {
         {/* Summary Footer */}
         <div className="mt-2 pt-2 border-t border-[var(--border)] flex justify-between items-center">
           <span className="text-[10px] text-[var(--foreground-muted)]">
-            {positionsWithPrices.length} asset{positionsWithPrices.length !== 1 ? 's' : ''} across {Object.keys(positionsByChain).length} chain{Object.keys(positionsByChain).length !== 1 ? 's' : ''}
+            {filteredPositions.length} asset{filteredPositions.length !== 1 ? 's' : ''}{searchQuery && ` (filtered)`}
           </span>
           <span className="text-xs font-medium">
-            {hideBalances ? '••••••' : formatCurrency(totalValue)}
+            {hideBalances ? '••••••' : formatCurrency(filteredPositions.reduce((sum, p) => sum + p.value, 0))}
           </span>
         </div>
       </div>
