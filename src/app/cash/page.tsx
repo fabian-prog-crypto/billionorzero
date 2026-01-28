@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Banknote, ArrowUpDown, ChevronDown, ChevronUp, Wallet, Building2 } from 'lucide-react';
+import { Banknote, ArrowUpDown, ChevronDown, ChevronUp } from 'lucide-react';
 import DonutChart, { DonutChartItem } from '@/components/charts/DonutChart';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import {
@@ -242,15 +242,12 @@ export default function CashPage() {
             <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-0.5">Stablecoins</p>
             <p className="text-[15px] font-medium">{hideBalances ? '••••' : formatCurrency(breakdownData.stablecoins.value)}</p>
           </div>
-          <label className="flex items-center gap-2 cursor-pointer pt-0.5">
-            <input
-              type="checkbox"
-              checked={includeStablecoins}
-              onChange={(e) => setIncludeStablecoins(e.target.checked)}
-              className="w-4 h-4  border-[var(--border)] text-[var(--accent-primary)] focus:ring-[var(--accent-primary)] focus:ring-offset-0 bg-[var(--background-secondary)]"
-            />
-            <span className="text-[12px] text-[var(--foreground-muted)]">Include Stablecoins</span>
-          </label>
+          <button
+            onClick={() => setIncludeStablecoins(!includeStablecoins)}
+            className={`btn p-2 ${includeStablecoins ? 'btn-primary' : 'btn-secondary'}`}
+          >
+            <span className="text-xs">Include Stablecoins</span>
+          </button>
         </div>
       </div>
 
@@ -319,28 +316,19 @@ export default function CashPage() {
               const percentage = displayTotal > 0 ? (position.value / displayTotal) * 100 : 0;
               const cleanSymbol = extractCurrencyCode(position.symbol);
               const accountName = extractAccountName(position);
-              const isWallet = !!position.walletAddress;
-
               return (
                 <tr
                   key={position.id}
                   className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--background-secondary)] transition-colors"
                 >
                   <td className="py-2">
-                    <div className="flex items-center gap-2">
-                      {isWallet ? (
-                        <Wallet className="w-4 h-4 text-[var(--accent-primary)] flex-shrink-0" />
-                      ) : (
-                        <Building2 className="w-4 h-4 text-[var(--foreground-muted)] flex-shrink-0" />
+                    <div>
+                      <p className="font-medium text-sm">{accountName}</p>
+                      {position.protocol && position.protocol !== 'wallet' && (
+                        <p className="text-[10px] text-[var(--foreground-muted)]">
+                          {position.protocol}
+                        </p>
                       )}
-                      <div>
-                        <p className="font-medium text-sm">{accountName}</p>
-                        {position.protocol && position.protocol !== 'wallet' && (
-                          <p className="text-[10px] text-[var(--foreground-muted)]">
-                            {position.protocol}
-                          </p>
-                        )}
-                      </div>
                     </div>
                   </td>
                   <td className="py-2">
