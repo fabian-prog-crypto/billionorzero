@@ -134,13 +134,49 @@ export class EtherealProvider {
       if (amount <= 0) continue;
 
       hasBalances = true;
-      // Normalize "USD" to "USDC" - Ethereal API returns "USD" for dollar-denominated margin
+
+      // Determine the actual token symbol from tokenAddress or tokenName
+      // Ethereal API may return generic "USD" for tokenName but we can identify by address
       const rawSymbol = balance.tokenName;
-      const symbol = rawSymbol.toUpperCase() === 'USD' ? 'USDC' : rawSymbol;
+      const tokenAddr = balance.tokenAddress?.toLowerCase() || '';
+
+      // Known stablecoin addresses (check common addresses across chains)
+      // These are lowercase for comparison
+      const knownTokens: Record<string, string> = {
+        // USDe addresses on various chains
+        '0x4c9edd5852cd905f086c759e8383e09bff1e68b3': 'USDe',  // Ethereum mainnet
+        '0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34': 'USDe',  // Arbitrum
+        '0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef35': 'USDe',  // Base (example)
+        '0xb6fc4b1bff391e5f6b4a3d2c7bda1fee3524692d': 'USDe',  // Ethereal chain (API returns "USD" but it's USDe)
+        // sUSDe addresses
+        '0x9d39a5de30e57443bff2a8307a4256c8797a3497': 'sUSDe', // Ethereum mainnet
+        '0x211cc4dd073734da055fbf44a2b4667d5e5fe5d2': 'sUSDe', // Arbitrum
+        // USDC addresses
+        '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48': 'USDC',  // Ethereum mainnet
+        '0xaf88d065e77c8cc2239327c5edb3a432268e5831': 'USDC',  // Arbitrum
+        '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913': 'USDC',  // Base
+        // USDT addresses
+        '0xdac17f958d2ee523a2206206994597c13d831ec7': 'USDT',  // Ethereum mainnet
+        '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9': 'USDT',  // Arbitrum
+      };
+
+      // Try to identify token by address first, then fall back to tokenName
+      let symbol = knownTokens[tokenAddr] || rawSymbol;
+
+      // Debug logging to help identify token mapping issues
+      console.log(`[Ethereal] Balance: tokenId="${balance.tokenId}", tokenName="${rawSymbol}", tokenAddress="${tokenAddr}", resolved="${symbol}", amount=${amount}`);
+
+      // If still "USD", keep it as "USD" (don't assume USDC)
+      // The category service will classify it correctly as a stablecoin
       const priceKey = `ethereal-spot-${symbol.toLowerCase()}`;
 
-      // USD/USDe/USDC/USDT are stablecoins
-      const isStable = ['USD', 'USDE', 'USDC', 'USDT'].includes(rawSymbol.toUpperCase());
+      // Check if it's a stablecoin - include all USD variants
+      const upperSymbol = symbol.toUpperCase();
+      const isStable = upperSymbol === 'USD' ||
+                       upperSymbol === 'USDC' ||
+                       upperSymbol === 'USDT' ||
+                       upperSymbol.includes('USDE') ||  // USDe, sUSDe, wUSDe, etc.
+                       upperSymbol.includes('USD0');    // USD0, USD0++
       prices[priceKey] = {
         price: isStable ? 1 : 0,
         symbol,

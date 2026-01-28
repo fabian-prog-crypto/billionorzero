@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Plus, Trash2, Wallet, RefreshCw, Eye, EyeOff, ArrowUpDown, Download, Layers, Grid3X3, Edit2 } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
-import { calculateAllPositionsWithPrices, calculatePortfolioSummary, aggregatePositionsBySymbol, calculateUnrealizedPnL } from '@/services';
+import { calculateAllPositionsWithPrices, calculatePortfolioSummary, aggregatePositionsBySymbol, calculateUnrealizedPnL, filterDustPositions, DUST_THRESHOLD } from '@/services';
 import AddPositionModal from '@/components/modals/AddPositionModal';
 import CryptoIcon from '@/components/ui/CryptoIcon';
 import CustomPriceModal from '@/components/modals/CustomPriceModal';
@@ -84,7 +84,7 @@ export default function PositionsPage() {
     asset: AssetWithPrice | null;
   }>({ isOpen: false, asset: null });
 
-  const { positions, prices, customPrices, removePosition, wallets, hideBalances, toggleHideBalances } = usePortfolioStore();
+  const { positions, prices, customPrices, removePosition, wallets, hideBalances, toggleHideBalances, hideDust, toggleHideDust } = usePortfolioStore();
   const { refresh, isRefreshing } = useRefresh();
 
   // Build category options hierarchy
@@ -224,6 +224,9 @@ export default function PositionsPage() {
       );
     }
 
+    // Filter dust positions (keeps significant debt visible)
+    filtered = filterDustPositions(filtered, hideDust);
+
     // Sort
     filtered.sort((a, b) => {
       let comparison = 0;
@@ -245,7 +248,7 @@ export default function PositionsPage() {
     });
 
     return filtered;
-  }, [allPositionsWithPrices, categoryFilters, searchQuery, sortField, sortDirection]);
+  }, [allPositionsWithPrices, categoryFilters, searchQuery, sortField, sortDirection, hideDust]);
 
   // Aggregate assets by symbol
   const aggregatedAssets = useMemo(() => {
@@ -438,6 +441,15 @@ export default function PositionsPage() {
           <div className="flex-1" />
 
           {/* Actions */}
+          <button
+            onClick={toggleHideDust}
+            className={`btn p-2 flex items-center gap-1.5 ${hideDust ? 'btn-primary' : 'btn-secondary'}`}
+            title={hideDust ? `Showing positions ≥$${DUST_THRESHOLD}` : 'Hide dust positions'}
+          >
+            {hideDust ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            <span className="text-xs">Dust</span>
+          </button>
+
           <button
             onClick={toggleHideBalances}
             className="btn btn-secondary p-2"

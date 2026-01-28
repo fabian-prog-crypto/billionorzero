@@ -22,6 +22,7 @@ interface PortfolioState {
   lastRefresh: string | null;
   isRefreshing: boolean;
   hideBalances: boolean;
+  hideDust: boolean;  // Hide positions under $100 (except significant debt)
 
   // Settings
   riskFreeRate: number;  // Annual risk-free rate for Sharpe ratio (e.g., 0.05 = 5%)
@@ -67,6 +68,7 @@ interface PortfolioState {
 
   // UI state
   toggleHideBalances: () => void;
+  toggleHideDust: () => void;
 
   // Settings
   setRiskFreeRate: (rate: number) => void;
@@ -88,6 +90,7 @@ export const usePortfolioStore = create<PortfolioState>()(
       lastRefresh: null,
       isRefreshing: false,
       hideBalances: false,
+      hideDust: false,  // Default: show all positions
       riskFreeRate: 0.05,  // Default 5% (US Treasury rate)
 
       // Add a manual position
@@ -286,6 +289,10 @@ export const usePortfolioStore = create<PortfolioState>()(
         set((state) => ({ hideBalances: !state.hideBalances }));
       },
 
+      toggleHideDust: () => {
+        set((state) => ({ hideDust: !state.hideDust }));
+      },
+
       // Settings
       setRiskFreeRate: (rate) => {
         set({ riskFreeRate: rate });
@@ -323,6 +330,7 @@ export const usePortfolioStore = create<PortfolioState>()(
         snapshots: state.snapshots,
         lastRefresh: state.lastRefresh,
         hideBalances: state.hideBalances,
+        hideDust: state.hideDust,
         riskFreeRate: state.riskFreeRate,
         // isRefreshing is intentionally excluded - should always start as false
       }),

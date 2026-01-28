@@ -16,9 +16,7 @@ import {
 import { usePortfolioStore } from '@/store/portfolioStore';
 import {
   calculateAllPositionsWithPrices,
-  getCategoryService,
-  getExposureCategory,
-  getExposureCategoryConfig,
+  calculateAssetSummary,
 } from '@/services';
 import CryptoIcon from '@/components/ui/CryptoIcon';
 import CustomPriceModal from '@/components/modals/CustomPriceModal';
@@ -70,56 +68,13 @@ export default function AssetDetailPage() {
     );
   }, [allPositionsWithPrices, symbol]);
 
-  // Calculate aggregated asset data
+  // Calculate aggregated asset data - SINGLE SOURCE OF TRUTH
   const assetData = useMemo(() => {
-    if (assetPositions.length === 0) return null;
-
-    const totalAmount = assetPositions.reduce((sum, p) => sum + p.amount, 0);
-    const totalValue = assetPositions.reduce((sum, p) => sum + p.value, 0);
-    const totalCostBasis = assetPositions.reduce(
-      (sum, p) => sum + (p.costBasis || 0),
-      0
-    );
-    const hasCostBasis = assetPositions.some((p) => p.costBasis);
-
-    // Use first position for common data
-    const first = assetPositions[0];
-
-    // Get category info
-    const categoryService = getCategoryService();
-    const exposureCat = getExposureCategory(first.symbol, first.type);
-    const exposureConfig = getExposureCategoryConfig(exposureCat);
-    const mainCategory = categoryService.getMainCategory(first.symbol, first.type);
-
-    // Count unique sources
-    const uniqueWallets = new Set(assetPositions.filter(p => p.walletAddress).map(p => p.walletAddress));
-
-    // Calculate total allocation across all positions of this asset
-    const totalAllocation = assetPositions.reduce((sum, p) => sum + Math.abs(p.allocation), 0);
-
-    return {
-      symbol: first.symbol,
-      name: first.name,
-      type: first.type,
-      logo: first.logo,
-      currentPrice: first.currentPrice,
-      change24h: first.change24h,
-      changePercent24h: first.changePercent24h,
-      hasCustomPrice: first.hasCustomPrice,
-      totalAmount,
-      totalValue,
-      totalCostBasis: hasCostBasis ? totalCostBasis : null,
-      allocation: totalAllocation,
-      exposureCategory: exposureCat,
-      exposureCategoryLabel: exposureConfig.label,
-      exposureCategoryColor: exposureConfig.color,
-      mainCategory,
-      positionCount: assetPositions.length,
-      walletCount: uniqueWallets.size,
-    };
+    return calculateAssetSummary(assetPositions);
   }, [assetPositions]);
 
   // Aggregate positions by source (wallet + protocol/chain combination)
+  // Debt and non-debt positions are netted together
   const aggregatedPositions = useMemo((): AggregatedPosition[] => {
     const groups: Record<string, AggregatedPosition> = {};
 
@@ -129,7 +84,7 @@ export default function AssetDetailPage() {
     };
 
     assetPositions.forEach((p) => {
-      // Create a unique key for grouping
+      // Create a unique key for grouping - aggregate debt and non-debt together
       let key: string;
       let walletId: string | undefined;
       let walletName: string | undefined;
@@ -137,7 +92,7 @@ export default function AssetDetailPage() {
       if (p.walletAddress) {
         // Group by wallet + protocol (or chain if no protocol)
         const location = p.protocol || p.chain || 'wallet';
-        key = `${p.walletAddress}-${location}-${p.isDebt ? 'debt' : 'asset'}`;
+        key = `${p.walletAddress}-${location}`;
 
         // Find wallet info
         const wallet = findWallet(p.walletAddress);
@@ -147,7 +102,7 @@ export default function AssetDetailPage() {
         }
       } else {
         // Manual positions
-        key = `manual-${p.protocol || 'none'}-${p.isDebt ? 'debt' : 'asset'}`;
+        key = `manual-${p.protocol || 'none'}`;
       }
 
       if (!groups[key]) {
@@ -160,17 +115,24 @@ export default function AssetDetailPage() {
           protocol: p.protocol,
           amount: 0,
           value: 0,
-          isDebt: p.isDebt || false,
+          isDebt: false, // Will be determined by net value
           positions: [],
         };
       }
 
-      groups[key].amount += p.amount;
+      // Add amount (debt positions have negative value already)
+      groups[key].amount += p.amount * (p.isDebt ? -1 : 1);
       groups[key].value += p.value;
       groups[key].positions.push(p);
     });
 
-    return Object.values(groups).sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
+    // Determine if net position is debt (negative value)
+    Object.values(groups).forEach(g => {
+      g.isDebt = g.value < 0;
+    });
+
+    // Sort by value (descending) - positive values first, then negative
+    return Object.values(groups).sort((a, b) => b.value - a.value);
   }, [assetPositions, wallets]);
 
   // Calculate P&L if cost basis exists
@@ -344,7 +306,7 @@ export default function AssetDetailPage() {
           <tbody>
             {aggregatedPositions.map((group) => {
               const percent = assetData.totalValue !== 0
-                ? (Math.abs(group.value) / Math.abs(assetData.totalValue)) * 100
+                ? (group.value / assetData.totalValue) * 100
                 : 0;
 
               return (

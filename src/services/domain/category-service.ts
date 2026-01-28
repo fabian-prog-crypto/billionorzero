@@ -50,7 +50,7 @@ export class CategoryService {
     'usd', 'usdt', 'usdc', 'dai', 'busd', 'tusd', 'usdp', 'usdd', 'frax', 'lusd',
     'gusd', 'susd', 'cusd', 'ust', 'mim', 'fei', 'ousd', 'dola', 'rai',
     'pyusd', 'usdm', 'gho', 'crvusd', 'mkusd', 'usds', 'dusd', 'husd', 'xusd',
-    'usde', 'susde', 'usdai', 'usd0', 'usd0++', 'fdusd', 'usdb', 'usdx',
+    'usde', 'susde', 'wusde', 'usdai', 'usd0', 'usd0++', 'fdusd', 'usdb', 'usdx',
     'usdy', 'usdz', 'zusd', 'musd', 'pusd', 'ausd', 'rusd', 'cgusd',
     'euroc', 'eurt', 'ceur', 'ageur', 'jeur', 'eur', 'eurc', 'eure', 'eura',
     'steur', 'seur', 'gbpt', 'gbpc',
@@ -63,7 +63,7 @@ export class CategoryService {
     'usd', 'usdt', 'usdc', 'dai', 'busd', 'tusd', 'usdp', 'usdd', 'frax', 'lusd',
     'gusd', 'susd', 'cusd', 'ust', 'mim', 'fei', 'ousd', 'dola', 'rai',
     'pyusd', 'usdm', 'gho', 'crvusd', 'mkusd', 'usds', 'dusd', 'husd', 'xusd',
-    'usde', 'susde', 'usdai', 'usd0', 'usd0++', 'fdusd', 'usdb', 'usdx',
+    'usde', 'susde', 'wusde', 'usdai', 'usd0', 'usd0++', 'fdusd', 'usdb', 'usdx',
     'usdy', 'usdz', 'zusd', 'musd', 'pusd', 'ausd', 'rusd', 'cgusd',
     'wxdai', 'xdai', 'sdai', // DAI variants are USD-pegged
     'susds', 'stusdt', // Yield-bearing USD stablecoins

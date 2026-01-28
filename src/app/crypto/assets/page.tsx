@@ -2,9 +2,9 @@
 
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
-import { Trash2, Wallet, ArrowUpDown, ChevronUp, ChevronDown, Layers, Grid3X3, Edit2, Download, Coins } from 'lucide-react';
+import { Trash2, Wallet, ArrowUpDown, ChevronUp, ChevronDown, Layers, Grid3X3, Edit2, Download, Coins, EyeOff, Eye } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
-import { calculateAllPositionsWithPrices, aggregatePositionsBySymbol, calculateCryptoBreakdown, getCategoryService, ExposureCategoryType, getAllExposureCategoryConfigs, getExposureCategoryConfig } from '@/services';
+import { calculateAllPositionsWithPrices, aggregatePositionsBySymbol, calculateCryptoBreakdown, getCategoryService, ExposureCategoryType, getAllExposureCategoryConfigs, getExposureCategoryConfig, filterDustPositions, DUST_THRESHOLD } from '@/services';
 import DonutChart from '@/components/charts/DonutChart';
 import CryptoIcon from '@/components/ui/CryptoIcon';
 import CustomPriceModal from '@/components/modals/CustomPriceModal';
@@ -38,7 +38,7 @@ export default function CryptoPositionsPage() {
     asset: AssetWithPrice | null;
   }>({ isOpen: false, asset: null });
 
-  const { positions, prices, customPrices, removePosition, hideBalances } = usePortfolioStore();
+  const { positions, prices, customPrices, removePosition, hideBalances, hideDust, toggleHideDust } = usePortfolioStore();
   const categoryService = getCategoryService();
 
   // Get exposure category options from service
@@ -61,7 +61,7 @@ export default function CryptoPositionsPage() {
     return calculateCryptoBreakdown(allPositionsWithPrices);
   }, [allPositionsWithPrices]);
 
-  // Filter by category and search
+  // Filter by category, search, and dust
   const filteredPositions = useMemo(() => {
     let filtered = breakdownData.cryptoPositions;
 
@@ -83,8 +83,11 @@ export default function CryptoPositionsPage() {
       );
     }
 
+    // Filter dust positions (keeps significant debt visible)
+    filtered = filterDustPositions(filtered, hideDust);
+
     return filtered;
-  }, [breakdownData.cryptoPositions, searchQuery, selectedCategories, categoryService]);
+  }, [breakdownData.cryptoPositions, searchQuery, selectedCategories, categoryService, hideDust]);
 
   // Sort positions
   const sortedPositions = useMemo(() => {
@@ -215,8 +218,9 @@ export default function CryptoPositionsPage() {
 
   const displayData = viewMode === 'assets' ? aggregatedAssets : sortedPositions;
   const hasActiveFilter = !selectedCategories.has('all');
-  // Only sum positive values (assets) to match pie chart calculation
-  const filteredValue = filteredPositions.filter(p => p.value > 0).reduce((sum, p) => sum + p.value, 0);
+  // Calculate NET value (sum all values including negative for debt)
+  // This matches how category totals are calculated in the service
+  const filteredValue = filteredPositions.reduce((sum, p) => sum + p.value, 0);
   const uniqueAssets = new Set(breakdownData.cryptoPositions.map(p => p.symbol.toLowerCase())).size;
 
   // Empty state
@@ -349,6 +353,16 @@ export default function CryptoPositionsPage() {
         />
 
         <div className="flex-1" />
+
+        {/* Hide Dust Toggle */}
+        <button
+          onClick={toggleHideDust}
+          className={`btn p-2 flex items-center gap-1.5 ${hideDust ? 'btn-primary' : 'btn-secondary'}`}
+          title={hideDust ? `Showing positions ≥$${DUST_THRESHOLD}` : 'Hide dust positions'}
+        >
+          {hideDust ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          <span className="text-xs">Dust</span>
+        </button>
 
         {/* Export */}
         <button onClick={exportCSV} className="btn btn-secondary p-2" title="Export CSV">

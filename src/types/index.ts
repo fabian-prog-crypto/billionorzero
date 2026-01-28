@@ -59,6 +59,7 @@ export interface AssetWithPrice extends Position {
   changePercent24h: number;
   allocation: number; // Negative for debt positions
   hasCustomPrice?: boolean; // True if using a custom price override
+  isPerpNotional?: boolean; // True if perp long/short (notional exposure, not actual holding)
 }
 
 export interface NetWorthSnapshot {

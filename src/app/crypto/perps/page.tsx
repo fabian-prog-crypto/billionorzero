@@ -2,115 +2,41 @@
 
 import { useMemo } from 'react';
 import { usePortfolioStore } from '@/store/portfolioStore';
-import { calculateAllPositionsWithPrices, calculateExposureData, filterPerpPositions, detectPerpTrade } from '@/services';
+import { calculateAllPositionsWithPrices, calculateExposureData, calculatePerpPageData, filterDustPositions, DUST_THRESHOLD } from '@/services';
 import { formatCurrency, formatNumber, formatPercent, getChangeColor } from '@/lib/utils';
-import { getCategoryService } from '@/services';
-import { Wallet, TrendingUp } from 'lucide-react';
+import { Wallet, TrendingUp, Eye, EyeOff } from 'lucide-react';
 
 export default function PerpsPage() {
-  const { positions, prices, customPrices, hideBalances } = usePortfolioStore();
+  const { positions, prices, customPrices, hideBalances, hideDust, toggleHideDust } = usePortfolioStore();
 
   // Calculate all positions with prices (including custom price overrides)
   const allAssetsWithPrices = useMemo(() => {
     return calculateAllPositionsWithPrices(positions, prices, customPrices);
   }, [positions, prices, customPrices]);
 
-  // Use centralized exposure calculation
+  // Use centralized exposure calculation for metrics
   const exposureData = useMemo(() => {
     return calculateExposureData(allAssetsWithPrices);
   }, [allAssetsWithPrices]);
 
-  const { perpsBreakdown, perpsMetrics } = exposureData;
-
-  // Filter to only perp positions (using shared helper for consistency)
-  const perpPositions = useMemo(() => {
-    return filterPerpPositions(allAssetsWithPrices);
+  // Use centralized perp page data calculation - SINGLE SOURCE OF TRUTH
+  const perpPageData = useMemo(() => {
+    return calculatePerpPageData(allAssetsWithPrices);
   }, [allAssetsWithPrices]);
 
-  // Group positions by exchange
-  const positionsByExchange = useMemo(() => {
-    const grouped: Record<string, typeof perpPositions> = {};
+  const { perpsBreakdown, perpsMetrics } = exposureData;
+  const {
+    marginPositions: rawMarginPositions,
+    tradingPositions: rawTradingPositions,
+    spotHoldings: rawSpotHoldings,
+    exchangeStats,
+    hasPerps,
+  } = perpPageData;
 
-    perpPositions.forEach((p) => {
-      const exchange = p.protocol || 'Unknown';
-      if (!grouped[exchange]) {
-        grouped[exchange] = [];
-      }
-      grouped[exchange].push(p);
-    });
-
-    return grouped;
-  }, [perpPositions]);
-
-  // Use centralized detectPerpTrade helper
-  const isPerpTradePosition = (p: typeof perpPositions[0]) => detectPerpTrade(p.name).isPerpTrade;
-
-  // Calculate stats per exchange
-  const exchangeStats = useMemo(() => {
-    return Object.entries(positionsByExchange).map(([exchange, positions]) => {
-      const margin = positions
-        .filter((p) => {
-          const cat = getCategoryService().getSubCategory(p.symbol, p.type);
-          return (cat === 'stablecoins' ) && !p.isDebt;
-        })
-        .reduce((sum, p) => sum + p.value, 0);
-
-      // Only count actual perp trades as longs/shorts (not spot holdings)
-      const longs = positions
-        .filter((p) => {
-          const cat = getCategoryService().getSubCategory(p.symbol, p.type);
-          return cat !== 'stablecoins' && !p.isDebt && isPerpTradePosition(p);
-        })
-        .reduce((sum, p) => sum + p.value, 0);
-
-      const shorts = positions
-        .filter((p) => {
-          const cat = getCategoryService().getSubCategory(p.symbol, p.type);
-          return cat !== 'stablecoins' && p.isDebt && isPerpTradePosition(p);
-        })
-        .reduce((sum, p) => sum + Math.abs(p.value), 0);
-
-      // Spot holdings (non-stablecoin, non-perp assets on the exchange)
-      const spot = positions
-        .filter((p) => {
-          const cat = getCategoryService().getSubCategory(p.symbol, p.type);
-          return cat !== 'stablecoins' && !isPerpTradePosition(p);
-        })
-        .reduce((sum, p) => sum + p.value, 0);
-
-      const net = margin + spot + longs - shorts;
-
-      return {
-        exchange,
-        margin,
-        spot,
-        longs,
-        shorts,
-        net,
-        positionCount: positions.length,
-      };
-    }).sort((a, b) => b.net - a.net);
-  }, [positionsByExchange]);
-
-  // Separate margin, trading positions, and spot holdings for display
-  const marginPositions = perpPositions.filter((p) => {
-    const cat = getCategoryService().getSubCategory(p.symbol, p.type);
-    return cat === 'stablecoins';
-  });
-
-  // Actual perp trades (Long/Short positions) - use centralized detectPerpTrade
-  const tradingPositions = perpPositions.filter((p) => {
-    const cat = getCategoryService().getSubCategory(p.symbol, p.type);
-    return cat !== 'stablecoins' && isPerpTradePosition(p);
-  });
-
-  // Spot holdings on perp exchanges (not stablecoins, not perp trades)
-  const spotHoldings = perpPositions.filter((p) => {
-    const cat = getCategoryService().getSubCategory(p.symbol, p.type);
-    return cat !== 'stablecoins' && !isPerpTradePosition(p);
-  });
-
-  const hasPerps = perpsBreakdown.total !== 0 || perpPositions.length > 0;
+  // Apply dust filter to position lists
+  const marginPositions = useMemo(() => filterDustPositions(rawMarginPositions, hideDust), [rawMarginPositions, hideDust]);
+  const tradingPositions = useMemo(() => filterDustPositions(rawTradingPositions, hideDust), [rawTradingPositions, hideDust]);
+  const spotHoldings = useMemo(() => filterDustPositions(rawSpotHoldings, hideDust), [rawSpotHoldings, hideDust]);
 
   return (
     <div>
@@ -126,6 +52,18 @@ export default function PerpsPage() {
         </div>
       ) : (
         <>
+          {/* Controls */}
+          <div className="flex justify-end mb-4">
+            <button
+              onClick={toggleHideDust}
+              className={`btn p-2 flex items-center gap-1.5 ${hideDust ? 'btn-primary' : 'btn-secondary'}`}
+              title={hideDust ? `Showing positions ≥$${DUST_THRESHOLD}` : 'Hide dust positions'}
+            >
+              {hideDust ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              <span className="text-xs">Dust</span>
+            </button>
+          </div>
+
           {/* Professional Metrics */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-6">
             <div>
@@ -204,7 +142,8 @@ export default function PerpsPage() {
                     <th className="table-header text-right pb-3">Spot</th>
                     <th className="table-header text-right pb-3">Longs</th>
                     <th className="table-header text-right pb-3">Shorts</th>
-                    <th className="table-header text-right pb-3">Net Value</th>
+                    <th className="table-header text-right pb-3">Account Value</th>
+                    <th className="table-header text-right pb-3">Net Exposure</th>
                     <th className="table-header text-right pb-3">Positions</th>
                   </tr>
                 </thead>
@@ -226,8 +165,11 @@ export default function PerpsPage() {
                       <td className="py-2 text-right text-[var(--negative)]">
                         {hideBalances ? '****' : stat.shorts > 0 ? `-${formatCurrency(stat.shorts)}` : '-'}
                       </td>
-                      <td className={`py-2 text-right font-semibold ${stat.net >= 0 ? '' : 'text-[var(--negative)]'}`}>
-                        {hideBalances ? '****' : formatCurrency(stat.net)}
+                      <td className="py-2 text-right font-semibold">
+                        {hideBalances ? '****' : formatCurrency(stat.accountValue)}
+                      </td>
+                      <td className={`py-2 text-right ${stat.netExposure >= 0 ? 'text-[var(--positive)]' : 'text-[var(--negative)]'}`}>
+                        {hideBalances ? '****' : stat.netExposure !== 0 ? formatCurrency(stat.netExposure) : '-'}
                       </td>
                       <td className="py-2 text-right text-[var(--foreground-muted)]">
                         {stat.positionCount}

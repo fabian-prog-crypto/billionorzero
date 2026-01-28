@@ -78,6 +78,15 @@ export class LighterProvider {
     const prices: Record<string, { price: number; symbol: string }> = {};
     // Use total_asset_value from Lighter as the account value
     const accountValue = parseFloat(account.total_asset_value) || 0;
+    const collateralValue = parseFloat(account.collateral) || 0;
+
+    // Debug logging
+    console.log(`[Lighter] Account ${account.index}:`);
+    console.log(`  - total_asset_value: ${account.total_asset_value}`);
+    console.log(`  - collateral: ${account.collateral}`);
+    console.log(`  - available_balance: ${account.available_balance}`);
+    console.log(`  - assets: ${JSON.stringify(account.assets)}`);
+    console.log(`  - positions: ${account.positions?.length || 0}`);
 
     // Process perp positions
     for (const pos of account.positions || []) {
@@ -116,10 +125,10 @@ export class LighterProvider {
       });
     }
 
-    // ALWAYS create margin position from collateral field (USD value)
-    // This is the actual margin available for trading, regardless of what assets back it
-    const collateralValue = parseFloat(account.collateral) || 0;
-    if (collateralValue > 0) {
+    // Use total_asset_value as the margin amount - this is the true account value
+    // including unrealized PnL. Individual asset balances may not reflect this accurately.
+    // Lighter's total_asset_value is the single source of truth for account equity.
+    if (accountValue > 0) {
       const priceKey = 'lighter-usdc';
       prices[priceKey] = { price: 1, symbol: 'USDC' };
 
@@ -128,7 +137,7 @@ export class LighterProvider {
         type: 'crypto',
         symbol: 'USDC',
         name: 'USDC Margin (Lighter)',
-        amount: collateralValue,
+        amount: accountValue,  // Use total_asset_value, not individual asset balances
         walletAddress,
         chain: 'lighter',
         protocol: 'Lighter',
@@ -138,39 +147,46 @@ export class LighterProvider {
       });
     }
 
-    // Process spot token holdings (non-stablecoin assets on the exchange)
-    // Note: These may be the underlying assets backing the collateral
+    // Process non-stablecoin spot assets (if any)
     for (const asset of account.assets || []) {
       const balance = parseFloat(asset.balance);
       if (balance <= 0) continue;
 
       const symbol = asset.symbol;
+      const upperSymbol = symbol.toUpperCase();
 
-      // Skip stablecoins - they're already counted in collateral
-      const isStable = symbol === 'USDC' || symbol === 'USDT';
-      if (isStable) continue;
+      // Skip stablecoins - we already accounted for them via total_asset_value
+      const isStable = upperSymbol === 'USDC' ||
+                       upperSymbol === 'USDT' ||
+                       upperSymbol === 'DAI' ||
+                       upperSymbol === 'FRAX' ||
+                       upperSymbol.includes('USDE') ||
+                       upperSymbol.includes('USD0');
 
-      const priceKey = `lighter-spot-${symbol.toLowerCase()}`;
-      const price = assetPrices.get(symbol) || 0;
+      if (!isStable) {
+        // Non-stablecoin spot asset
+        const priceKey = `lighter-spot-${symbol.toLowerCase()}`;
+        const price = assetPrices.get(symbol) || 0;
 
-      prices[priceKey] = {
-        price,
-        symbol,
-      };
+        prices[priceKey] = {
+          price,
+          symbol,
+        };
 
-      positions.push({
-        id: `${walletId}-lighter-spot-${symbol}-${account.index}`,
-        type: 'crypto',
-        symbol,
-        name: `${symbol} (Lighter Spot)`,
-        amount: balance,
-        walletAddress,
-        chain: 'lighter',
-        protocol: 'Lighter',
-        debankPriceKey: priceKey,
-        addedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
+        positions.push({
+          id: `${walletId}-lighter-spot-${symbol}-${account.index}`,
+          type: 'crypto',
+          symbol,
+          name: `${symbol} (Lighter Spot)`,
+          amount: balance,
+          walletAddress,
+          chain: 'lighter',
+          protocol: 'Lighter',
+          debankPriceKey: priceKey,
+          addedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+      }
     }
 
     return { positions, prices, accountValue };

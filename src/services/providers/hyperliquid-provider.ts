@@ -96,9 +96,6 @@ export class HyperliquidProvider {
         symbol: coin,
       };
 
-      // Position value (notional)
-      const positionValue = absSize * midPrice;
-
       positions.push({
         id: `${walletId}-hyperliquid-perp-${coin}-${isShort ? 'short' : 'long'}`,
         type: 'crypto',
@@ -160,9 +157,16 @@ export class HyperliquidProvider {
       if (total <= 0) continue;
 
       const coin = balance.coin;
+      const upperCoin = coin.toUpperCase();
 
-      // USDC/USDT are stablecoins (spot wallet stables, separate from perp margin)
-      const isStable = coin === 'USDC' || coin === 'USDT';
+      // Check if it's a stablecoin - include all USD variants
+      // USDC, USDT, USDe, sUSDe, DAI, FRAX, etc.
+      const isStable = upperCoin === 'USDC' ||
+                       upperCoin === 'USDT' ||
+                       upperCoin === 'DAI' ||
+                       upperCoin === 'FRAX' ||
+                       upperCoin.includes('USDE') ||  // USDe, sUSDe, wUSDe
+                       upperCoin.includes('USD0');    // USD0, USD0++
 
       // Get price - for stables it's $1, for others check allMids
       let price = 1;

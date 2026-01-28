@@ -14,6 +14,7 @@ import {
   CATEGORY_COLORS,
   isPerpProtocol,
   getCategoryService,
+  getExposureCategoryConfig,
 } from './category-service';
 
 /**
@@ -36,6 +37,38 @@ export function detectPerpTrade(name: string): { isPerpTrade: boolean; isLong: b
     isLong: longMatch,
     isShort: shortMatch,
   };
+}
+
+/**
+ * Dust threshold for filtering small positions
+ */
+export const DUST_THRESHOLD = 100; // $100
+
+/**
+ * Filter out dust positions (small values under threshold)
+ * Professional investor POV: Hide noise but keep significant debt visible
+ *
+ * Rules:
+ * - Hide positions where |value| < $100
+ * - KEEP debt positions where value < -$100 (significant debt matters)
+ * - Always show positions with 0 value (might need attention)
+ */
+export function filterDustPositions<T extends { value: number }>(
+  positions: T[],
+  hideDust: boolean,
+  threshold: number = DUST_THRESHOLD
+): T[] {
+  if (!hideDust) return positions;
+
+  return positions.filter((p) => {
+    const absValue = Math.abs(p.value);
+    // Keep if above threshold
+    if (absValue >= threshold) return true;
+    // Keep significant debt (negative value below -threshold)
+    if (p.value < -threshold) return true;
+    // Hide dust
+    return false;
+  });
 }
 
 /**
@@ -163,12 +196,46 @@ export interface CategoryBreakdown {
 
 /**
  * Perps breakdown (margin + positions) - part of crypto sub-categories
+ *
+ * Key distinction for net worth calculation:
+ * - margin: Actual collateral deposited (counts towards net worth)
+ * - longs/shorts: Notional exposure (does NOT count towards net worth)
+ * - total: Only margin counts (what you actually own)
  */
 export interface PerpsBreakdown {
-  margin: number;          // Stablecoins used as margin on perp exchanges
-  longs: number;           // Long perp positions (positive exposure)
-  shorts: number;          // Short perp positions (negative exposure, stored as positive number)
-  total: number;           // Total perps exposure (net value)
+  margin: number;          // Collateral deposited (counts towards net worth)
+  longs: number;           // Long perp notional exposure
+  shorts: number;          // Short perp notional exposure (as positive number)
+  total: number;           // Net worth contribution (just margin)
+}
+
+/**
+ * Per-exchange perp stats - single source of truth for perps page
+ */
+export interface PerpExchangeStats {
+  exchange: string;
+  margin: number;          // Stablecoin collateral
+  spot: number;            // Non-stablecoin spot holdings on the exchange
+  longs: number;           // Long perp notional
+  shorts: number;          // Short perp notional
+  accountValue: number;    // margin + spot (what counts towards net worth)
+  netExposure: number;     // longs - shorts (directional exposure)
+  positionCount: number;
+}
+
+/**
+ * Complete perps page data - single source of truth
+ */
+export interface PerpPageData {
+  // Positions categorized
+  marginPositions: AssetWithPrice[];     // Stablecoin deposits
+  tradingPositions: AssetWithPrice[];    // Actual perp trades (Long/Short)
+  spotHoldings: AssetWithPrice[];        // Non-stablecoin spot on perp exchanges
+  allPerpPositions: AssetWithPrice[];    // All positions on perp exchanges
+  // Per-exchange breakdown
+  exchangeStats: PerpExchangeStats[];
+  // Has any perp activity
+  hasPerps: boolean;
 }
 
 /**
@@ -413,7 +480,14 @@ export function calculatePositionValue(
     }
   }
 
-  const currentPrice = priceData?.price || 0;
+  // Fallback for stablecoins - always use $1 if no price found
+  // This ensures USDC, USDT, etc. always have correct pricing
+  const categoryService = getCategoryService();
+  const isStablecoin = categoryService.isStablecoin(position.symbol);
+  let currentPrice = priceData?.price || 0;
+  if (currentPrice === 0 && isStablecoin) {
+    currentPrice = 1;
+  }
   // Debt positions have negative value (they reduce your net worth)
   const rawValue = position.amount * currentPrice;
   const value = position.isDebt ? -rawValue : rawValue;
@@ -455,15 +529,33 @@ export function calculateAllPositionsWithPrices(
     calculatePositionValue(p, prices, customPrices, fxRates)
   );
 
+  // Mark perp notional positions (perp long/short trades on perp exchanges)
+  // These represent leveraged exposure, not actual holdings
+  positionsWithPrices.forEach((p) => {
+    const { isPerpTrade } = detectPerpTrade(p.name);
+    const isOnPerpExchange = p.protocol ? isPerpProtocol(p.protocol) : false;
+    if (isPerpTrade && isOnPerpExchange) {
+      p.isPerpNotional = true;
+    }
+    // Debug: Log perp exchange positions
+    if (isOnPerpExchange) {
+      console.log(`[Portfolio] Perp position: "${p.name}" | isPerpTrade=${isPerpTrade} | isPerpNotional=${p.isPerpNotional} | value=${p.value}`);
+    }
+  });
+
   // Calculate total gross assets (positive values only, for allocation %)
+  // EXCLUDE perp notional from allocation base - they're leveraged exposure, not actual holdings
   const totalGrossAssets = positionsWithPrices
-    .filter((p) => p.value > 0)
+    .filter((p) => p.value > 0 && !p.isPerpNotional)
     .reduce((sum, p) => sum + p.value, 0);
 
   // Calculate allocations (based on gross assets, not net)
   // Debt positions get negative allocation % to show their relative impact
+  // Perp notional positions are excluded from allocation calculation
   positionsWithPrices.forEach((p) => {
-    if (totalGrossAssets > 0) {
+    if (p.isPerpNotional) {
+      p.allocation = 0; // Perp notional doesn't count towards allocation
+    } else if (totalGrossAssets > 0) {
       p.allocation = (p.value / totalGrossAssets) * 100;
     } else {
       p.allocation = 0;
@@ -481,6 +573,25 @@ export function calculateAllPositionsWithPrices(
 }
 
 /**
+ * Calculate Net Worth - excludes perp notional, includes only actual holdings
+ * Net Worth = Spot holdings + Cash + Margin - Debts (excluding perp shorts)
+ *
+ * Perp positions are LEVERAGED - they represent exposure, not actual holdings.
+ * Only the MARGIN deposited (stablecoins like USDC/USDT/USDe) counts towards net worth.
+ */
+export function calculateNetWorth(assetsWithPrice: AssetWithPrice[]): number {
+  const included = assetsWithPrice.filter(a => !a.isPerpNotional);
+  const excluded = assetsWithPrice.filter(a => a.isPerpNotional);
+  const netWorth = included.reduce((sum, a) => sum + a.value, 0);
+
+  console.log(`[NetWorth] Included: ${included.length} positions, total: $${netWorth.toFixed(2)}`);
+  console.log(`[NetWorth] Excluded (isPerpNotional): ${excluded.length} positions`);
+  excluded.forEach(p => console.log(`  - "${p.name}" value=${p.value}`));
+
+  return netWorth;
+}
+
+/**
  * Calculate comprehensive portfolio summary
  * Custom prices take precedence over market prices when provided
  * FX rates are used for fiat cash conversion to USD
@@ -492,33 +603,41 @@ export function calculatePortfolioSummary(
   fxRates?: Record<string, number>
 ): PortfolioSummary {
   const assetsWithPrice = calculateAllPositionsWithPrices(positions, prices, customPrices, fxRates);
-  const totalValue = assetsWithPrice.reduce((sum, a) => sum + a.value, 0);
 
-  // Calculate total 24h change
+  // Net Worth excludes perp notional (leveraged positions)
+  // Only actual holdings (margin, spot, cash) minus real debts count
+  const totalValue = calculateNetWorth(assetsWithPrice);
+
+  // Calculate total 24h change - exclude perp notional (they don't affect net worth)
   // For debt positions, a.changePercent24h is already inverted (negative when price goes up)
   // So we can simply sum up change24h values which are already correctly signed
-  const change24h = assetsWithPrice.reduce((sum, a) => sum + a.change24h, 0);
+  const change24h = assetsWithPrice
+    .filter(a => !a.isPerpNotional)
+    .reduce((sum, a) => sum + a.change24h, 0);
 
   // Calculate previous total value properly handling debt
-  const previousTotalValue = assetsWithPrice.reduce((sum, a) => {
-    if (a.changePercent24h === 0) return sum + a.value;
+  // Exclude perp notional since they don't affect net worth
+  const previousTotalValue = assetsWithPrice
+    .filter(a => !a.isPerpNotional)
+    .reduce((sum, a) => {
+      if (a.changePercent24h === 0) return sum + a.value;
 
-    // For debt: changePercent24h is already inverted, so we need to un-invert to get actual price change
-    const actualPriceChangePercent = a.isDebt ? -a.changePercent24h : a.changePercent24h;
-    const previousPrice = a.currentPrice / (1 + actualPriceChangePercent / 100);
-    const previousValue = a.amount * previousPrice;
+      // For debt: changePercent24h is already inverted, so we need to un-invert to get actual price change
+      const actualPriceChangePercent = a.isDebt ? -a.changePercent24h : a.changePercent24h;
+      const previousPrice = a.currentPrice / (1 + actualPriceChangePercent / 100);
+      const previousValue = a.amount * previousPrice;
 
-    // Debt positions still have negative impact
-    return sum + (a.isDebt ? -previousValue : previousValue);
-  }, 0);
+      // Debt positions still have negative impact
+      return sum + (a.isDebt ? -previousValue : previousValue);
+    }, 0);
 
   const changePercent24h =
     previousTotalValue !== 0
       ? ((totalValue - previousTotalValue) / Math.abs(previousTotalValue)) * 100
       : 0;
 
-  // Group by type
-  const cryptoAssets = assetsWithPrice.filter((a) => a.type === 'crypto');
+  // Group by type - exclude perp notional from category values (they don't affect net worth)
+  const cryptoAssets = assetsWithPrice.filter((a) => a.type === 'crypto' && !a.isPerpNotional);
   const stockAssets = assetsWithPrice.filter((a) => a.type === 'stock');
   const cashAssets = assetsWithPrice.filter((a) => a.type === 'cash');
   const manualAssets = assetsWithPrice.filter((a) => a.type === 'manual');
@@ -528,16 +647,18 @@ export function calculatePortfolioSummary(
   const cashValue = cashAssets.reduce((sum, a) => sum + a.value, 0);
   const manualValue = manualAssets.reduce((sum, a) => sum + a.value, 0);
 
-  // Top assets by value (for charts)
-  const topAssets = assetsWithPrice.slice(0, 10);
+  // Top assets by value (for charts) - exclude perp notional
+  const topAssets = assetsWithPrice.filter(a => !a.isPerpNotional).slice(0, 10);
 
   // Calculate gross assets and total debts
+  // EXCLUDE perp notional - they're leveraged exposure, not actual holdings
+  // Perp shorts are NOT real debt - they're directional exposure
   const grossAssets = assetsWithPrice
-    .filter((a) => a.value > 0)
+    .filter((a) => a.value > 0 && !a.isPerpNotional)
     .reduce((sum, a) => sum + a.value, 0);
 
   const totalDebts = assetsWithPrice
-    .filter((a) => a.value < 0)
+    .filter((a) => a.value < 0 && !a.isPerpNotional)
     .reduce((sum, a) => sum + Math.abs(a.value), 0);
 
   // Aggregate unique assets for asset count
@@ -608,7 +729,8 @@ export function calculateTotalNAV(
 
 /**
  * Group positions by symbol and aggregate
- * Debt and non-debt positions are kept separate to maintain accuracy
+ * Debt positions are netted with non-debt positions of the same symbol
+ * Perp notional positions (longs/shorts) are kept separate from spot holdings
  */
 export function aggregatePositionsBySymbol(
   positions: AssetWithPrice[]
@@ -616,30 +738,46 @@ export function aggregatePositionsBySymbol(
   const assetMap = new Map<string, AssetWithPrice>();
 
   // Calculate total gross assets for allocation % (positive values only)
+  // EXCLUDE perp notional - they're leveraged exposure, not actual holdings
   const totalGrossAssets = positions
-    .filter((p) => p.value > 0)
+    .filter((p) => p.value > 0 && !p.isPerpNotional)
     .reduce((sum, p) => sum + p.value, 0);
 
   positions.forEach((asset) => {
-    // Include isDebt in key to keep debt and non-debt positions separate
-    const debtSuffix = asset.isDebt ? '-debt' : '';
-    const key = `${asset.symbol.toLowerCase()}-${asset.type}${debtSuffix}`;
+    // Keep perp notional positions separate (leveraged exposure, not spot holdings)
+    // But net debt with non-debt positions of the same symbol
+    const perpSuffix = asset.isPerpNotional ? '-perp' : '';
+    const key = `${asset.symbol.toLowerCase()}-${asset.type}${perpSuffix}`;
     const existing = assetMap.get(key);
 
+    // For debt positions, amount should be subtracted to get net amount
+    // Value is already negative for debt, so it naturally subtracts
+    const amountContribution = asset.isDebt ? -asset.amount : asset.amount;
+
     if (existing) {
-      const newAmount = existing.amount + asset.amount;
+      const newAmount = (existing.isDebt ? -existing.amount : existing.amount) + amountContribution;
       const newValue = existing.value + asset.value;
+      // Perp notional gets 0 allocation - it's not an actual holding
+      const newAllocation = asset.isPerpNotional ? 0 :
+        (totalGrossAssets > 0 ? (Math.max(0, newValue) / totalGrossAssets) * 100 : 0);
+      // If result is net negative, mark as debt
+      const isNetDebt = newValue < 0;
       assetMap.set(key, {
         ...existing,
-        amount: newAmount,
+        amount: Math.abs(newAmount),
         value: newValue,
-        // Allocation based on gross assets, debt shows negative %
-        allocation: totalGrossAssets > 0 ? (newValue / totalGrossAssets) * 100 : 0,
+        allocation: newAllocation,
+        isPerpNotional: asset.isPerpNotional,
+        isDebt: isNetDebt,
       });
     } else {
+      // Perp notional gets 0 allocation - it's not an actual holding
+      const allocation = asset.isPerpNotional ? 0 :
+        (totalGrossAssets > 0 ? (Math.max(0, asset.value) / totalGrossAssets) * 100 : 0);
       assetMap.set(key, {
         ...asset,
-        allocation: totalGrossAssets > 0 ? (asset.value / totalGrossAssets) * 100 : 0,
+        amount: Math.abs(amountContribution),
+        allocation,
       });
     }
   });
@@ -650,6 +788,94 @@ export function aggregatePositionsBySymbol(
     if (a.value < 0 && b.value >= 0) return 1;
     return Math.abs(b.value) - Math.abs(a.value);
   });
+}
+
+/**
+ * Asset summary data for detail view - single source of truth
+ */
+export interface AssetSummaryData {
+  symbol: string;
+  name: string;
+  type: string;
+  logo?: string;
+  currentPrice: number;
+  change24h: number;
+  changePercent24h: number;
+  hasCustomPrice?: boolean;
+  totalAmount: number;       // Net amount (debt subtracted)
+  totalValue: number;        // Net value
+  totalCostBasis: number | null;
+  allocation: number;
+  exposureCategory: string;
+  exposureCategoryLabel: string;
+  exposureCategoryColor: string;
+  mainCategory: string;
+  positionCount: number;
+  walletCount: number;
+}
+
+/**
+ * Calculate asset summary data - SINGLE SOURCE OF TRUTH
+ * Provides aggregated data for a single asset across all positions
+ */
+export function calculateAssetSummary(
+  assetPositions: AssetWithPrice[]
+): AssetSummaryData | null {
+  if (assetPositions.length === 0) return null;
+
+  const categoryService = getCategoryService();
+  const first = assetPositions[0];
+
+  // Calculate net amount (subtract debt amounts)
+  const totalAmount = assetPositions.reduce((sum, p) => {
+    return sum + (p.isDebt ? -p.amount : p.amount);
+  }, 0);
+
+  // Value is already signed (negative for debt)
+  const totalValue = assetPositions.reduce((sum, p) => sum + p.value, 0);
+
+  const totalCostBasis = assetPositions.reduce(
+    (sum, p) => sum + (p.costBasis || 0),
+    0
+  );
+  const hasCostBasis = assetPositions.some((p) => p.costBasis);
+
+  // Find the best position for price data (prefer one with valid price > 0)
+  const positionWithPrice = assetPositions.find(p => p.currentPrice > 0) || first;
+
+  // Get category info
+  const exposureCat = categoryService.getExposureCategory(first.symbol, first.type);
+  const exposureConfig = getExposureCategoryConfig(exposureCat);
+  const mainCategory = categoryService.getMainCategory(first.symbol, first.type);
+
+  // Count unique sources
+  const uniqueWallets = new Set(
+    assetPositions.filter(p => p.walletAddress).map(p => p.walletAddress)
+  );
+
+  // Calculate total allocation (sum of allocations, respecting sign)
+  const totalAllocation = assetPositions.reduce((sum, p) => sum + p.allocation, 0);
+
+  return {
+    symbol: first.symbol,
+    name: first.name,
+    type: first.type,
+    logo: first.logo,
+    currentPrice: positionWithPrice.currentPrice,
+    change24h: positionWithPrice.change24h,
+    changePercent24h: positionWithPrice.changePercent24h,
+    hasCustomPrice: positionWithPrice.hasCustomPrice,
+    totalAmount,
+    totalValue,
+    totalCostBasis: hasCostBasis ? totalCostBasis : null,
+    allocation: totalAllocation,
+    exposureCategory: exposureCat,
+    exposureCategoryLabel: exposureConfig.label,
+    exposureCategoryColor: exposureConfig.color,
+    mainCategory,
+    positionCount: assetPositions.length,
+    walletCount: uniqueWallets.size,
+  };
 }
 
 /**
@@ -676,8 +902,6 @@ export function getPerpProtocolsWithPositions(assets: AssetWithPrice[]): Set<str
  * Use this helper instead of duplicating the perp filtering logic
  */
 export function filterPerpPositions(assets: AssetWithPrice[]): AssetWithPrice[] {
-  const categoryService = getCategoryService();
-
   return assets.filter((asset) => {
     if (!asset.protocol || !isPerpProtocol(asset.protocol)) return false;
 
@@ -688,6 +912,96 @@ export function filterPerpPositions(assets: AssetWithPrice[]): AssetWithPrice[] 
     // The perps page will categorize them appropriately
     return true;
   });
+}
+
+/**
+ * Calculate perps page data - SINGLE SOURCE OF TRUTH
+ * Provides all data needed by the perps page:
+ * - Categorized positions (margin, trading, spot)
+ * - Per-exchange stats
+ * - Metrics
+ */
+export function calculatePerpPageData(assets: AssetWithPrice[]): PerpPageData {
+  const categoryService = getCategoryService();
+  const perpPositions = filterPerpPositions(assets);
+
+  // Categorize positions
+  const marginPositions: AssetWithPrice[] = [];
+  const tradingPositions: AssetWithPrice[] = [];
+  const spotHoldings: AssetWithPrice[] = [];
+
+  perpPositions.forEach((p) => {
+    const subCat = categoryService.getSubCategory(p.symbol, p.type);
+    const { isPerpTrade } = detectPerpTrade(p.name);
+
+    if (subCat === 'stablecoins') {
+      marginPositions.push(p);
+    } else if (isPerpTrade) {
+      tradingPositions.push(p);
+    } else {
+      spotHoldings.push(p);
+    }
+  });
+
+  // Group by exchange and calculate stats
+  const positionsByExchange: Record<string, AssetWithPrice[]> = {};
+  perpPositions.forEach((p) => {
+    const exchange = p.protocol || 'Unknown';
+    if (!positionsByExchange[exchange]) {
+      positionsByExchange[exchange] = [];
+    }
+    positionsByExchange[exchange].push(p);
+  });
+
+  const exchangeStats: PerpExchangeStats[] = Object.entries(positionsByExchange)
+    .map(([exchange, positions]) => {
+      let margin = 0;
+      let longs = 0;
+      let shorts = 0;
+      let spot = 0;
+
+      positions.forEach((p) => {
+        const subCat = categoryService.getSubCategory(p.symbol, p.type);
+        const { isPerpTrade } = detectPerpTrade(p.name);
+
+        if (subCat === 'stablecoins' && !p.isDebt) {
+          margin += p.value;
+        } else if (subCat !== 'stablecoins' && isPerpTrade) {
+          if (p.isDebt) {
+            shorts += Math.abs(p.value);
+          } else {
+            longs += p.value;
+          }
+        } else if (subCat !== 'stablecoins' && !isPerpTrade) {
+          spot += p.value;
+        }
+      });
+
+      return {
+        exchange,
+        margin,
+        spot,
+        longs,
+        shorts,
+        accountValue: margin + spot,
+        netExposure: longs - shorts,
+        positionCount: positions.length,
+      };
+    })
+    .sort((a, b) => b.accountValue - a.accountValue);
+
+  // Determine if there's any perp activity
+  const totalMargin = exchangeStats.reduce((sum, s) => sum + s.margin, 0);
+  const hasPerps = totalMargin > 0 || perpPositions.length > 0;
+
+  return {
+    marginPositions,
+    tradingPositions,
+    spotHoldings,
+    allPerpPositions: perpPositions,
+    exchangeStats,
+    hasPerps,
+  };
 }
 
 /**
@@ -789,6 +1103,7 @@ const CUSTODY_COLORS: Record<string, string> = {
  * Calculate custody breakdown - SINGLE SOURCE OF TRUTH
  * Categories: Self-Custody, DeFi, Perp DEX, CEX, Banks & Brokers, Manual
  * Uses NET values - debt subtracts from the category where it was borrowed
+ * EXCLUDES perp notional - only actual holdings (margin, spot) count
  */
 export function calculateCustodyBreakdown(assets: AssetWithPrice[]): CustodyBreakdownItem[] {
   const custodyMap: Record<string, { value: number; positions: Map<string, number> }> = {
@@ -802,7 +1117,11 @@ export function calculateCustodyBreakdown(assets: AssetWithPrice[]): CustodyBrea
 
   // Process ALL assets including debt - use NET values
   // Debt subtracts from the category where it was borrowed
+  // EXCLUDE perp notional - they're leveraged exposure, not custody
   assets.forEach((asset) => {
+    // Skip perp notional - it's not actual custody, just exposure
+    if (asset.isPerpNotional) return;
+
     const value = asset.value; // Can be negative for debt
     const symbolKey = asset.symbol.toUpperCase();
     let category: string;
@@ -811,6 +1130,7 @@ export function calculateCustodyBreakdown(assets: AssetWithPrice[]): CustodyBrea
       category = 'CEX';
     } else if (isPerpProtocol(asset.protocol)) {
       // Perp DEXes (Hyperliquid, Vertex, Drift, etc.) are decentralized
+      // Only margin (stablecoins) should show here, not notional
       category = 'Perp DEX';
     } else if (asset.type === 'stock' || asset.type === 'cash') {
       category = 'Banks & Brokers';
@@ -855,12 +1175,17 @@ export function calculateCustodyBreakdown(assets: AssetWithPrice[]): CustodyBrea
 /**
  * Calculate chain breakdown
  * Uses NET values - debt subtracts from the chain where it was borrowed
+ * EXCLUDES perp notional - only actual holdings count
  */
 export function calculateChainBreakdown(assets: AssetWithPrice[]): ChainBreakdownItem[] {
   const chainMap: Record<string, number> = {};
 
   // Process ALL assets including debt - use NET values
+  // EXCLUDE perp notional - they're leveraged exposure, not actual holdings
   assets.forEach((asset) => {
+    // Skip perp notional - it's not actual holding, just exposure
+    if (asset.isPerpNotional) return;
+
     const value = asset.value; // Can be negative for debt
     let chain = 'Other';
 
@@ -965,12 +1290,15 @@ export function calculateCryptoMetrics(assets: AssetWithPrice[]): CryptoMetrics 
 /**
  * Calculate crypto allocation for horizontal bar display
  * Uses NET values - debt subtracts from the relevant category
+ * EXCLUDES perp notional - only actual holdings count
  */
 export function calculateCryptoAllocation(assets: AssetWithPrice[]): CryptoAllocationItem[] {
   const categoryService = getCategoryService();
 
   // Filter to crypto only (all values including debt)
+  // EXCLUDE perp notional - they're leveraged exposure, not actual holdings
   const cryptoAssets = assets.filter((a) => {
+    if (a.isPerpNotional) return false;
     const mainCat = categoryService.getMainCategory(a.symbol, a.type);
     return mainCat === 'crypto';
   });
@@ -997,15 +1325,9 @@ export function calculateCryptoAllocation(assets: AssetWithPrice[]): CryptoAlloc
 
   cryptoAssets.forEach((asset) => {
     const value = asset.value; // Can be negative for debt
-    let subCat = categoryService.getSubCategory(asset.symbol, asset.type);
-
-    // Check if it's a perp position
-    if (asset.protocol && isPerpProtocol(asset.protocol)) {
-      const { isPerpTrade } = detectPerpTrade(asset.name);
-      if (isPerpTrade) {
-        subCat = 'perps';
-      }
-    }
+    // Note: perp notional positions are already filtered out above
+    // Margin and spot holdings on perp exchanges are categorized normally
+    const subCat = categoryService.getSubCategory(asset.symbol, asset.type);
 
     if (!allocationMap[subCat]) {
       allocationMap[subCat] = {
@@ -1163,14 +1485,21 @@ export function calculateExposureData(assets: AssetWithPrice[]): ExposureData {
     // Track exposure metrics based on classification
     classificationCounts[classification]++;
 
+    // Flag to track if this position should be added to category totals
+    // Perp long/short are notional exposure, not actual holdings - they shouldn't
+    // be counted in net worth or category totals
+    let addToCategoryTotals = true;
+
     switch (classification) {
       case 'perp-long':
         perpsLongs += absValue;
         subCat = 'perps'; // Override for category breakdown
+        addToCategoryTotals = false; // NOT a real asset - just notional exposure
         break;
       case 'perp-short':
         perpsShorts += absValue;
         subCat = 'perps'; // Override for category breakdown
+        addToCategoryTotals = false; // NOT real debt - just notional exposure
         break;
       case 'perp-margin':
         perpsMargin += absValue;
@@ -1181,6 +1510,7 @@ export function calculateExposureData(assets: AssetWithPrice[]): ExposureData {
         }
         // Cash on perp exchange counts towards cash equivalents
         cashEquivalentsForLeverage += absValue;
+        // Margin IS actual collateral - counts towards net worth
         break;
       case 'perp-spot':
         // Spot holdings on perp exchange - count as regular spot exposure
@@ -1215,10 +1545,13 @@ export function calculateExposureData(assets: AssetWithPrice[]): ExposureData {
     if (!categoryAssets[catKey]) categoryAssets[catKey] = 0;
     if (!categoryDebts[catKey]) categoryDebts[catKey] = 0;
 
-    if (isDebt) {
-      categoryDebts[catKey] += absValue;
-    } else {
-      categoryAssets[catKey] += absValue;
+    // Only add to category totals if it's an actual holding (not perp notional)
+    if (addToCategoryTotals) {
+      if (isDebt) {
+        categoryDebts[catKey] += absValue;
+      } else {
+        categoryAssets[catKey] += absValue;
+      }
     }
   });
 
@@ -1282,13 +1615,14 @@ export function calculateExposureData(assets: AssetWithPrice[]): ExposureData {
     .sort((a, b) => b.value - a.value);
 
   // Calculate perps breakdown
-  // Total = margin + net position value (longs - shorts)
-  // This represents the actual economic value of the perps position
+  // Total = ONLY margin (actual collateral deposited)
+  // Perp longs/shorts are leveraged exposure, NOT actual holdings
+  // From a net worth perspective, only the margin counts
   const perpsBreakdown: PerpsBreakdown = {
     margin: perpsMargin,
-    longs: perpsLongs,
-    shorts: perpsShorts,
-    total: perpsMargin + perpsLongs - perpsShorts,
+    longs: perpsLongs,         // Long notional (for exposure display)
+    shorts: perpsShorts,       // Short notional (for exposure display)
+    total: perpsMargin,        // Only margin counts towards net worth
   };
 
   // Calculate simple breakdown for pie chart: Cash & Equivalents, BTC, ETH, Tokens
@@ -1391,7 +1725,8 @@ export function calculateExposureData(assets: AssetWithPrice[]): ExposureData {
 
   // Concentration Metrics - calculate from AGGREGATED assets (not individual positions)
   // If you have 10 ETH positions across wallets, that's still 100% ETH concentration
-  const positiveAssets = assets.filter(a => a.value > 0);
+  // EXCLUDE perp notional - concentration is based on net worth, not leveraged exposure
+  const positiveAssets = assets.filter(a => a.value > 0 && !a.isPerpNotional);
 
   // Aggregate by symbol to get true asset concentration
   const aggregatedBySymbol = new Map<string, number>();
@@ -1457,6 +1792,7 @@ export function calculateExposureData(assets: AssetWithPrice[]): ExposureData {
  * Calculate allocation breakdown - SINGLE SOURCE OF TRUTH
  * Categories: Cash & Equivalents (cash + stablecoins), Crypto (non-stablecoins), Equities
  * Uses GROSS ASSETS only - debt doesn't count toward allocation percentages
+ * EXCLUDES perp notional - only actual holdings count
  */
 export function calculateAllocationBreakdown(assets: AssetWithPrice[]): AllocationBreakdownItem[] {
   const categoryService = getCategoryService();
@@ -1468,7 +1804,11 @@ export function calculateAllocationBreakdown(assets: AssetWithPrice[]): Allocati
   };
 
   // Process ALL assets (including debt) - use NET values
+  // EXCLUDE perp notional - they're leveraged exposure, not actual holdings
   assets.forEach((asset) => {
+    // Skip perp notional - it's not actual holding, just exposure
+    if (asset.isPerpNotional) return;
+
     const value = asset.value; // Can be negative for debt
     const mainCat = categoryService.getMainCategory(asset.symbol, asset.type);
     const symbolKey = asset.symbol.toUpperCase();
@@ -1544,6 +1884,7 @@ export function calculateAllocationBreakdown(assets: AssetWithPrice[]): Allocati
  * Moderate: Large cap crypto (BTC, ETH), equities
  * Aggressive: Altcoins, DeFi tokens, perps
  * Uses NET values - debt SUBTRACTS from the risk category it belongs to
+ * EXCLUDES perp notional - only actual holdings count
  */
 export function calculateRiskProfile(assets: AssetWithPrice[]): RiskProfileItem[] {
   const categoryService = getCategoryService();
@@ -1554,7 +1895,11 @@ export function calculateRiskProfile(assets: AssetWithPrice[]): RiskProfileItem[
   };
 
   // Process ALL assets including debt (negative values subtract from their category)
+  // EXCLUDE perp notional - they're leveraged exposure, not actual holdings
   assets.forEach((asset) => {
+    // Skip perp notional - it's not actual holding, just exposure
+    if (asset.isPerpNotional) return;
+
     const value = asset.value; // Can be negative for debt
     const mainCat = categoryService.getMainCategory(asset.symbol, asset.type);
     const subCat = categoryService.getSubCategory(asset.symbol, asset.type);
@@ -1904,12 +2249,15 @@ export interface CryptoBreakdownResult {
 /**
  * Calculate crypto breakdown by sub-category - SINGLE SOURCE OF TRUTH
  * Uses NET values - debt subtracts from the relevant category
+ * EXCLUDES perp notional - only actual holdings count
  */
 export function calculateCryptoBreakdown(assets: AssetWithPrice[]): CryptoBreakdownResult {
   const categoryService = getCategoryService();
 
   // Filter to crypto only
+  // EXCLUDE perp notional - they're leveraged exposure, not actual holdings
   const cryptoPositions = assets.filter((p) => {
+    if (p.isPerpNotional) return false;
     const mainCat = categoryService.getMainCategory(p.symbol, p.type);
     return mainCat === 'crypto';
   });
@@ -1937,16 +2285,9 @@ export function calculateCryptoBreakdown(assets: AssetWithPrice[]): CryptoBreakd
   const categoryMap: Record<string, { value: number; count: number; positions: AssetWithPrice[] }> = {};
 
   cryptoPositions.forEach((p) => {
-    // Determine subcategory - check for perps first (based on protocol + name pattern)
-    let subCat: string = categoryService.getSubCategory(p.symbol, p.type);
-
-    // Override to 'perps' if position is on a perp protocol and is a perp trade
-    if (p.protocol && isPerpProtocol(p.protocol)) {
-      const { isPerpTrade } = detectPerpTrade(p.name);
-      if (isPerpTrade) {
-        subCat = 'perps';
-      }
-    }
+    // Note: perp notional positions are already filtered out above
+    // Margin and spot holdings on perp exchanges are categorized normally
+    const subCat: string = categoryService.getSubCategory(p.symbol, p.type);
 
     if (!categoryMap[subCat]) {
       categoryMap[subCat] = { value: 0, count: 0, positions: [] };
