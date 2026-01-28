@@ -29,15 +29,15 @@ function SortIcon({ field, sortField, sortDirection }: { field: SortField; sortF
 
 
 export default function CashPage() {
-  const { positions, prices, customPrices, hideBalances } = usePortfolioStore();
+  const { positions, prices, customPrices, fxRates, hideBalances } = usePortfolioStore();
   const [sortField, setSortField] = useState<SortField>('value');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [includeStablecoins, setIncludeStablecoins] = useState(false);
 
-  // Calculate all positions with prices
+  // Calculate all positions with prices (including FX conversion for fiat)
   const allPositions = useMemo(() => {
-    return calculateAllPositionsWithPrices(positions, prices, customPrices);
-  }, [positions, prices, customPrices]);
+    return calculateAllPositionsWithPrices(positions, prices, customPrices, fxRates);
+  }, [positions, prices, customPrices, fxRates]);
 
   // Use centralized service for cash breakdown - always get full data
   const breakdownData = useMemo(() => {

@@ -7,6 +7,7 @@ import { Position, Wallet, PriceData } from '@/types';
 import { getWalletProvider } from './providers';
 import { getPriceProvider } from './providers';
 import { getConfigManager, ServiceConfig } from './config';
+import { getAllFxRates } from './api/fx-api';
 import {
   calculateAllPositionsWithPrices,
   calculatePortfolioSummary,
@@ -19,6 +20,7 @@ import {
 export interface RefreshResult {
   prices: Record<string, PriceData>;
   walletPositions: Position[];
+  fxRates: Record<string, number>;
   isDemo: boolean;
   errors?: string[];
 }
@@ -144,6 +146,10 @@ export class PortfolioService {
     // Wallet positions use DeBank prices which are more accurate
     const { prices: externalPrices, isDemo } = await priceProvider.getPricesForPositions(manualPositions);
 
+    // Fetch FX rates for fiat currency conversion
+    const fxRates = await getAllFxRates();
+    console.log('[PortfolioService.refreshPortfolio] FX rates fetched:', Object.keys(fxRates).length, 'currencies');
+
     // Also include CoinGecko prices directly so they can be used as fallback
     // for wallet tokens where DeBank has no price (like SYRUP)
     // These are keyed by CoinGecko ID (e.g., "maple-finance" for SYRUP)
@@ -152,6 +158,7 @@ export class PortfolioService {
     return {
       prices: allPrices,
       walletPositions,
+      fxRates,
       isDemo,
     };
   }

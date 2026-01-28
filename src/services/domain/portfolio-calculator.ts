@@ -313,21 +313,62 @@ export interface CustomPrice {
 }
 
 /**
+ * Default FX rates (fallback when rates not provided)
+ * Rates are: 1 unit of currency = X USD
+ * These are approximate and should be updated periodically
+ */
+const DEFAULT_FX_RATES: Record<string, number> = {
+  USD: 1.0,
+  EUR: 1.04,    // 1 EUR = 1.04 USD
+  GBP: 1.25,    // 1 GBP = 1.25 USD
+  CHF: 1.12,    // 1 CHF = 1.12 USD
+  JPY: 0.0064,  // 1 JPY = 0.0064 USD
+  CAD: 0.70,    // 1 CAD = 0.70 USD
+  AUD: 0.62,    // 1 AUD = 0.62 USD
+  PLN: 0.24,    // 1 PLN = 0.24 USD
+  CZK: 0.041,   // 1 CZK = 0.041 USD
+  SEK: 0.091,   // 1 SEK = 0.091 USD
+  NOK: 0.089,   // 1 NOK = 0.089 USD
+  DKK: 0.14,    // 1 DKK = 0.14 USD
+  HUF: 0.0026,  // 1 HUF = 0.0026 USD
+  CNY: 0.14,    // 1 CNY = 0.14 USD
+  HKD: 0.13,    // 1 HKD = 0.13 USD
+  SGD: 0.74,    // 1 SGD = 0.74 USD
+  NZD: 0.56,    // 1 NZD = 0.56 USD
+  INR: 0.012,   // 1 INR = 0.012 USD
+  BRL: 0.17,    // 1 BRL = 0.17 USD
+  MXN: 0.049,   // 1 MXN = 0.049 USD
+  ZAR: 0.054,   // 1 ZAR = 0.054 USD
+  KRW: 0.00069, // 1 KRW = 0.00069 USD
+  THB: 0.029,   // 1 THB = 0.029 USD
+  TRY: 0.028,   // 1 TRY = 0.028 USD
+  ILS: 0.27,    // 1 ILS = 0.27 USD
+  AED: 0.27,    // 1 AED = 0.27 USD
+};
+
+/**
  * Calculate value and enriched data for a single position
  * Debt positions have negative value (reduce net worth)
  * Custom prices take precedence over market prices
+ * FX rates are used to convert fiat cash to USD
  */
 export function calculatePositionValue(
   position: Position,
   prices: Record<string, PriceData>,
-  customPrices?: Record<string, CustomPrice>
+  customPrices?: Record<string, CustomPrice>,
+  fxRates?: Record<string, number>
 ): AssetWithPrice {
-  // Cash positions always have price = 1 (1 USD = 1 USD)
+  // Cash positions - apply FX conversion to USD
   if (position.type === 'cash') {
+    const currency = extractCurrencyCode(position.symbol).toUpperCase();
+    const rates = fxRates || DEFAULT_FX_RATES;
+    const fxRate = rates[currency] ?? 1.0;
+    const valueInUsd = position.amount * fxRate;
+
     return {
       ...position,
-      currentPrice: 1,
-      value: position.amount,
+      currentPrice: fxRate,
+      value: valueInUsd,
       change24h: 0,
       changePercent24h: 0,
       allocation: 0,
@@ -396,15 +437,17 @@ export function calculatePositionValue(
  * Calculate all positions with prices and allocations
  * Returns positions sorted by value (highest first, debts at the end)
  * Custom prices take precedence over market prices when provided
+ * FX rates are used for fiat cash conversion to USD
  */
 export function calculateAllPositionsWithPrices(
   positions: Position[],
   prices: Record<string, PriceData>,
-  customPrices?: Record<string, CustomPrice>
+  customPrices?: Record<string, CustomPrice>,
+  fxRates?: Record<string, number>
 ): AssetWithPrice[] {
   // Calculate values for all positions
   const positionsWithPrices = positions.map((p) =>
-    calculatePositionValue(p, prices, customPrices)
+    calculatePositionValue(p, prices, customPrices, fxRates)
   );
 
   // Calculate total gross assets (positive values only, for allocation %)
@@ -435,13 +478,15 @@ export function calculateAllPositionsWithPrices(
 /**
  * Calculate comprehensive portfolio summary
  * Custom prices take precedence over market prices when provided
+ * FX rates are used for fiat cash conversion to USD
  */
 export function calculatePortfolioSummary(
   positions: Position[],
   prices: Record<string, PriceData>,
-  customPrices?: Record<string, CustomPrice>
+  customPrices?: Record<string, CustomPrice>,
+  fxRates?: Record<string, number>
 ): PortfolioSummary {
-  const assetsWithPrice = calculateAllPositionsWithPrices(positions, prices, customPrices);
+  const assetsWithPrice = calculateAllPositionsWithPrices(positions, prices, customPrices, fxRates);
   const totalValue = assetsWithPrice.reduce((sum, a) => sum + a.value, 0);
 
   // Calculate total 24h change

@@ -17,6 +17,7 @@ interface PortfolioState {
   accounts: CexAccount[];
   prices: Record<string, PriceData>;
   customPrices: Record<string, CustomPrice>;  // Symbol -> custom price override
+  fxRates: Record<string, number>;  // Currency -> USD rate (e.g., CHF -> 1.12)
   snapshots: NetWorthSnapshot[];
   lastRefresh: string | null;
   isRefreshing: boolean;
@@ -50,6 +51,9 @@ interface PortfolioState {
   setPrices: (prices: Record<string, PriceData>) => void;
   updatePrice: (symbol: string, price: PriceData) => void;
 
+  // FX rate actions
+  setFxRates: (rates: Record<string, number>) => void;
+
   // Custom price actions
   setCustomPrice: (symbol: string, price: number, note?: string) => void;
   removeCustomPrice: (symbol: string) => void;
@@ -79,6 +83,7 @@ export const usePortfolioStore = create<PortfolioState>()(
       accounts: [],
       prices: {},
       customPrices: {},
+      fxRates: {},
       snapshots: [],
       lastRefresh: null,
       isRefreshing: false,
@@ -220,6 +225,11 @@ export const usePortfolioStore = create<PortfolioState>()(
       // Set all prices
       setPrices: (prices) => {
         set({ prices });
+      },
+
+      // Set FX rates
+      setFxRates: (fxRates) => {
+        set({ fxRates });
       },
 
       // Update a single price

@@ -88,6 +88,11 @@ async function executeRefresh(forceRefresh: boolean = false): Promise<void> {
     // Update prices in store (including CEX prices from CoinGecko)
     currentStore.setPrices({ ...currentStore.prices, ...result.prices, ...cexPrices });
 
+    // Update FX rates in store
+    if (result.fxRates && Object.keys(result.fxRates).length > 0) {
+      currentStore.setFxRates(result.fxRates);
+    }
+
     // Update wallet positions in store
     if (result.walletPositions.length > 0) {
       currentStore.setWalletPositions(result.walletPositions);

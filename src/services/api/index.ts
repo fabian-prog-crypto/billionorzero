@@ -13,3 +13,4 @@ export * from './stock-api';
 export * from './hyperliquid-api';
 export * from './lighter-api';
 export * from './ethereal-api';
+export * from './fx-api';
