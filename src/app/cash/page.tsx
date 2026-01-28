@@ -1,20 +1,21 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Banknote, ArrowUpDown, ChevronDown, ChevronUp, Wallet, Building2, Coins } from 'lucide-react';
+import { Banknote, ArrowUpDown, ChevronDown, ChevronUp, Wallet, Building2 } from 'lucide-react';
 import DonutChart, { DonutChartItem } from '@/components/charts/DonutChart';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import {
   calculateAllPositionsWithPrices,
   calculateCashBreakdown,
   extractCurrencyCode,
+  extractAccountName,
+  getUnderlyingFiatCurrency,
 } from '@/services';
-import { formatCurrency, formatNumber, formatAddress } from '@/lib/utils';
+import { formatCurrency, formatNumber } from '@/lib/utils';
 import { CURRENCY_COLORS } from '@/lib/colors';
-import SearchInput from '@/components/ui/SearchInput';
 import CurrencyIcon from '@/components/ui/CurrencyIcon';
 
-type SortField = 'symbol' | 'value' | 'amount' | 'source';
+type SortField = 'account' | 'currency' | 'value' | 'amount';
 type SortDirection = 'asc' | 'desc';
 
 function SortIcon({ field, sortField, sortDirection }: { field: SortField; sortField: SortField; sortDirection: SortDirection }) {
@@ -26,88 +27,12 @@ function SortIcon({ field, sortField, sortDirection }: { field: SortField; sortF
   );
 }
 
-// Currency display names
-const CURRENCY_NAMES: Record<string, string> = {
-  usd: 'US Dollar',
-  eur: 'Euro',
-  gbp: 'British Pound',
-  chf: 'Swiss Franc',
-  jpy: 'Japanese Yen',
-  cny: 'Chinese Yuan',
-  cad: 'Canadian Dollar',
-  aud: 'Australian Dollar',
-  nzd: 'New Zealand Dollar',
-  hkd: 'Hong Kong Dollar',
-  sgd: 'Singapore Dollar',
-  sek: 'Swedish Krona',
-  nok: 'Norwegian Krone',
-  dkk: 'Danish Krone',
-  krw: 'South Korean Won',
-  inr: 'Indian Rupee',
-  brl: 'Brazilian Real',
-  mxn: 'Mexican Peso',
-  zar: 'South African Rand',
-  aed: 'UAE Dirham',
-  thb: 'Thai Baht',
-  pln: 'Polish Zloty',
-  czk: 'Czech Koruna',
-  ils: 'Israeli Shekel',
-  php: 'Philippine Peso',
-  idr: 'Indonesian Rupiah',
-  myr: 'Malaysian Ringgit',
-  try: 'Turkish Lira',
-  rub: 'Russian Ruble',
-  // Stablecoins
-  usdt: 'Tether USD',
-  usdc: 'USD Coin',
-  dai: 'Dai',
-  busd: 'Binance USD',
-  tusd: 'TrueUSD',
-  frax: 'Frax',
-  lusd: 'Liquity USD',
-  usdd: 'USDD',
-  gusd: 'Gemini Dollar',
-  usdp: 'Pax Dollar',
-  pyusd: 'PayPal USD',
-  eurs: 'STASIS Euro',
-  eurc: 'Euro Coin',
-  usde: 'Ethena USDe',
-  susde: 'Staked USDe',
-  gho: 'GHO',
-  crvusd: 'Curve USD',
-};
-
-// Get clean display name for position
-function getPositionDisplayName(position: { symbol: string; name: string; walletAddress?: string; protocol?: string; chain?: string }): string {
-  const symbol = position.symbol.toLowerCase();
-
-  // If it has a protocol, show protocol name
-  if (position.protocol) {
-    return position.protocol;
-  }
-
-  // If from a wallet, show chain
-  if (position.walletAddress && position.chain) {
-    const chainName = position.chain.charAt(0).toUpperCase() + position.chain.slice(1);
-    return chainName;
-  }
-
-  // For manual entries, show clean currency name or "Bank Account"
-  const currencyName = CURRENCY_NAMES[symbol];
-  if (currencyName) {
-    return position.walletAddress ? currencyName : 'Bank Account';
-  }
-
-  // Default to "Cash" for unrecognized manual entries
-  return position.walletAddress ? 'Wallet' : 'Cash';
-}
 
 export default function CashPage() {
   const { positions, prices, customPrices, hideBalances } = usePortfolioStore();
   const [sortField, setSortField] = useState<SortField>('value');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [includeStablecoins, setIncludeStablecoins] = useState(true);
+  const [includeStablecoins, setIncludeStablecoins] = useState(false);
 
   // Calculate all positions with prices
   const allPositions = useMemo(() => {
@@ -135,43 +60,34 @@ export default function CashPage() {
     return breakdownData.fiat.value;
   }, [breakdownData, includeStablecoins]);
 
-  // Filter and sort positions
-  const filteredPositions = useMemo(() => {
-    let filtered = cashPositions;
 
-    // Apply search filter
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter((p) => {
-        const cleanSymbol = extractCurrencyCode(p.symbol).toLowerCase();
-        return cleanSymbol.includes(query) ||
-          CURRENCY_NAMES[cleanSymbol]?.toLowerCase().includes(query);
-      });
-    }
-
-    // Apply sorting
-    return [...filtered].sort((a, b) => {
+  // Sort positions
+  const sortedPositions = useMemo(() => {
+    return [...cashPositions].sort((a, b) => {
       let comparison = 0;
       switch (sortField) {
-        case 'symbol':
-          comparison = a.symbol.localeCompare(b.symbol);
+        case 'account': {
+          const aName = extractAccountName(a);
+          const bName = extractAccountName(b);
+          comparison = aName.localeCompare(bName);
           break;
+        }
+        case 'currency': {
+          const aCurrency = extractCurrencyCode(a.symbol);
+          const bCurrency = extractCurrencyCode(b.symbol);
+          comparison = aCurrency.localeCompare(bCurrency);
+          break;
+        }
         case 'value':
           comparison = a.value - b.value;
           break;
         case 'amount':
           comparison = a.amount - b.amount;
           break;
-        case 'source': {
-          const aSource = a.walletAddress ? 'wallet' : 'manual';
-          const bSource = b.walletAddress ? 'wallet' : 'manual';
-          comparison = aSource.localeCompare(bSource);
-          break;
-        }
       }
       return sortDirection === 'asc' ? comparison : -comparison;
     });
-  }, [cashPositions, searchQuery, sortField, sortDirection]);
+  }, [cashPositions, sortField, sortDirection]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -182,29 +98,108 @@ export default function CashPage() {
     }
   };
 
-  // Build chart data with breakdowns for tooltips
-  const chartData = useMemo((): DonutChartItem[] => {
-    // Group positions by clean currency code
-    const bySymbol = new Map<string, { value: number; positions: { label: string; value: number }[] }>();
+  // Build currency chart data with breakdowns for tooltips
+  // Maps stablecoins and PTs to their underlying currency (e.g., USDC -> USD, PT-sUSDe -> USD)
+  const currencyChartData = useMemo((): DonutChartItem[] => {
+    // Group positions by underlying currency
+    const byCurrency = new Map<string, { value: number; positions: { label: string; value: number }[] }>();
 
     cashPositions.forEach((p) => {
-      const cleanSymbol = extractCurrencyCode(p.symbol);
-      const existing = bySymbol.get(cleanSymbol) || { value: 0, positions: [] };
+      // Use centralized service to get underlying fiat, fallback to extracted currency code
+      const underlyingCurrency = getUnderlyingFiatCurrency(p.symbol) || extractCurrencyCode(p.symbol);
+      const existing = byCurrency.get(underlyingCurrency) || { value: 0, positions: [] };
       existing.value += p.value;
       existing.positions.push({
-        label: getPositionDisplayName(p),
+        label: `${extractAccountName(p)} (${extractCurrencyCode(p.symbol)})`,
         value: p.value,
       });
-      bySymbol.set(cleanSymbol, existing);
+      byCurrency.set(underlyingCurrency, existing);
     });
 
-    return Array.from(bySymbol.entries()).map(([symbol, data]) => ({
-      label: symbol,
+    return Array.from(byCurrency.entries()).map(([currency, data]) => ({
+      label: currency,
       value: data.value,
-      color: CURRENCY_COLORS[symbol] || CURRENCY_COLORS[symbol.toUpperCase()] || '#6B7280',
+      color: CURRENCY_COLORS[currency] || CURRENCY_COLORS[currency.toUpperCase()] || '#6B7280',
       breakdown: data.positions.sort((a, b) => b.value - a.value),
     }));
   }, [cashPositions]);
+
+  // Build secondary chart data
+  // - Fiat only: Show breakdown by Bank/Institution
+  // - With stablecoins: Show breakdown by underlying stablecoin (USDC, USDT, DAI, etc.)
+  const secondaryChartData = useMemo((): { title: string; data: DonutChartItem[] } => {
+    if (!includeStablecoins) {
+      // Fiat only: Show breakdown by Bank/Institution
+      const byInstitution = new Map<string, { value: number; currencies: { label: string; value: number }[] }>();
+
+      breakdownData.fiatPositions.forEach((p) => {
+        if (p.value <= 0) return;
+        const institution = extractAccountName(p);
+        const existing = byInstitution.get(institution) || { value: 0, currencies: [] };
+        existing.value += p.value;
+        existing.currencies.push({
+          label: extractCurrencyCode(p.symbol),
+          value: p.value,
+        });
+        byInstitution.set(institution, existing);
+      });
+
+      const institutionColors: Record<string, string> = {
+        'Millennium': '#00529B',
+        'Wise': '#9FE870',
+        'Revolut': '#0066FF',
+        'N26': '#36A18B',
+        'Monzo': '#FF3B6E',
+        'Interactive Brokers': '#DC143C',
+      };
+
+      const data = Array.from(byInstitution.entries()).map(([name, info]) => {
+        let color = institutionColors[name];
+        if (!color) {
+          const hash = name.split('').reduce((acc, char) => char.charCodeAt(0) + ((acc << 5) - acc), 0);
+          const hue = Math.abs(hash) % 360;
+          color = `hsl(${hue}, 60%, 50%)`;
+        }
+        return {
+          label: name,
+          value: info.value,
+          color,
+          breakdown: info.currencies.sort((a, b) => b.value - a.value),
+        };
+      }).sort((a, b) => b.value - a.value);
+
+      return { title: 'By Bank', data };
+    }
+
+    // With stablecoins: Show Fiat vs Stablecoins breakdown
+    const data: DonutChartItem[] = [];
+
+    if (breakdownData.fiat.value > 0) {
+      data.push({
+        label: 'Fiat',
+        value: breakdownData.fiat.value,
+        color: '#4CAF50',
+        breakdown: breakdownData.fiatPositions
+          .filter(p => p.value > 0)
+          .map(p => ({ label: `${extractAccountName(p)} (${extractCurrencyCode(p.symbol)})`, value: p.value }))
+          .sort((a, b) => b.value - a.value),
+      });
+    }
+
+    if (breakdownData.stablecoins.value > 0) {
+      data.push({
+        label: 'Stablecoins',
+        value: breakdownData.stablecoins.value,
+        color: '#2775CA',
+        breakdown: breakdownData.stablecoinPositions
+          .filter(p => p.value > 0)
+          .map(p => ({ label: `${extractAccountName(p)} (${extractCurrencyCode(p.symbol)})`, value: p.value }))
+          .sort((a, b) => b.value - a.value),
+      });
+    }
+
+    return { title: 'By Type', data };
+  }, [breakdownData, includeStablecoins]);
 
   if (breakdownData.fiatPositions.length === 0 && breakdownData.stablecoinPositions.length === 0) {
     return (
@@ -228,117 +223,56 @@ export default function CashPage() {
       <div className="flex items-start justify-between mb-6">
         <div>
           <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">
-            {includeStablecoins ? 'TOTAL CASH & EQUIVALENTS' : 'FIAT CASH'}
+            {includeStablecoins ? 'CASH & EQUIVALENTS' : 'FIAT CASH'}
           </p>
           <h2 className="text-2xl font-semibold mb-1">
             {hideBalances ? '••••••••' : formatCurrency(displayTotal)}
           </h2>
           <p className="text-[13px] text-[var(--foreground-muted)]">
-            {filteredPositions.length} position{filteredPositions.length !== 1 ? 's' : ''}
+            {sortedPositions.length} position{sortedPositions.length !== 1 ? 's' : ''}
           </p>
         </div>
 
-        <div className="flex gap-6 text-right">
-          <div>
+        <div className="flex items-start gap-6">
+          <div className="text-right">
             <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-0.5">Fiat</p>
             <p className="text-[15px] font-medium">{hideBalances ? '••••' : formatCurrency(breakdownData.fiat.value)}</p>
           </div>
-          <div>
+          <div className="text-right">
             <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-0.5">Stablecoins</p>
             <p className="text-[15px] font-medium">{hideBalances ? '••••' : formatCurrency(breakdownData.stablecoins.value)}</p>
           </div>
+          <label className="flex items-center gap-2 cursor-pointer pt-0.5">
+            <input
+              type="checkbox"
+              checked={includeStablecoins}
+              onChange={(e) => setIncludeStablecoins(e.target.checked)}
+              className="w-4 h-4 rounded border-[var(--border)] text-[var(--accent-primary)] focus:ring-[var(--accent-primary)] focus:ring-offset-0 bg-[var(--background-secondary)]"
+            />
+            <span className="text-[12px] text-[var(--foreground-muted)]">Include Stablecoins</span>
+          </label>
         </div>
       </div>
 
       <hr className="border-[var(--border)] mb-6" />
 
-      {/* View Toggle */}
-      <div className="flex gap-1 p-1 bg-[var(--background-secondary)] rounded-lg w-fit mb-6">
-        <button
-          onClick={() => setIncludeStablecoins(true)}
-          className={`px-3 py-1.5 text-[12px] font-medium rounded-md transition-colors flex items-center gap-1.5 ${
-            includeStablecoins
-              ? 'bg-[var(--background)] text-[var(--foreground)] shadow-sm'
-              : 'text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
-          }`}
-        >
-          <Coins className="w-3.5 h-3.5" />
-          All
-        </button>
-        <button
-          onClick={() => setIncludeStablecoins(false)}
-          className={`px-3 py-1.5 text-[12px] font-medium rounded-md transition-colors flex items-center gap-1.5 ${
-            !includeStablecoins
-              ? 'bg-[var(--background)] text-[var(--foreground)] shadow-sm'
-              : 'text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
-          }`}
-        >
-          <Building2 className="w-3.5 h-3.5" />
-          Fiat Only
-        </button>
-      </div>
-
-      {/* Pie Chart and Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+      {/* Two Pie Charts Row */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6">
         <DonutChart
           title="By Currency"
-          data={chartData}
+          data={currencyChartData}
           hideValues={hideBalances}
           maxItems={6}
         />
-
-        {/* Summary Stats */}
-        <div className="md:col-span-2">
-          <h3 className="text-[15px] font-medium mb-4">Breakdown</h3>
-          <div className="grid grid-cols-2 gap-6">
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <Building2 className="w-3 h-3 text-[#4CAF50]" />
-                <span className="text-[13px] font-medium">Fiat Currencies</span>
-              </div>
-              <p className="text-xl font-semibold mb-1">
-                {hideBalances ? '••••' : formatCurrency(breakdownData.fiat.value)}
-              </p>
-              <p className="text-[12px] text-[var(--foreground-muted)]">
-                {breakdownData.fiat.count} position{breakdownData.fiat.count !== 1 ? 's' : ''}
-                {breakdownData.total > 0 && (
-                  <span> · {((breakdownData.fiat.value / breakdownData.total) * 100).toFixed(0)}%</span>
-                )}
-              </p>
-            </div>
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <Wallet className="w-3 h-3 text-[#2775CA]" />
-                <span className="text-[13px] font-medium">Stablecoins</span>
-              </div>
-              <p className="text-xl font-semibold mb-1">
-                {hideBalances ? '••••' : formatCurrency(breakdownData.stablecoins.value)}
-              </p>
-              <p className="text-[12px] text-[var(--foreground-muted)]">
-                {breakdownData.stablecoins.count} position{breakdownData.stablecoins.count !== 1 ? 's' : ''}
-                {breakdownData.total > 0 && (
-                  <span> · {((breakdownData.stablecoins.value / breakdownData.total) * 100).toFixed(0)}%</span>
-                )}
-              </p>
-            </div>
-          </div>
-        </div>
+        <DonutChart
+          title={secondaryChartData.title}
+          data={secondaryChartData.data}
+          hideValues={hideBalances}
+          maxItems={6}
+        />
       </div>
 
       <hr className="border-[var(--border)] mb-6" />
-
-      {/* Search */}
-      <div className="flex items-center justify-between gap-3 mb-4">
-        <SearchInput
-          value={searchQuery}
-          onChange={setSearchQuery}
-          placeholder="Search currencies..."
-          className="flex-1 max-w-xs"
-        />
-        <span className="text-[12px] text-[var(--foreground-muted)]">
-          {filteredPositions.length} of {cashPositions.length}
-        </span>
-      </div>
 
       {/* Positions Table */}
       <div className="table-scroll">
@@ -347,18 +281,18 @@ export default function CashPage() {
             <tr className="border-b border-[var(--border)]">
               <th className="table-header text-left pb-3">
                 <button
-                  onClick={() => handleSort('symbol')}
+                  onClick={() => handleSort('account')}
                   className="flex items-center gap-1 hover:text-[var(--foreground)] transition-colors"
                 >
-                  Currency <SortIcon field="symbol" sortField={sortField} sortDirection={sortDirection} />
+                  Account <SortIcon field="account" sortField={sortField} sortDirection={sortDirection} />
                 </button>
               </th>
               <th className="table-header text-left pb-3">
                 <button
-                  onClick={() => handleSort('source')}
+                  onClick={() => handleSort('currency')}
                   className="flex items-center gap-1 hover:text-[var(--foreground)] transition-colors"
                 >
-                  Source <SortIcon field="source" sortField={sortField} sortDirection={sortDirection} />
+                  Currency <SortIcon field="currency" sortField={sortField} sortDirection={sortDirection} />
                 </button>
               </th>
               <th className="table-header text-right pb-3">
@@ -381,10 +315,11 @@ export default function CashPage() {
             </tr>
           </thead>
           <tbody>
-            {filteredPositions.map((position) => {
+            {sortedPositions.map((position) => {
               const percentage = displayTotal > 0 ? (position.value / displayTotal) * 100 : 0;
               const cleanSymbol = extractCurrencyCode(position.symbol);
-              const currencyName = CURRENCY_NAMES[cleanSymbol.toLowerCase()] || cleanSymbol;
+              const accountName = extractAccountName(position);
+              const isWallet = !!position.walletAddress;
 
               return (
                 <tr
@@ -393,45 +328,30 @@ export default function CashPage() {
                 >
                   <td className="py-2">
                     <div className="flex items-center gap-2">
-                      <CurrencyIcon
-                        symbol={cleanSymbol}
-                        size={24}
-                        logoUrl={position.logo}
-                      />
+                      {isWallet ? (
+                        <Wallet className="w-4 h-4 text-[var(--accent-primary)] flex-shrink-0" />
+                      ) : (
+                        <Building2 className="w-4 h-4 text-[var(--foreground-muted)] flex-shrink-0" />
+                      )}
                       <div>
-                        <p className="font-medium text-sm">{cleanSymbol}</p>
-                        <p className="text-[11px] text-[var(--foreground-muted)]">
-                          {currencyName}
-                        </p>
+                        <p className="font-medium text-sm">{accountName}</p>
+                        {position.protocol && position.protocol !== 'wallet' && (
+                          <p className="text-[10px] text-[var(--foreground-muted)]">
+                            {position.protocol}
+                          </p>
+                        )}
                       </div>
                     </div>
                   </td>
                   <td className="py-2">
-                    {position.walletAddress ? (
-                      <div className="flex items-center gap-1.5">
-                        <Wallet className="w-3 h-3 text-[var(--accent-primary)]" />
-                        <span className="text-[11px] font-mono text-[var(--foreground-muted)]">
-                          {formatAddress(position.walletAddress, 4)}
-                        </span>
-                        {position.chain && (
-                          <span className="tag text-[9px] py-0.5 px-1">
-                            {position.chain}
-                          </span>
-                        )}
-                        {position.protocol && (
-                          <span className="tag text-[9px] py-0.5 px-1 bg-[var(--accent-primary)] text-white">
-                            {position.protocol}
-                          </span>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-1.5">
-                        <Building2 className="w-3 h-3 text-[var(--foreground-muted)]" />
-                        <span className="text-[11px] text-[var(--foreground-muted)]">
-                          Bank Account
-                        </span>
-                      </div>
-                    )}
+                    <div className="flex items-center gap-2">
+                      <CurrencyIcon
+                        symbol={cleanSymbol}
+                        size={20}
+                        logoUrl={position.logo}
+                      />
+                      <span className="text-sm font-medium">{cleanSymbol}</span>
+                    </div>
                   </td>
                   <td className="py-2 text-right font-mono text-xs">
                     {hideBalances ? '••••' : formatNumber(position.amount)}
@@ -449,17 +369,11 @@ export default function CashPage() {
         </table>
       </div>
 
-      {filteredPositions.length === 0 && searchQuery && (
-        <div className="text-center py-12">
-          <p className="text-[var(--foreground-muted)]">No positions match your search.</p>
-        </div>
-      )}
-
       {/* Footer Summary */}
-      {filteredPositions.length > 0 && (
+      {sortedPositions.length > 0 && (
         <div className="mt-4 pt-4 border-t border-[var(--border)] flex justify-between items-center">
           <span className="text-[12px] text-[var(--foreground-muted)]">
-            {filteredPositions.length} position{filteredPositions.length !== 1 ? 's' : ''}
+            {sortedPositions.length} position{sortedPositions.length !== 1 ? 's' : ''}
           </span>
           <span className="font-semibold">
             {hideBalances ? '••••••' : formatCurrency(displayTotal)}

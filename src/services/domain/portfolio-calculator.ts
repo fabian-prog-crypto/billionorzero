@@ -1549,6 +1549,18 @@ export function calculateRiskProfile(assets: AssetWithPrice[]): RiskProfileItem[
 }
 
 /**
+ * Institution breakdown item for cash page
+ */
+export interface InstitutionBreakdownItem {
+  name: string;
+  currency: string;
+  amount: number;
+  value: number;
+  isWallet: boolean;
+  positions: AssetWithPrice[];
+}
+
+/**
  * Cash breakdown result type
  */
 export interface CashBreakdownResult {
@@ -1558,6 +1570,44 @@ export interface CashBreakdownResult {
   fiatPositions: AssetWithPrice[];
   stablecoinPositions: AssetWithPrice[];
   chartData: { label: string; value: number; color: string; breakdown: { label: string; value: number }[] }[];
+  institutionBreakdown: InstitutionBreakdownItem[];
+}
+
+/**
+ * Extract account/institution name from position name
+ * Handles patterns like "Millennium (PLN)" -> "Millennium"
+ * Also handles wallet addresses, protocols, chains
+ */
+export function extractAccountName(position: AssetWithPrice): string {
+  // Check for account name pattern: "AccountName (Currency)"
+  const match = position.name.match(/^(.+?)\s*\(/);
+  if (match) {
+    return match[1].trim();
+  }
+
+  // If it's a wallet with a protocol, use the protocol name
+  if (position.protocol && position.protocol !== 'wallet') {
+    return position.protocol.charAt(0).toUpperCase() + position.protocol.slice(1);
+  }
+
+  // If it's a CEX position
+  if (position.protocol?.startsWith('cex:')) {
+    const exchange = position.protocol.replace('cex:', '');
+    return exchange.charAt(0).toUpperCase() + exchange.slice(1);
+  }
+
+  // If it has a chain, use the chain name
+  if (position.chain) {
+    return position.chain.charAt(0).toUpperCase() + position.chain.slice(1);
+  }
+
+  // If it's a wallet position, show shortened address
+  if (position.walletAddress) {
+    return `${position.walletAddress.slice(0, 6)}...${position.walletAddress.slice(-4)}`;
+  }
+
+  // Default to the full name or "Manual"
+  return position.name || 'Manual';
 }
 
 /**
@@ -1625,6 +1675,7 @@ export function calculateCashBreakdown(
     'GBP': '#9C27B0',
     'CHF': '#F44336',
     'JPY': '#FF9800',
+    'PLN': '#DC143C',
     'USDT': '#26A17B',
     'USDC': '#2775CA',
     'DAI': '#F5AC37',
@@ -1656,6 +1707,36 @@ export function calculateCashBreakdown(
     }))
     .sort((a, b) => b.value - a.value);
 
+  // Calculate institution breakdown
+  const institutionMap: Record<string, InstitutionBreakdownItem> = {};
+
+  positionsToAnalyze.forEach((p) => {
+    if (p.value <= 0) return; // Only positive positions for institution breakdown
+
+    const accountName = extractAccountName(p);
+    const currency = extractCurrencyCode(p.symbol);
+    const isWallet = !!p.walletAddress;
+    const key = `${accountName}_${currency}`;
+
+    if (!institutionMap[key]) {
+      institutionMap[key] = {
+        name: accountName,
+        currency,
+        amount: 0,
+        value: 0,
+        isWallet,
+        positions: [],
+      };
+    }
+
+    institutionMap[key].amount += p.amount;
+    institutionMap[key].value += p.value;
+    institutionMap[key].positions.push(p);
+  });
+
+  const institutionBreakdown = Object.values(institutionMap)
+    .sort((a, b) => b.value - a.value);
+
   return {
     fiat,
     stablecoins,
@@ -1663,6 +1744,7 @@ export function calculateCashBreakdown(
     fiatPositions,
     stablecoinPositions,
     chartData,
+    institutionBreakdown,
   };
 }
 

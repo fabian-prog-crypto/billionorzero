@@ -54,7 +54,30 @@ export class CategoryService {
     'usdy', 'usdz', 'zusd', 'musd', 'pusd', 'ausd', 'rusd', 'cgusd',
     'euroc', 'eurt', 'ceur', 'ageur', 'jeur', 'eur', 'eurc', 'eure', 'eura',
     'steur', 'seur', 'gbpt', 'gbpc',
-    'wxdai', 'xdai', 'sdai', // DAI variants
+    'wxdai', 'xdai', 'sdai', // DAI variants (USD-pegged)
+    'susds', 'stusdt', // Yield-bearing stablecoins (Savings USDS, staked USDT)
+  ]);
+
+  // USD-pegged stablecoins (explicit mapping to USD)
+  private usdStablecoins = new Set([
+    'usd', 'usdt', 'usdc', 'dai', 'busd', 'tusd', 'usdp', 'usdd', 'frax', 'lusd',
+    'gusd', 'susd', 'cusd', 'ust', 'mim', 'fei', 'ousd', 'dola', 'rai',
+    'pyusd', 'usdm', 'gho', 'crvusd', 'mkusd', 'usds', 'dusd', 'husd', 'xusd',
+    'usde', 'susde', 'usdai', 'usd0', 'usd0++', 'fdusd', 'usdb', 'usdx',
+    'usdy', 'usdz', 'zusd', 'musd', 'pusd', 'ausd', 'rusd', 'cgusd',
+    'wxdai', 'xdai', 'sdai', // DAI variants are USD-pegged
+    'susds', 'stusdt', // Yield-bearing USD stablecoins
+  ]);
+
+  // EUR-pegged stablecoins
+  private eurStablecoins = new Set([
+    'euroc', 'eurt', 'ceur', 'ageur', 'jeur', 'eur', 'eurc', 'eure', 'eura',
+    'steur', 'seur',
+  ]);
+
+  // GBP-pegged stablecoins
+  private gbpStablecoins = new Set([
+    'gbpt', 'gbpc',
   ]);
 
   // BTC and BTC-like wrapped/bridged tokens
@@ -102,11 +125,12 @@ export class CategoryService {
     'gmx', 'dydx', 'perp', 'rune', 'osmo', 'ray', 'orca', 'jup', 'jupiter',
     '1inch', 'dodo', 'bancor', 'bnt', 'kyber', 'knc', 'swapr', 'camelot',
     'thena', 'solidly', 'velodrome', 'aerodrome', 'trader joe', 'quickswap',
-    // Lending & Borrowing
+    // Lending & Borrowing (DeFi-native protocols)
     'aave', 'comp', 'compound', 'mkr', 'maker', 'ldo', 'lido', 'rpl', 'rocket pool',
     'morpho', 'euler', 'radiant', 'rdnt', 'geist', 'benqi', 'qi', 'venus', 'xvs',
-    'cream', 'iron bank', 'maple', 'mpl', 'goldfinch', 'gfi', 'clearpool', 'cpool',
-    'frax', 'fxs', 'spell', 'mim', 'alchemix', 'alcx', 'abracadabra', 'liquity', 'lqty',
+    'cream', 'iron bank',
+    // Note: maple, goldfinch, clearpool are in RWA (institutional lending focus)
+    'fxs', 'spell', 'alchemix', 'alcx', 'abracadabra', 'liquity', 'lqty',
     // Yield & Vaults
     'yfi', 'yearn', 'cvx', 'convex', 'btrfly', 'redacted', 'ohm', 'olympus',
     'pendle', 'ribbon', 'rbn', 'dopex', 'dpx', 'jones', 'jdao', 'umami',
@@ -123,6 +147,15 @@ export class CategoryService {
     'pendle', 'ena', 'ethena',
     // Additional DeFi protocols
     'drv', 'lit', 'resolv', 'angle', 'usdr',
+    // L2 & Infrastructure tokens (protocol governance)
+    'arb', 'arbitrum', 'op', 'optimism', 'strk', 'starknet', 'stark',
+    'matic', 'polygon', 'pol', 'zk', 'zksync', 'manta', 'scroll', 'scr',
+    'linea', 'base', 'blast', 'mode', 'metis', 'boba', 'mantle', 'mnt',
+    'avax', 'avalanche', 'ftm', 'fantom', 'one', 'harmony', 'celo',
+    'movr', 'moonriver', 'glmr', 'moonbeam', 'kava', 'canto',
+    // Cross-chain infrastructure
+    'atom', 'cosmos', 'dot', 'polkadot', 'ksm', 'kusama',
+    'link', 'chainlink', 'pyth', 'band',
   ]);
 
   // RWA (Real World Assets) tokens
@@ -137,9 +170,10 @@ export class CategoryService {
     'labs', 'labs group', 'parcl', 'lofty',
     // RWA protocols
     'maker rwa', 'centrifuge', 'backed', 'buidl', 'superstate',
-    'matrixdock', 'mstable', 'reserve', 'rsv', 'frax',
-    // Yield-bearing RWA
-    'usdy', 'usdm', 'mountain', 'stusdt', 'sdai', 'susds',
+    'matrixdock', 'mstable', 'reserve', 'rsv',
+    // Note: usdy, usdm, sdai are yield-bearing stablecoins - categorized as stablecoins
+    // Yield-bearing RWA tokens (not stablecoins)
+    'mountain', 'susds',
   ]);
 
   // Privacy tokens
@@ -164,10 +198,11 @@ export class CategoryService {
   ]);
 
   // Meme coins
+  // Note: GOAT removed - categorized as AI (AI agent token)
   private memeTokens = new Set([
     'doge', 'dogecoin', 'shib', 'shiba', 'pepe', 'floki', 'bonk',
     'wif', 'dogwifhat', 'meme', 'wojak', 'turbo', 'bob', 'ladys',
-    'milady', 'brett', 'mog', 'popcat', 'pnut', 'neiro', 'goat',
+    'milady', 'brett', 'mog', 'popcat', 'pnut', 'neiro',
     'cate', 'cat', 'toshi', 'higher', 'degen', 'based', 'normie',
     'ponke', 'wen', 'myro', 'slerf', 'bome', 'book of meme',
     'trump', 'biden', 'tremp', 'boden', 'jeo', 'doland',
@@ -267,6 +302,90 @@ export class CategoryService {
            normalized.includes('ethereal') ||
            normalized.includes('vertex') ||
            normalized.includes('drift');
+  }
+
+  /**
+   * Get the underlying fiat currency for a stablecoin or cash position
+   * Maps crypto stablecoins to their pegged fiat (USDC -> USD, EURC -> EUR)
+   * Also handles Pendle PT tokens (PT-sUSDe -> USD)
+   * Returns the fiat currency code (USD, EUR, GBP, etc.) or null if not a stablecoin
+   */
+  getUnderlyingFiatCurrency(symbol: string): string | null {
+    const lower = symbol.toLowerCase().trim();
+
+    // Direct fiat currency
+    if (this.fiatCurrencies.has(lower)) {
+      return lower.toUpperCase();
+    }
+
+    // USD stablecoins
+    if (this.usdStablecoins.has(lower)) {
+      return 'USD';
+    }
+
+    // EUR stablecoins
+    if (this.eurStablecoins.has(lower)) {
+      return 'EUR';
+    }
+
+    // GBP stablecoins
+    if (this.gbpStablecoins.has(lower)) {
+      return 'GBP';
+    }
+
+    // Handle Pendle PT/YT tokens - check underlying asset
+    if (lower.startsWith('pt-') || lower.startsWith('yt-') ||
+        lower.startsWith('pt_') || lower.startsWith('yt_')) {
+      // USD-based underlyings
+      if (lower.includes('usd') || lower.includes('dai') || lower.includes('frax') ||
+          lower.includes('gho') || lower.includes('lusd') || lower.includes('mkusd') ||
+          lower.includes('crvusd') || lower.includes('pyusd') || lower.includes('dola') ||
+          lower.includes('mim') || lower.includes('fdusd')) {
+        return 'USD';
+      }
+      // EUR-based underlyings
+      if (lower.includes('eur')) {
+        return 'EUR';
+      }
+      // GBP-based underlyings
+      if (lower.includes('gbp')) {
+        return 'GBP';
+      }
+    }
+
+    // Handle wrapped/bridged stablecoins with prefixes
+    // e.g., "wxdai" is already in usdStablecoins, but catch any variants
+    if (lower.endsWith('dai') || lower.endsWith('usd') || lower.endsWith('usdc') ||
+        lower.endsWith('usdt') || lower.endsWith('frax')) {
+      return 'USD';
+    }
+
+    // Not a stablecoin or fiat
+    return null;
+  }
+
+  /**
+   * Check if a symbol is a stablecoin
+   */
+  isStablecoin(symbol: string): boolean {
+    const lower = symbol.toLowerCase().trim();
+
+    // Direct check
+    if (this.stablecoins.has(lower)) {
+      return true;
+    }
+
+    // Check for PT tokens on stablecoins
+    if (lower.startsWith('pt-') || lower.startsWith('yt-') ||
+        lower.startsWith('pt_') || lower.startsWith('yt_')) {
+      if (lower.includes('usd') || lower.includes('dai') || lower.includes('frax') ||
+          lower.includes('gho') || lower.includes('lusd') || lower.includes('eur') ||
+          lower.includes('gbp') || lower.includes('mkusd') || lower.includes('crvusd')) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   /**
@@ -601,6 +720,71 @@ export class CategoryService {
 
     return false;
   }
+
+  /**
+   * Validate category data integrity - detect duplicate tokens across categories
+   * Returns array of issues found (empty array means no issues)
+   * Use this for debugging and ensuring clean categorization
+   */
+  validateCategories(): { token: string; categories: string[] }[] {
+    const tokenCategories = new Map<string, string[]>();
+    const categorySets: { name: string; set: Set<string> }[] = [
+      { name: 'stablecoins', set: this.stablecoins },
+      { name: 'btcLike', set: this.btcLike },
+      { name: 'ethLike', set: this.ethLike },
+      { name: 'solLike', set: this.solLike },
+      { name: 'defiTokens', set: this.defiTokens },
+      { name: 'rwaTokens', set: this.rwaTokens },
+      { name: 'privacyTokens', set: this.privacyTokens },
+      { name: 'aiTokens', set: this.aiTokens },
+      { name: 'memeTokens', set: this.memeTokens },
+    ];
+
+    // Build map of token -> categories
+    for (const { name, set } of categorySets) {
+      for (const token of set) {
+        const existing = tokenCategories.get(token) || [];
+        existing.push(name);
+        tokenCategories.set(token, existing);
+      }
+    }
+
+    // Find duplicates
+    const duplicates: { token: string; categories: string[] }[] = [];
+    for (const [token, categories] of tokenCategories) {
+      if (categories.length > 1) {
+        duplicates.push({ token, categories });
+      }
+    }
+
+    return duplicates.sort((a, b) => a.token.localeCompare(b.token));
+  }
+
+  /**
+   * Get all categorized tokens with their assigned category
+   * Useful for auditing and debugging
+   */
+  getAllCategorizedTokens(): { token: string; category: ExposureCategoryType }[] {
+    const result: { token: string; category: ExposureCategoryType }[] = [];
+
+    const addTokens = (set: Set<string>, category: ExposureCategoryType) => {
+      for (const token of set) {
+        result.push({ token, category });
+      }
+    };
+
+    addTokens(this.stablecoins, 'stablecoins');
+    addTokens(this.btcLike, 'btc');
+    addTokens(this.ethLike, 'eth');
+    addTokens(this.solLike, 'sol');
+    addTokens(this.defiTokens, 'defi');
+    addTokens(this.rwaTokens, 'rwa');
+    addTokens(this.privacyTokens, 'privacy');
+    addTokens(this.aiTokens, 'ai');
+    addTokens(this.memeTokens, 'meme');
+
+    return result.sort((a, b) => a.token.localeCompare(b.token));
+  }
 }
 
 // Singleton instance
@@ -650,4 +834,20 @@ export function getExposureCategoryConfig(category: ExposureCategoryType): Expos
 
 export function getAllExposureCategoryConfigs(): Record<ExposureCategoryType, ExposureCategoryConfig> {
   return getCategoryService().getAllExposureCategoryConfigs();
+}
+
+export function validateCategories(): { token: string; categories: string[] }[] {
+  return getCategoryService().validateCategories();
+}
+
+export function getAllCategorizedTokens(): { token: string; category: ExposureCategoryType }[] {
+  return getCategoryService().getAllCategorizedTokens();
+}
+
+export function getUnderlyingFiatCurrency(symbol: string): string | null {
+  return getCategoryService().getUnderlyingFiatCurrency(symbol);
+}
+
+export function isStablecoin(symbol: string): boolean {
+  return getCategoryService().isStablecoin(symbol);
 }
