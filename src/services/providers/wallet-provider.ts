@@ -213,36 +213,50 @@ export class WalletProvider {
       const client = getDebankApiClient(this.config.debankApiKey);
       const rawProtocols = await client.getWalletProtocols(address);
 
+      console.log(`[WalletProvider] Raw protocols from DeBank for ${address.slice(0, 8)}...:`, {
+        count: rawProtocols.length,
+        protocols: rawProtocols.map(p => ({
+          name: p.name,
+          chain: p.chain,
+          itemCount: p.portfolio_item_list?.length || 0,
+        })),
+      });
+
       const positions: DefiPosition[] = [];
 
       for (const protocol of rawProtocols) {
         // Aggregate all tokens across portfolio items at the protocol level
         // This prevents duplicates when there are multiple positions in the same protocol
-        const aggregatedSupply = new Map<string, { symbol: string; amount: number; price: number }>();
+        const aggregatedSupply = new Map<string, { symbol: string; amount: number; price: number; detailTypes?: string[] }>();
         const aggregatedDebt = new Map<string, { symbol: string; amount: number; price: number }>();
-        const aggregatedRewards = new Map<string, { symbol: string; amount: number; price: number }>();
+        const aggregatedRewards = new Map<string, { symbol: string; amount: number; price: number; detailTypes?: string[] }>();
         let totalValue = 0;
 
         for (const item of protocol.portfolio_item_list || []) {
           totalValue += item.stats?.net_usd_value || 0;
 
+          // Get raw detail_types from DeBank (e.g., ['vesting'], ['locked', 'reward'])
+          const detailTypes = Array.isArray(item.detail_types) ? item.detail_types : undefined;
+
           // Aggregate supply tokens (filter spam)
           for (const t of item.detail?.supply_token_list || []) {
-            // Skip spam tokens using pattern matching
             if (isSpamToken(t.symbol, t.name)) continue;
 
             const key = `${t.symbol.toLowerCase()}-${t.chain || ''}`;
             const existing = aggregatedSupply.get(key);
             if (existing) {
               existing.amount += t.amount;
+              // Keep first detailTypes if already set
+              if (detailTypes && !existing.detailTypes) {
+                existing.detailTypes = detailTypes;
+              }
             } else {
-              aggregatedSupply.set(key, { symbol: t.symbol, amount: t.amount, price: t.price });
+              aggregatedSupply.set(key, { symbol: t.symbol, amount: t.amount, price: t.price, detailTypes });
             }
           }
 
           // Aggregate debt tokens (filter spam)
           for (const t of item.detail?.borrow_token_list || []) {
-            // Skip spam tokens using pattern matching
             if (isSpamToken(t.symbol, t.name)) continue;
 
             const key = `${t.symbol.toLowerCase()}-${t.chain || ''}`;
@@ -255,16 +269,20 @@ export class WalletProvider {
           }
 
           // Aggregate reward tokens (vesting, claimable rewards - e.g., Sablier)
+          // For Sablier, if no detailTypes, mark as vesting
+          const rewardDetailTypes = detailTypes || (protocol.name.toLowerCase().includes('sablier') ? ['vesting'] : undefined);
           for (const t of item.detail?.reward_token_list || []) {
-            // Skip spam tokens using pattern matching
             if (isSpamToken(t.symbol, t.name)) continue;
 
             const key = `${t.symbol.toLowerCase()}-${t.chain || ''}`;
             const existing = aggregatedRewards.get(key);
             if (existing) {
               existing.amount += t.amount;
+              if (rewardDetailTypes && !existing.detailTypes) {
+                existing.detailTypes = rewardDetailTypes;
+              }
             } else {
-              aggregatedRewards.set(key, { symbol: t.symbol, amount: t.amount, price: t.price });
+              aggregatedRewards.set(key, { symbol: t.symbol, amount: t.amount, price: t.price, detailTypes: rewardDetailTypes });
             }
           }
 
@@ -276,9 +294,8 @@ export class WalletProvider {
               if (!t?.symbol || isSpamToken(t.symbol, t.name)) continue;
 
               const key = `${t.symbol.toLowerCase()}-${t.chain || ''}`;
-              // Add to supply if not already there (treat generic tokens as supply/assets)
               if (!aggregatedSupply.has(key) && !aggregatedRewards.has(key)) {
-                aggregatedSupply.set(key, { symbol: t.symbol, amount: t.amount || 0, price: t.price || 0 });
+                aggregatedSupply.set(key, { symbol: t.symbol, amount: t.amount || 0, price: t.price || 0, detailTypes });
               }
             }
           }
@@ -286,20 +303,29 @@ export class WalletProvider {
 
         // Combine supply tokens and reward tokens (both are assets)
         // Reward tokens include vesting/locked tokens (e.g., Sablier vesting streams)
-        // Merge reward amounts into supply when they overlap (same token on same chain)
-        // Only add reward tokens as separate entries when they don't exist in supply
         for (const [key, reward] of aggregatedRewards.entries()) {
           const existing = aggregatedSupply.get(key);
           if (existing) {
-            // Merge reward amount into existing supply entry
             existing.amount += reward.amount;
+            // Vesting detailTypes takes precedence
+            if (reward.detailTypes) {
+              existing.detailTypes = reward.detailTypes;
+            }
           } else {
-            // Add as new entry
             aggregatedSupply.set(key, reward);
           }
         }
         const tokens = Array.from(aggregatedSupply.values());
         const debtTokens = Array.from(aggregatedDebt.values());
+
+        console.log(`[WalletProvider] Protocol ${protocol.name} processed:`, {
+          chain: protocol.chain,
+          totalValue,
+          supplyTokens: tokens.length,
+          debtTokens: debtTokens.length,
+          rewardTokens: aggregatedRewards.size,
+          tokenSymbols: tokens.map(t => t.symbol).join(', '),
+        });
 
         if (tokens.length > 0 || debtTokens.length > 0) {
           positions.push({
@@ -431,6 +457,7 @@ export class WalletProvider {
             walletAddress: wallet.address,
             chain: defiPos.chain,
             protocol: defiPos.protocol,
+            detailTypes: token.detailTypes, // Raw detail_types from DeBank (e.g., ['vesting'])
             debankPriceKey: priceKey,
             addedAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),

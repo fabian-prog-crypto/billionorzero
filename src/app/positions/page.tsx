@@ -565,6 +565,16 @@ export default function PositionsPage() {
                                 DEBT
                               </span>
                             )}
+                            {position.detailTypes?.includes('vesting') && (
+                              <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-[var(--accent-secondary)] text-white ">
+                                VESTING
+                              </span>
+                            )}
+                            {position.detailTypes?.includes('locked') && !position.detailTypes?.includes('vesting') && (
+                              <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-[var(--foreground-muted)] text-white ">
+                                LOCKED
+                              </span>
+                            )}
                           </div>
                         </Link>
                       </td>
