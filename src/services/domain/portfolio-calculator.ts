@@ -315,35 +315,40 @@ export interface CustomPrice {
 /**
  * Default FX rates (fallback when rates not provided)
  * Rates are: 1 unit of currency = X USD
- * These are approximate and should be updated periodically
+ * Updated Jan 2025 - these are fetched live from API when possible
  */
 const DEFAULT_FX_RATES: Record<string, number> = {
   USD: 1.0,
-  EUR: 1.04,    // 1 EUR = 1.04 USD
-  GBP: 1.25,    // 1 GBP = 1.25 USD
-  CHF: 1.12,    // 1 CHF = 1.12 USD
-  JPY: 0.0064,  // 1 JPY = 0.0064 USD
-  CAD: 0.70,    // 1 CAD = 0.70 USD
-  AUD: 0.62,    // 1 AUD = 0.62 USD
-  PLN: 0.24,    // 1 PLN = 0.24 USD
-  CZK: 0.041,   // 1 CZK = 0.041 USD
-  SEK: 0.091,   // 1 SEK = 0.091 USD
-  NOK: 0.089,   // 1 NOK = 0.089 USD
-  DKK: 0.14,    // 1 DKK = 0.14 USD
-  HUF: 0.0026,  // 1 HUF = 0.0026 USD
+  EUR: 1.19,    // 1 EUR = 1.19 USD
+  GBP: 1.37,    // 1 GBP = 1.37 USD
+  CHF: 1.30,    // 1 CHF = 1.30 USD
+  JPY: 0.0065,  // 1 JPY = 0.0065 USD
+  CAD: 0.73,    // 1 CAD = 0.73 USD
+  AUD: 0.69,    // 1 AUD = 0.69 USD
+  PLN: 0.28,    // 1 PLN = 0.28 USD
+  CZK: 0.049,   // 1 CZK = 0.049 USD
+  SEK: 0.11,    // 1 SEK = 0.11 USD
+  NOK: 0.10,    // 1 NOK = 0.10 USD
+  DKK: 0.16,    // 1 DKK = 0.16 USD
+  HUF: 0.0031,  // 1 HUF = 0.0031 USD
   CNY: 0.14,    // 1 CNY = 0.14 USD
   HKD: 0.13,    // 1 HKD = 0.13 USD
-  SGD: 0.74,    // 1 SGD = 0.74 USD
-  NZD: 0.56,    // 1 NZD = 0.56 USD
-  INR: 0.012,   // 1 INR = 0.012 USD
-  BRL: 0.17,    // 1 BRL = 0.17 USD
-  MXN: 0.049,   // 1 MXN = 0.049 USD
-  ZAR: 0.054,   // 1 ZAR = 0.054 USD
+  SGD: 0.79,    // 1 SGD = 0.79 USD
+  NZD: 0.60,    // 1 NZD = 0.60 USD
+  INR: 0.011,   // 1 INR = 0.011 USD
+  BRL: 0.19,    // 1 BRL = 0.19 USD
+  MXN: 0.058,   // 1 MXN = 0.058 USD
+  ZAR: 0.063,   // 1 ZAR = 0.063 USD
   KRW: 0.00069, // 1 KRW = 0.00069 USD
-  THB: 0.029,   // 1 THB = 0.029 USD
-  TRY: 0.028,   // 1 TRY = 0.028 USD
-  ILS: 0.27,    // 1 ILS = 0.27 USD
+  THB: 0.032,   // 1 THB = 0.032 USD
+  TRY: 0.023,   // 1 TRY = 0.023 USD
+  ILS: 0.32,    // 1 ILS = 0.32 USD
   AED: 0.27,    // 1 AED = 0.27 USD
+  RON: 0.23,    // 1 RON = 0.23 USD
+  ISK: 0.0082,  // 1 ISK = 0.0082 USD
+  IDR: 0.00006, // 1 IDR = 0.00006 USD
+  MYR: 0.25,    // 1 MYR = 0.25 USD
+  PHP: 0.017,   // 1 PHP = 0.017 USD
 };
 
 /**
