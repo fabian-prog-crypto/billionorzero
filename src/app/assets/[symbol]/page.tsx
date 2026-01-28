@@ -10,11 +10,6 @@ import {
   Copy,
   Check,
   Edit2,
-  PieChart,
-  Layers,
-  DollarSign,
-  Calendar,
-  Link2,
 } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import {
@@ -33,6 +28,20 @@ import {
   getChangeColor,
 } from '@/lib/utils';
 import { AssetWithPrice } from '@/types';
+
+// Aggregated position by source
+interface AggregatedPosition {
+  key: string;
+  label: string;
+  sublabel?: string;
+  walletAddress?: string;
+  chain?: string;
+  protocol?: string;
+  amount: number;
+  value: number;
+  isDebt: boolean;
+  positions: AssetWithPrice[];
+}
 
 export default function AssetDetailPage() {
   const router = useRouter();
@@ -74,15 +83,6 @@ export default function AssetDetailPage() {
     // Use first position for common data
     const first = assetPositions[0];
 
-    // Calculate weighted average purchase date
-    const positionsWithDates = assetPositions.filter((p) => p.purchaseDate);
-    const earliestDate = positionsWithDates.length > 0
-      ? positionsWithDates.reduce((earliest, p) => {
-          const date = new Date(p.purchaseDate!);
-          return date < earliest ? date : earliest;
-        }, new Date(positionsWithDates[0].purchaseDate!))
-      : null;
-
     // Get category info
     const categoryService = getCategoryService();
     const exposureCat = getExposureCategory(first.symbol, first.type);
@@ -91,8 +91,9 @@ export default function AssetDetailPage() {
 
     // Count unique sources
     const uniqueWallets = new Set(assetPositions.filter(p => p.walletAddress).map(p => p.walletAddress));
-    const uniqueChains = new Set(assetPositions.filter(p => p.chain).map(p => p.chain));
-    const uniqueProtocols = new Set(assetPositions.filter(p => p.protocol).map(p => p.protocol));
+
+    // Calculate total allocation across all positions of this asset
+    const totalAllocation = assetPositions.reduce((sum, p) => sum + Math.abs(p.allocation), 0);
 
     return {
       symbol: first.symbol,
@@ -106,17 +107,60 @@ export default function AssetDetailPage() {
       totalAmount,
       totalValue,
       totalCostBasis: hasCostBasis ? totalCostBasis : null,
-      allocation: first.allocation,
-      earliestDate,
+      allocation: totalAllocation,
       exposureCategory: exposureCat,
       exposureCategoryLabel: exposureConfig.label,
       exposureCategoryColor: exposureConfig.color,
       mainCategory,
       positionCount: assetPositions.length,
       walletCount: uniqueWallets.size,
-      chainCount: uniqueChains.size,
-      protocolCount: uniqueProtocols.size,
     };
+  }, [assetPositions]);
+
+  // Aggregate positions by source (wallet + protocol/chain combination)
+  const aggregatedPositions = useMemo((): AggregatedPosition[] => {
+    const groups: Record<string, AggregatedPosition> = {};
+
+    assetPositions.forEach((p) => {
+      // Create a unique key for grouping
+      let key: string;
+      let label: string;
+      let sublabel: string | undefined;
+
+      if (p.walletAddress) {
+        // Group by wallet + protocol (or chain if no protocol)
+        const location = p.protocol || p.chain || 'wallet';
+        key = `${p.walletAddress}-${location}-${p.isDebt ? 'debt' : 'asset'}`;
+        label = formatAddress(p.walletAddress, 4);
+        sublabel = p.protocol || p.chain;
+      } else {
+        // Manual positions
+        key = `manual-${p.protocol || 'none'}-${p.isDebt ? 'debt' : 'asset'}`;
+        label = 'Manual';
+        sublabel = p.protocol;
+      }
+
+      if (!groups[key]) {
+        groups[key] = {
+          key,
+          label,
+          sublabel,
+          walletAddress: p.walletAddress,
+          chain: p.chain,
+          protocol: p.protocol,
+          amount: 0,
+          value: 0,
+          isDebt: p.isDebt || false,
+          positions: [],
+        };
+      }
+
+      groups[key].amount += p.amount;
+      groups[key].value += p.value;
+      groups[key].positions.push(p);
+    });
+
+    return Object.values(groups).sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
   }, [assetPositions]);
 
   // Calculate P&L if cost basis exists
@@ -126,22 +170,7 @@ export default function AssetDetailPage() {
     const pnl = assetData.totalValue - assetData.totalCostBasis;
     const pnlPercent = (pnl / assetData.totalCostBasis) * 100;
 
-    // Calculate holding period (use a fixed reference to avoid hydration issues)
-    let holdingDays = 0;
-    if (assetData.earliestDate) {
-      const now = new Date();
-      holdingDays = Math.floor(
-        (now.getTime() - assetData.earliestDate.getTime()) / (1000 * 60 * 60 * 24)
-      );
-    }
-
-    // Annualized return
-    let annualizedReturn = 0;
-    if (holdingDays > 0) {
-      annualizedReturn = ((1 + pnlPercent / 100) ** (365 / holdingDays) - 1) * 100;
-    }
-
-    return { pnl, pnlPercent, holdingDays, annualizedReturn };
+    return { pnl, pnlPercent };
   }, [assetData]);
 
   const copyToClipboard = (text: string) => {
@@ -163,13 +192,13 @@ export default function AssetDetailPage() {
   if (!assetData) {
     return (
       <div className="text-center py-20">
-        <p className="text-[var(--foreground-muted)] mb-4">Asset not found</p>
+        <p className="text-[var(--foreground-muted)] text-sm mb-4">Asset not found</p>
         <button
-          onClick={() => router.push('/positions')}
-          className="btn btn-secondary"
+          onClick={() => router.push('/crypto/assets')}
+          className="btn btn-secondary text-sm"
         >
-          <ArrowLeft className="w-4 h-4" />
-          Back to Positions
+          <ArrowLeft className="w-3.5 h-3.5" />
+          Back
         </button>
       </div>
     );
@@ -182,299 +211,193 @@ export default function AssetDetailPage() {
       {/* Back Navigation */}
       <button
         onClick={() => router.back()}
-        className="flex items-center gap-2 text-[var(--foreground-muted)] hover:text-[var(--foreground)] transition-colors mb-6"
+        className="flex items-center gap-1.5 text-sm text-[var(--foreground-muted)] hover:text-[var(--foreground)] transition-colors mb-4"
       >
-        <ArrowLeft className="w-4 h-4" />
+        <ArrowLeft className="w-3.5 h-3.5" />
         Back
       </button>
 
-      {/* Hero Section */}
-      <div className="card mb-6">
-        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-6">
-          {/* Asset Info */}
-          <div className="flex items-start gap-4">
-            <div className="w-16 h-16 rounded-2xl bg-[var(--background-tertiary)] flex items-center justify-center overflow-hidden">
-              <CryptoIcon symbol={assetData.symbol} size={48} logoUrl={assetData.logo} />
+      {/* Header */}
+      <div className="flex items-start justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <CryptoIcon symbol={assetData.symbol} size={32} logoUrl={assetData.logo} />
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-lg font-semibold">{assetData.name}</h1>
+              <span className="text-sm text-[var(--foreground-muted)]">
+                {assetData.symbol.toUpperCase()}
+              </span>
+              <span
+                className="px-1.5 py-0.5 text-[10px] font-medium rounded"
+                style={{
+                  backgroundColor: `${assetData.exposureCategoryColor}20`,
+                  color: assetData.exposureCategoryColor,
+                }}
+              >
+                {assetData.exposureCategoryLabel}
+              </span>
             </div>
-            <div>
-              <div className="flex items-center gap-3 mb-1">
-                <h1 className="text-2xl font-bold">{assetData.name}</h1>
-                <span className="text-lg text-[var(--foreground-muted)]">
-                  {assetData.symbol.toUpperCase()}
-                </span>
-              </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <span
-                  className="px-2 py-0.5 text-xs font-medium rounded-full"
-                  style={{
-                    backgroundColor: `${assetData.exposureCategoryColor}20`,
-                    color: assetData.exposureCategoryColor,
-                  }}
-                >
-                  {assetData.exposureCategoryLabel}
-                </span>
-                <span className="text-xs text-[var(--foreground-muted)]">
-                  {assetData.mainCategory === 'crypto' ? 'Cryptocurrency' : assetData.mainCategory}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Price Info */}
-          <div className="text-left md:text-right">
-            <div className="flex items-center gap-2 md:justify-end mb-1">
+            <div className="flex items-center gap-2 mt-0.5">
               <button
                 onClick={openCustomPriceModal}
-                className="group flex items-center gap-2 hover:text-[var(--accent-primary)] transition-colors"
+                className="group flex items-center gap-1 hover:text-[var(--accent-primary)] transition-colors"
               >
-                <span className="text-2xl font-bold">
+                <span className="text-sm font-medium">
                   {formatCurrency(assetData.currentPrice)}
                 </span>
                 {assetData.hasCustomPrice && (
-                  <span className="w-2 h-2 rounded-full bg-[var(--accent-primary)]" title="Custom price" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]" />
                 )}
-                <Edit2 className="w-4 h-4 opacity-0 group-hover:opacity-50 transition-opacity" />
+                <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity" />
               </button>
-            </div>
-            <div className={`flex items-center gap-2 md:justify-end ${getChangeColor(assetData.changePercent24h)}`}>
-              {isPositive ? (
-                <TrendingUp className="w-4 h-4" />
-              ) : (
-                <TrendingDown className="w-4 h-4" />
-              )}
-              <span className="font-medium">
+              <span className={`text-xs ${getChangeColor(assetData.changePercent24h)}`}>
+                {isPositive ? <TrendingUp className="w-3 h-3 inline mr-0.5" /> : <TrendingDown className="w-3 h-3 inline mr-0.5" />}
                 {formatPercent(assetData.changePercent24h)}
               </span>
-              <span className="text-[var(--foreground-muted)]">
-                ({formatCurrency(Math.abs(assetData.change24h))})
-              </span>
-              <span className="text-xs text-[var(--foreground-muted)]">24h</span>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Key Metrics Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        {/* Total Holdings */}
-        <div className="card">
-          <div className="flex items-center gap-2 mb-2">
-            <Layers className="w-4 h-4 text-[var(--foreground-muted)]" />
-            <span className="text-xs uppercase tracking-wider text-[var(--foreground-muted)]">
-              Holdings
-            </span>
-          </div>
-          <p className="text-xl font-semibold">
-            {hideBalances ? '••••' : formatNumber(assetData.totalAmount)}
-          </p>
-          <p className="text-sm text-[var(--foreground-muted)]">
-            {assetData.symbol.toUpperCase()}
-          </p>
-        </div>
-
-        {/* Total Value */}
-        <div className="card">
-          <div className="flex items-center gap-2 mb-2">
-            <DollarSign className="w-4 h-4 text-[var(--foreground-muted)]" />
-            <span className="text-xs uppercase tracking-wider text-[var(--foreground-muted)]">
-              Value
-            </span>
-          </div>
-          <p className="text-xl font-semibold">
+        <div className="text-right">
+          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-0.5">Total Value</p>
+          <p className="text-lg font-semibold">
             {hideBalances ? '••••••' : formatCurrency(assetData.totalValue)}
           </p>
-          <p className="text-sm text-[var(--foreground-muted)]">
+          <p className="text-xs text-[var(--foreground-muted)]">
             {assetData.allocation.toFixed(1)}% of portfolio
           </p>
         </div>
+      </div>
 
-        {/* Cost Basis / P&L */}
-        <div className="card">
-          <div className="flex items-center gap-2 mb-2">
-            <TrendingUp className="w-4 h-4 text-[var(--foreground-muted)]" />
-            <span className="text-xs uppercase tracking-wider text-[var(--foreground-muted)]">
-              {pnlData ? 'Unrealized P&L' : 'Cost Basis'}
-            </span>
-          </div>
-          {pnlData ? (
-            <>
-              <p className={`text-xl font-semibold ${getChangeColor(pnlData.pnl)}`}>
-                {hideBalances ? '••••' : `${pnlData.pnl >= 0 ? '+' : ''}${formatCurrency(pnlData.pnl)}`}
-              </p>
-              <p className={`text-sm ${getChangeColor(pnlData.pnlPercent)}`}>
-                {pnlData.pnlPercent >= 0 ? '+' : ''}{pnlData.pnlPercent.toFixed(1)}%
-              </p>
-            </>
-          ) : (
-            <>
-              <p className="text-xl font-semibold text-[var(--foreground-muted)]">--</p>
-              <p className="text-sm text-[var(--foreground-muted)]">No cost basis</p>
-            </>
-          )}
+      <hr className="border-[var(--border)] mb-6" />
+
+      {/* Stats Row */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-6">
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">Holdings</p>
+          <p className="text-[15px] font-semibold">
+            {hideBalances ? '••••' : formatNumber(assetData.totalAmount)}
+          </p>
+          <p className="text-xs text-[var(--foreground-muted)]">{assetData.symbol.toUpperCase()}</p>
         </div>
 
-        {/* Positions Count */}
-        <div className="card">
-          <div className="flex items-center gap-2 mb-2">
-            <PieChart className="w-4 h-4 text-[var(--foreground-muted)]" />
-            <span className="text-xs uppercase tracking-wider text-[var(--foreground-muted)]">
-              Distribution
-            </span>
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">Avg Price</p>
+          <p className="text-[15px] font-semibold">
+            {hideBalances ? '••••' : formatCurrency(assetData.totalValue / assetData.totalAmount)}
+          </p>
+          <p className="text-xs text-[var(--foreground-muted)]">per unit</p>
+        </div>
+
+        {pnlData ? (
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">Unrealized P&L</p>
+            <p className={`text-[15px] font-semibold ${getChangeColor(pnlData.pnl)}`}>
+              {hideBalances ? '••••' : `${pnlData.pnl >= 0 ? '+' : ''}${formatCurrency(pnlData.pnl)}`}
+            </p>
+            <p className={`text-xs ${getChangeColor(pnlData.pnlPercent)}`}>
+              {pnlData.pnlPercent >= 0 ? '+' : ''}{pnlData.pnlPercent.toFixed(1)}%
+            </p>
           </div>
-          <p className="text-xl font-semibold">{assetData.positionCount}</p>
-          <p className="text-sm text-[var(--foreground-muted)]">
-            {assetData.positionCount === 1 ? 'position' : 'positions'}
-            {assetData.walletCount > 0 && ` · ${assetData.walletCount} wallet${assetData.walletCount > 1 ? 's' : ''}`}
+        ) : (
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">Cost Basis</p>
+            <p className="text-[15px] font-semibold text-[var(--foreground-muted)]">--</p>
+            <p className="text-xs text-[var(--foreground-muted)]">Not set</p>
+          </div>
+        )}
+
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">Distribution</p>
+          <p className="text-[15px] font-semibold">{aggregatedPositions.length}</p>
+          <p className="text-xs text-[var(--foreground-muted)]">
+            {aggregatedPositions.length === 1 ? 'location' : 'locations'}
           </p>
         </div>
       </div>
 
-      {/* Additional Stats Row */}
-      {(pnlData?.holdingDays || assetData.chainCount > 0 || assetData.protocolCount > 0) && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          {pnlData && pnlData.holdingDays > 0 && (
-            <div className="card">
-              <div className="flex items-center gap-2 mb-2">
-                <Calendar className="w-4 h-4 text-[var(--foreground-muted)]" />
-                <span className="text-xs uppercase tracking-wider text-[var(--foreground-muted)]">
-                  Holding Period
-                </span>
-              </div>
-              <p className="text-xl font-semibold">{pnlData.holdingDays}</p>
-              <p className="text-sm text-[var(--foreground-muted)]">days</p>
-            </div>
-          )}
+      <hr className="border-[var(--border)] mb-6" />
 
-          {pnlData && pnlData.annualizedReturn !== 0 && (
-            <div className="card">
-              <div className="flex items-center gap-2 mb-2">
-                <TrendingUp className="w-4 h-4 text-[var(--foreground-muted)]" />
-                <span className="text-xs uppercase tracking-wider text-[var(--foreground-muted)]">
-                  Annualized
-                </span>
-              </div>
-              <p className={`text-xl font-semibold ${getChangeColor(pnlData.annualizedReturn)}`}>
-                {pnlData.annualizedReturn >= 0 ? '+' : ''}{pnlData.annualizedReturn.toFixed(1)}%
-              </p>
-              <p className="text-sm text-[var(--foreground-muted)]">return</p>
-            </div>
-          )}
-
-          {assetData.totalCostBasis && (
-            <div className="card">
-              <div className="flex items-center gap-2 mb-2">
-                <DollarSign className="w-4 h-4 text-[var(--foreground-muted)]" />
-                <span className="text-xs uppercase tracking-wider text-[var(--foreground-muted)]">
-                  Cost Basis
-                </span>
-              </div>
-              <p className="text-xl font-semibold">
-                {hideBalances ? '••••' : formatCurrency(assetData.totalCostBasis)}
-              </p>
-              <p className="text-sm text-[var(--foreground-muted)]">
-                Avg: {formatCurrency(assetData.totalCostBasis / assetData.totalAmount)}
-              </p>
-            </div>
-          )}
-
-          {assetData.chainCount > 0 && (
-            <div className="card">
-              <div className="flex items-center gap-2 mb-2">
-                <Link2 className="w-4 h-4 text-[var(--foreground-muted)]" />
-                <span className="text-xs uppercase tracking-wider text-[var(--foreground-muted)]">
-                  Chains
-                </span>
-              </div>
-              <p className="text-xl font-semibold">{assetData.chainCount}</p>
-              <p className="text-sm text-[var(--foreground-muted)]">
-                {assetData.protocolCount > 0 && `${assetData.protocolCount} protocol${assetData.protocolCount > 1 ? 's' : ''}`}
-              </p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Positions Table */}
-      <div className="card">
-        <h2 className="text-lg font-semibold mb-4">Positions</h2>
+      {/* Holdings Table */}
+      <div>
+        <h2 className="text-[13px] font-medium uppercase tracking-wider text-[var(--foreground-muted)] mb-3">
+          Holdings by Location
+        </h2>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[600px]">
+          <table className="w-full">
             <thead>
               <tr className="border-b border-[var(--border)]">
-                <th className="table-header text-left pb-3">Source</th>
-                <th className="table-header text-left pb-3">Location</th>
-                <th className="table-header text-right pb-3">Amount</th>
-                <th className="table-header text-right pb-3">Value</th>
-                <th className="table-header text-right pb-3">%</th>
+                <th className="table-header text-left pb-2">Source</th>
+                <th className="table-header text-left pb-2">Location</th>
+                <th className="table-header text-right pb-2">Amount</th>
+                <th className="table-header text-right pb-2">Value</th>
+                <th className="table-header text-right pb-2">%</th>
               </tr>
             </thead>
             <tbody>
-              {assetPositions.map((position) => {
-                const isDebt = position.isDebt;
-                const positionPercent = assetData.totalValue !== 0
-                  ? (position.value / assetData.totalValue) * 100
+              {aggregatedPositions.map((group) => {
+                const percent = assetData.totalValue !== 0
+                  ? (Math.abs(group.value) / Math.abs(assetData.totalValue)) * 100
                   : 0;
 
                 return (
                   <tr
-                    key={position.id}
+                    key={group.key}
                     className={`border-b border-[var(--border)] last:border-0 hover:bg-[var(--background-secondary)] transition-colors ${
-                      isDebt ? 'bg-[var(--negative-light)]' : ''
+                      group.isDebt ? 'bg-[var(--negative-light)]' : ''
                     }`}
                   >
-                    <td className="py-3">
-                      {position.walletAddress ? (
-                        <div className="flex items-center gap-2">
-                          <Wallet className="w-4 h-4 text-[var(--accent-primary)]" />
-                          <button
-                            onClick={() => copyToClipboard(position.walletAddress!)}
-                            className="flex items-center gap-1 hover:text-[var(--accent-primary)] transition-colors"
-                          >
-                            <span className="font-mono text-sm">
-                              {formatAddress(position.walletAddress, 6)}
-                            </span>
-                            {copiedAddress === position.walletAddress ? (
-                              <Check className="w-3 h-3 text-[var(--positive)]" />
-                            ) : (
-                              <Copy className="w-3 h-3 opacity-50" />
-                            )}
-                          </button>
-                        </div>
-                      ) : (
-                        <span className="text-sm text-[var(--foreground-muted)]">Manual</span>
-                      )}
+                    <td className="py-2">
+                      <div className="flex items-center gap-2">
+                        {group.walletAddress ? (
+                          <>
+                            <Wallet className="w-3.5 h-3.5 text-[var(--accent-primary)]" />
+                            <button
+                              onClick={() => copyToClipboard(group.walletAddress!)}
+                              className="flex items-center gap-1 font-mono text-xs hover:text-[var(--accent-primary)] transition-colors"
+                            >
+                              {group.label}
+                              {copiedAddress === group.walletAddress ? (
+                                <Check className="w-3 h-3 text-[var(--positive)]" />
+                              ) : (
+                                <Copy className="w-3 h-3 opacity-40" />
+                              )}
+                            </button>
+                          </>
+                        ) : (
+                          <span className="text-xs text-[var(--foreground-muted)]">Manual</span>
+                        )}
+                      </div>
                     </td>
-                    <td className="py-3">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {position.chain && (
-                          <span className="tag text-[10px] py-0.5 px-1.5">
-                            {position.chain}
+                    <td className="py-2">
+                      <div className="flex items-center gap-1.5">
+                        {group.chain && (
+                          <span className="tag text-[10px] py-0 px-1.5">{group.chain}</span>
+                        )}
+                        {group.protocol && (
+                          <span className="tag text-[10px] py-0 px-1.5 bg-[var(--accent-primary)] text-white">
+                            {group.protocol}
                           </span>
                         )}
-                        {position.protocol && (
-                          <span className="tag text-[10px] py-0.5 px-1.5 bg-[var(--accent-primary)] text-white">
-                            {position.protocol}
-                          </span>
-                        )}
-                        {isDebt && (
-                          <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-[var(--negative)] text-white rounded">
+                        {group.isDebt && (
+                          <span className="px-1 py-0.5 text-[9px] font-semibold bg-[var(--negative)] text-white rounded">
                             DEBT
                           </span>
                         )}
-                        {!position.chain && !position.protocol && !isDebt && (
+                        {!group.chain && !group.protocol && !group.isDebt && (
                           <span className="text-xs text-[var(--foreground-muted)]">--</span>
                         )}
                       </div>
                     </td>
-                    <td className="py-3 text-right font-mono text-sm">
-                      {hideBalances ? '••••' : formatNumber(position.amount)}
+                    <td className="py-2 text-right font-mono text-xs">
+                      {hideBalances ? '••••' : formatNumber(group.amount)}
                     </td>
-                    <td className={`py-3 text-right font-semibold ${isDebt ? 'text-[var(--negative)]' : ''}`}>
-                      {hideBalances ? '••••' : formatCurrency(position.value)}
+                    <td className={`py-2 text-right text-sm font-semibold ${group.isDebt ? 'text-[var(--negative)]' : ''}`}>
+                      {hideBalances ? '••••' : formatCurrency(group.value)}
                     </td>
-                    <td className="py-3 text-right text-sm text-[var(--foreground-muted)]">
-                      {Math.abs(positionPercent).toFixed(1)}%
+                    <td className="py-2 text-right text-xs text-[var(--foreground-muted)]">
+                      {percent.toFixed(1)}%
                     </td>
                   </tr>
                 );
@@ -484,11 +407,11 @@ export default function AssetDetailPage() {
         </div>
 
         {/* Summary Footer */}
-        <div className="mt-4 pt-4 border-t border-[var(--border)] flex justify-between items-center">
-          <span className="text-sm text-[var(--foreground-muted)]">
-            {assetPositions.length} position{assetPositions.length !== 1 ? 's' : ''}
+        <div className="mt-3 pt-3 border-t border-[var(--border)] flex justify-between items-center">
+          <span className="text-xs text-[var(--foreground-muted)]">
+            {assetPositions.length} position{assetPositions.length !== 1 ? 's' : ''} across {aggregatedPositions.length} location{aggregatedPositions.length !== 1 ? 's' : ''}
           </span>
-          <span className="font-semibold">
+          <span className="text-sm font-semibold">
             {hideBalances ? '••••••' : formatCurrency(assetData.totalValue)}
           </span>
         </div>

@@ -165,7 +165,7 @@ export default function CryptoPositionsPage() {
     }
   };
 
-  const SortIcon = ({ field }: { field: SortField }) => {
+  const renderSortIcon = (field: SortField) => {
     if (sortField !== field) return <ArrowUpDown className="w-3 h-3 opacity-50" />;
     return sortDirection === 'asc' ? (
       <ChevronUp className="w-3 h-3" />
@@ -384,24 +384,24 @@ export default function CryptoPositionsPage() {
               <tr className="border-b border-[var(--border)]">
                 <th className="table-header text-left pb-3">
                   <button onClick={() => toggleSort('symbol')} className="flex items-center gap-1 hover:text-[var(--foreground)] transition-colors">
-                    Asset <SortIcon field="symbol" />
+                    Asset {renderSortIcon('symbol')}
                   </button>
                 </th>
                 <th className="table-header text-left pb-3">Source</th>
                 <th className="table-header text-right pb-3">
                   <button onClick={() => toggleSort('amount')} className="flex items-center gap-1 ml-auto hover:text-[var(--foreground)] transition-colors">
-                    Amount <SortIcon field="amount" />
+                    Amount {renderSortIcon('amount')}
                   </button>
                 </th>
                 <th className="table-header text-right pb-3">Price</th>
                 <th className="table-header text-right pb-3">
                   <button onClick={() => toggleSort('value')} className="flex items-center gap-1 ml-auto hover:text-[var(--foreground)] transition-colors">
-                    Value <SortIcon field="value" />
+                    Value {renderSortIcon('value')}
                   </button>
                 </th>
                 <th className="table-header text-right pb-3">
                   <button onClick={() => toggleSort('change')} className="flex items-center gap-1 ml-auto hover:text-[var(--foreground)] transition-colors">
-                    24h <SortIcon field="change" />
+                    24h {renderSortIcon('change')}
                   </button>
                 </th>
                 <th className="table-header text-right pb-3">%</th>
@@ -507,24 +507,24 @@ export default function CryptoPositionsPage() {
               <tr className="border-b border-[var(--border)]">
                 <th className="table-header text-left pb-3">
                   <button onClick={() => toggleSort('symbol')} className="flex items-center gap-1 hover:text-[var(--foreground)] transition-colors">
-                    Asset <SortIcon field="symbol" />
+                    Asset {renderSortIcon('symbol')}
                   </button>
                 </th>
                 <th className="table-header text-left pb-3">Category</th>
                 <th className="table-header text-right pb-3">
                   <button onClick={() => toggleSort('amount')} className="flex items-center gap-1 ml-auto hover:text-[var(--foreground)] transition-colors">
-                    Amount <SortIcon field="amount" />
+                    Amount {renderSortIcon('amount')}
                   </button>
                 </th>
                 <th className="table-header text-right pb-3">Price</th>
                 <th className="table-header text-right pb-3">
                   <button onClick={() => toggleSort('value')} className="flex items-center gap-1 ml-auto hover:text-[var(--foreground)] transition-colors">
-                    Value <SortIcon field="value" />
+                    Value {renderSortIcon('value')}
                   </button>
                 </th>
                 <th className="table-header text-right pb-3">
                   <button onClick={() => toggleSort('change')} className="flex items-center gap-1 ml-auto hover:text-[var(--foreground)] transition-colors">
-                    24h <SortIcon field="change" />
+                    24h {renderSortIcon('change')}
                   </button>
                 </th>
                 <th className="table-header text-right pb-3">%</th>

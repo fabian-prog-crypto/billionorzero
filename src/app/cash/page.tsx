@@ -10,12 +10,20 @@ import {
   getCategoryService,
 } from '@/services';
 import { formatCurrency, formatNumber } from '@/lib/utils';
-import { CURRENCY_COLORS, CRYPTO_COLORS } from '@/lib/colors';
+import { CURRENCY_COLORS } from '@/lib/colors';
 import SearchInput from '@/components/ui/SearchInput';
-import EmptyState from '@/components/ui/EmptyState';
 
 type SortField = 'symbol' | 'value' | 'amount' | 'category';
 type SortDirection = 'asc' | 'desc';
+
+function SortIcon({ field, sortField, sortDirection }: { field: SortField; sortField: SortField; sortDirection: SortDirection }) {
+  if (sortField !== field) return <ArrowUpDown className="w-3 h-3 opacity-50" />;
+  return sortDirection === 'asc' ? (
+    <ChevronUp className="w-3 h-3" />
+  ) : (
+    <ChevronDown className="w-3 h-3" />
+  );
+}
 
 export default function CashPage() {
   const { positions, prices, customPrices, hideBalances } = usePortfolioStore();
@@ -89,15 +97,6 @@ export default function CashPage() {
       setSortField(field);
       setSortDirection('desc');
     }
-  };
-
-  const SortIcon = ({ field }: { field: SortField }) => {
-    if (sortField !== field) return <ArrowUpDown className="w-3 h-3 opacity-50" />;
-    return sortDirection === 'asc' ? (
-      <ChevronUp className="w-3 h-3" />
-    ) : (
-      <ChevronDown className="w-3 h-3" />
-    );
   };
 
   // Determine if position is stablecoin or fiat
@@ -237,7 +236,7 @@ export default function CashPage() {
                   onClick={() => handleSort('symbol')}
                   className="flex items-center gap-1 hover:text-[var(--foreground)] transition-colors"
                 >
-                  Currency <SortIcon field="symbol" />
+                  Currency <SortIcon field="symbol" sortField={sortField} sortDirection={sortDirection} />
                 </button>
               </th>
               <th className="table-header text-left pb-3">
@@ -245,7 +244,7 @@ export default function CashPage() {
                   onClick={() => handleSort('category')}
                   className="flex items-center gap-1 hover:text-[var(--foreground)] transition-colors"
                 >
-                  Type <SortIcon field="category" />
+                  Type <SortIcon field="category" sortField={sortField} sortDirection={sortDirection} />
                 </button>
               </th>
               <th className="table-header text-right pb-3">
@@ -253,7 +252,7 @@ export default function CashPage() {
                   onClick={() => handleSort('amount')}
                   className="flex items-center gap-1 ml-auto hover:text-[var(--foreground)] transition-colors"
                 >
-                  Amount <SortIcon field="amount" />
+                  Amount <SortIcon field="amount" sortField={sortField} sortDirection={sortDirection} />
                 </button>
               </th>
               <th className="table-header text-right pb-3">
@@ -261,7 +260,7 @@ export default function CashPage() {
                   onClick={() => handleSort('value')}
                   className="flex items-center gap-1 ml-auto hover:text-[var(--foreground)] transition-colors"
                 >
-                  Value <SortIcon field="value" />
+                  Value <SortIcon field="value" sortField={sortField} sortDirection={sortDirection} />
                 </button>
               </th>
             </tr>
