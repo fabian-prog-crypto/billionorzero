@@ -54,6 +54,7 @@ export class CategoryService {
     'usdy', 'usdz', 'zusd', 'musd', 'pusd', 'ausd', 'rusd', 'cgusd',
     'euroc', 'eurt', 'ceur', 'ageur', 'jeur', 'eur', 'eurc', 'eure', 'eura',
     'steur', 'seur', 'gbpt', 'gbpc',
+    'wxdai', 'xdai', 'sdai', // DAI variants
   ]);
 
   // BTC and BTC-like wrapped/bridged tokens
@@ -75,6 +76,14 @@ export class CategoryService {
     'sol', 'wsol', 'msol', 'jitosol', 'bsol', 'stsol', 'scnsol', 'lsol',
     'hsol', 'csol', 'dsol', 'vsol', 'risksol', 'laine', 'bonksol', 'jupsol',
     'inf', 'phsol', 'jsol',
+  ]);
+
+  // Fiat currencies (for bank accounts and manual cash entries)
+  private fiatCurrencies = new Set([
+    'usd', 'eur', 'gbp', 'chf', 'jpy', 'cny', 'cad', 'aud', 'nzd',
+    'hkd', 'sgd', 'sek', 'nok', 'dkk', 'krw', 'inr', 'brl', 'mxn',
+    'zar', 'aed', 'thb', 'pln', 'czk', 'ils', 'php', 'idr', 'myr',
+    'try', 'rub', 'huf', 'ron', 'bgn', 'hrk', 'isk', 'twd', 'vnd',
   ]);
 
   // Perpetual futures / derivatives protocols
@@ -112,6 +121,8 @@ export class CategoryService {
     'api3', 'band', 'uma', 'ren', 'keep', 'nu', 'nucypher', 'threshold', 't',
     'egg', 'eigenlayer', 'eigen', 'ether.fi', 'ethfi',
     'pendle', 'ena', 'ethena',
+    // Additional DeFi protocols
+    'drv', 'lit', 'resolv', 'angle', 'usdr',
   ]);
 
   // RWA (Real World Assets) tokens
@@ -278,8 +289,13 @@ export class CategoryService {
    * Get the main category for an asset
    */
   getMainCategory(symbol: string, assetType?: string): MainCategory {
-    // Cash positions
-    if (assetType === 'cash' || symbol.toLowerCase().startsWith('cash_')) {
+    // Cash positions (explicit type)
+    if (assetType === 'cash') {
+      return 'cash';
+    }
+
+    // Check for cash symbol patterns (e.g., "CASH_CHF_123456")
+    if (symbol.toLowerCase().startsWith('cash_')) {
       return 'cash';
     }
 
@@ -293,8 +309,15 @@ export class CategoryService {
       return 'crypto';
     }
 
-    // Manual/other positions - try to categorize
+    // Manual/other positions - try to categorize by symbol
     const normalizedSymbol = symbol.toLowerCase().trim();
+
+    // Check if it's a fiat currency (for bank accounts)
+    if (this.fiatCurrencies.has(normalizedSymbol)) {
+      return 'cash';
+    }
+
+    // Check if it's a crypto asset
     if (this.stablecoins.has(normalizedSymbol) ||
         this.btcLike.has(normalizedSymbol) ||
         this.ethLike.has(normalizedSymbol) ||
