@@ -1,20 +1,21 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Banknote, ArrowUpDown, ChevronDown, ChevronUp, ToggleLeft, ToggleRight } from 'lucide-react';
-import DonutChart from '@/components/charts/DonutChart';
+import { Banknote, ArrowUpDown, ChevronDown, ChevronUp, Wallet, Building2 } from 'lucide-react';
+import DonutChart, { DonutChartItem } from '@/components/charts/DonutChart';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import {
   calculateAllPositionsWithPrices,
   calculateCashBreakdown,
-  getCategoryService,
 } from '@/services';
-import { formatCurrency, formatNumber } from '@/lib/utils';
+import { formatCurrency, formatNumber, formatAddress } from '@/lib/utils';
 import { CURRENCY_COLORS } from '@/lib/colors';
 import SearchInput from '@/components/ui/SearchInput';
+import CurrencyIcon from '@/components/ui/CurrencyIcon';
 
-type SortField = 'symbol' | 'value' | 'amount' | 'category';
+type SortField = 'symbol' | 'value' | 'amount' | 'source';
 type SortDirection = 'asc' | 'desc';
+type ViewMode = 'fiat' | 'stablecoins' | 'all';
 
 function SortIcon({ field, sortField, sortDirection }: { field: SortField; sortField: SortField; sortDirection: SortDirection }) {
   if (sortField !== field) return <ArrowUpDown className="w-3 h-3 opacity-50" />;
@@ -25,32 +26,75 @@ function SortIcon({ field, sortField, sortDirection }: { field: SortField; sortF
   );
 }
 
+// Get friendly name for position
+function getPositionDisplayName(position: { symbol: string; name: string; walletAddress?: string; protocol?: string; chain?: string }): string {
+  const symbol = position.symbol.toUpperCase();
+
+  // If it has a protocol, include that
+  if (position.protocol) {
+    return `${symbol} (${position.protocol})`;
+  }
+
+  // If it's from a wallet, indicate the chain
+  if (position.walletAddress && position.chain) {
+    const chainName = position.chain.charAt(0).toUpperCase() + position.chain.slice(1);
+    return `${symbol} on ${chainName}`;
+  }
+
+  // If name is just the symbol or very similar, make it descriptive
+  if (position.name.toLowerCase() === symbol.toLowerCase() ||
+      position.name.toLowerCase().includes(symbol.toLowerCase())) {
+    // Check if it seems like a bank account
+    if (!position.walletAddress && !position.protocol) {
+      return `${symbol} Cash`;
+    }
+  }
+
+  return position.name;
+}
+
 export default function CashPage() {
   const { positions, prices, customPrices, hideBalances } = usePortfolioStore();
   const [sortField, setSortField] = useState<SortField>('value');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [searchQuery, setSearchQuery] = useState('');
-  const [includeStablecoins, setIncludeStablecoins] = useState(true);
-
-  const categoryService = getCategoryService();
+  const [viewMode, setViewMode] = useState<ViewMode>('all');
 
   // Calculate all positions with prices
   const allPositions = useMemo(() => {
     return calculateAllPositionsWithPrices(positions, prices, customPrices);
   }, [positions, prices, customPrices]);
 
-  // Use centralized service for cash breakdown - SINGLE SOURCE OF TRUTH
+  // Use centralized service for cash breakdown - include stablecoins for full breakdown
   const breakdownData = useMemo(() => {
-    return calculateCashBreakdown(allPositions, includeStablecoins);
-  }, [allPositions, includeStablecoins]);
+    return calculateCashBreakdown(allPositions, true);
+  }, [allPositions]);
 
-  // Combined cash positions based on toggle
+  // Combined cash positions based on view mode
   const cashPositions = useMemo(() => {
-    if (includeStablecoins) {
-      return [...breakdownData.fiatPositions, ...breakdownData.stablecoinPositions];
+    switch (viewMode) {
+      case 'fiat':
+        return breakdownData.fiatPositions;
+      case 'stablecoins':
+        return breakdownData.stablecoinPositions;
+      case 'all':
+      default:
+        return [...breakdownData.fiatPositions, ...breakdownData.stablecoinPositions];
     }
-    return breakdownData.fiatPositions;
-  }, [breakdownData, includeStablecoins]);
+  }, [breakdownData, viewMode]);
+
+  // Calculate total based on view mode
+  const displayTotal = useMemo(() => {
+    switch (viewMode) {
+      case 'fiat':
+        return breakdownData.fiat.value;
+      case 'stablecoins':
+        return breakdownData.stablecoins.value;
+      case 'all':
+      default:
+        return breakdownData.total;
+    }
+  }, [breakdownData, viewMode]);
 
   // Filter and sort positions (UI-only logic)
   const filteredPositions = useMemo(() => {
@@ -79,16 +123,16 @@ export default function CashPage() {
         case 'amount':
           comparison = a.amount - b.amount;
           break;
-        case 'category': {
-          const aCat = categoryService.getMainCategory(a.symbol, a.type);
-          const bCat = categoryService.getMainCategory(b.symbol, b.type);
-          comparison = aCat.localeCompare(bCat);
+        case 'source': {
+          const aSource = a.walletAddress ? 'wallet' : 'manual';
+          const bSource = b.walletAddress ? 'wallet' : 'manual';
+          comparison = aSource.localeCompare(bSource);
           break;
         }
       }
       return sortDirection === 'asc' ? comparison : -comparison;
     });
-  }, [cashPositions, searchQuery, sortField, sortDirection, categoryService]);
+  }, [cashPositions, searchQuery, sortField, sortDirection]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -99,11 +143,29 @@ export default function CashPage() {
     }
   };
 
-  // Determine if position is stablecoin or fiat
-  const isStablecoin = (position: typeof cashPositions[0]) => {
-    const mainCat = categoryService.getMainCategory(position.symbol, position.type);
-    return mainCat === 'crypto';
-  };
+  // Build chart data with breakdowns for tooltips
+  const chartData = useMemo((): DonutChartItem[] => {
+    // Group positions by currency symbol
+    const bySymbol = new Map<string, { value: number; positions: { label: string; value: number }[] }>();
+
+    cashPositions.forEach((p) => {
+      const symbol = p.symbol.toUpperCase();
+      const existing = bySymbol.get(symbol) || { value: 0, positions: [] };
+      existing.value += p.value;
+      existing.positions.push({
+        label: getPositionDisplayName(p),
+        value: p.value,
+      });
+      bySymbol.set(symbol, existing);
+    });
+
+    return Array.from(bySymbol.entries()).map(([symbol, data]) => ({
+      label: symbol,
+      value: data.value,
+      color: CURRENCY_COLORS[symbol] || CURRENCY_COLORS[symbol.toUpperCase()] || '#6B7280',
+      breakdown: data.positions.sort((a, b) => b.value - a.value),
+    }));
+  }, [cashPositions]);
 
   if (breakdownData.fiatPositions.length === 0 && breakdownData.stablecoinPositions.length === 0) {
     return (
@@ -127,108 +189,126 @@ export default function CashPage() {
       <div className="flex items-start justify-between mb-6">
         <div>
           <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">
-            TOTAL {includeStablecoins ? 'CASH & EQUIVALENTS' : 'FIAT CASH'}
+            {viewMode === 'all' ? 'TOTAL CASH & EQUIVALENTS' : viewMode === 'fiat' ? 'FIAT CURRENCIES' : 'STABLECOINS'}
           </p>
           <h2 className="text-2xl font-semibold mb-1">
-            {hideBalances ? '••••••••' : formatCurrency(breakdownData.total)}
+            {hideBalances ? '••••••••' : formatCurrency(displayTotal)}
           </h2>
           <p className="text-[13px] text-[var(--foreground-muted)]">
-            {includeStablecoins ? 'Fiat currencies and stablecoins' : 'Fiat currencies only'}
+            {filteredPositions.length} position{filteredPositions.length !== 1 ? 's' : ''}
           </p>
         </div>
 
         <div className="flex gap-6 text-right">
           <div>
             <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-0.5">Fiat</p>
-            <p className="text-[13px] font-medium">{breakdownData.fiat.count}</p>
+            <p className="text-[15px] font-medium">{hideBalances ? '••••' : formatCurrency(breakdownData.fiat.value)}</p>
           </div>
-          {includeStablecoins && (
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-0.5">Stablecoins</p>
-              <p className="text-[13px] font-medium">{breakdownData.stablecoins.count}</p>
-            </div>
-          )}
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-0.5">Stablecoins</p>
+            <p className="text-[15px] font-medium">{hideBalances ? '••••' : formatCurrency(breakdownData.stablecoins.value)}</p>
+          </div>
         </div>
       </div>
 
       <hr className="border-[var(--border)] mb-6" />
 
-      {/* Stablecoin Toggle */}
-      <div className="flex items-center justify-between mb-6">
-        <button
-          onClick={() => setIncludeStablecoins(!includeStablecoins)}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[var(--background-secondary)] transition-colors"
-        >
-          {includeStablecoins ? (
-            <ToggleRight className="w-5 h-5 text-[var(--accent)]" />
-          ) : (
-            <ToggleLeft className="w-5 h-5 text-[var(--foreground-muted)]" />
-          )}
-          <span className="text-[13px]">Include Stablecoins</span>
-        </button>
+      {/* View Mode Toggle */}
+      <div className="flex items-center gap-2 mb-6">
+        <div className="inline-flex rounded-lg bg-[var(--background-secondary)] p-0.5">
+          {[
+            { value: 'all', label: 'All' },
+            { value: 'fiat', label: 'Fiat' },
+            { value: 'stablecoins', label: 'Stablecoins' },
+          ].map((option) => (
+            <button
+              key={option.value}
+              onClick={() => setViewMode(option.value as ViewMode)}
+              className={`px-3 py-1.5 text-[12px] font-medium rounded-md transition-all ${
+                viewMode === option.value
+                  ? 'bg-[var(--background)] text-[var(--foreground)] shadow-sm'
+                  : 'text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Pie Chart - Currency Breakdown */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
         <DonutChart
           title="By Currency"
-          data={breakdownData.chartData}
+          data={chartData}
           hideValues={hideBalances}
           maxItems={6}
         />
 
-        {/* Summary Stats */}
-        <div className="md:col-span-2">
-          <h3 className="text-[15px] font-medium mb-4">Breakdown</h3>
-          <div className="grid grid-cols-2 gap-6">
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: CURRENCY_COLORS.USD }} />
-                <span className="text-[13px] font-medium">Fiat Currencies</span>
+        {/* Summary Cards */}
+        <div className="md:col-span-2 grid grid-cols-2 gap-4">
+          {/* Fiat Summary */}
+          <div className="p-4 rounded-xl bg-[var(--background-secondary)]">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-8 h-8 rounded-lg bg-[var(--positive)]20 flex items-center justify-center">
+                <Building2 className="w-4 h-4 text-[var(--positive)]" />
               </div>
-              <p className="text-xl font-semibold mb-1">
-                {hideBalances ? '••••' : formatCurrency(breakdownData.fiat.value)}
-              </p>
-              <p className="text-[13px] text-[var(--foreground-muted)]">
-                {breakdownData.fiat.count} position{breakdownData.fiat.count !== 1 ? 's' : ''} &middot; {breakdownData.total > 0 ? ((breakdownData.fiat.value / breakdownData.total) * 100).toFixed(1) : 0}%
-              </p>
-            </div>
-            {includeStablecoins && (
               <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: CURRENCY_COLORS.USDT }} />
-                  <span className="text-[13px] font-medium">Stablecoins</span>
-                </div>
-                <p className="text-xl font-semibold mb-1">
+                <p className="text-[11px] text-[var(--foreground-muted)]">Fiat Currencies</p>
+                <p className="text-[15px] font-semibold">
+                  {hideBalances ? '••••' : formatCurrency(breakdownData.fiat.value)}
+                </p>
+              </div>
+            </div>
+            <div className="text-[12px] text-[var(--foreground-muted)]">
+              {breakdownData.fiat.count} position{breakdownData.fiat.count !== 1 ? 's' : ''}
+              {breakdownData.total > 0 && (
+                <span> · {((breakdownData.fiat.value / breakdownData.total) * 100).toFixed(0)}% of total</span>
+              )}
+            </div>
+          </div>
+
+          {/* Stablecoin Summary */}
+          <div className="p-4 rounded-xl bg-[var(--background-secondary)]">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-8 h-8 rounded-lg bg-[var(--accent-primary)]20 flex items-center justify-center">
+                <Wallet className="w-4 h-4 text-[var(--accent-primary)]" />
+              </div>
+              <div>
+                <p className="text-[11px] text-[var(--foreground-muted)]">Stablecoins</p>
+                <p className="text-[15px] font-semibold">
                   {hideBalances ? '••••' : formatCurrency(breakdownData.stablecoins.value)}
                 </p>
-                <p className="text-[13px] text-[var(--foreground-muted)]">
-                  {breakdownData.stablecoins.count} position{breakdownData.stablecoins.count !== 1 ? 's' : ''} &middot; {breakdownData.total > 0 ? ((breakdownData.stablecoins.value / breakdownData.total) * 100).toFixed(1) : 0}%
-                </p>
               </div>
-            )}
+            </div>
+            <div className="text-[12px] text-[var(--foreground-muted)]">
+              {breakdownData.stablecoins.count} position{breakdownData.stablecoins.count !== 1 ? 's' : ''}
+              {breakdownData.total > 0 && (
+                <span> · {((breakdownData.stablecoins.value / breakdownData.total) * 100).toFixed(0)}% of total</span>
+              )}
+            </div>
           </div>
         </div>
       </div>
 
       <hr className="border-[var(--border)] mb-6" />
 
-      {/* Search */}
-      <div className="flex items-center gap-3 mb-4">
+      {/* Search and Count */}
+      <div className="flex items-center justify-between gap-3 mb-4">
         <SearchInput
           value={searchQuery}
           onChange={setSearchQuery}
-          placeholder="Search positions..."
+          placeholder="Search currencies..."
           className="flex-1 max-w-xs"
         />
-        <span className="text-[13px] text-[var(--foreground-muted)]">
-          {filteredPositions.length} position{filteredPositions.length !== 1 ? 's' : ''}
+        <span className="text-[12px] text-[var(--foreground-muted)]">
+          {filteredPositions.length} of {cashPositions.length}
         </span>
       </div>
 
       {/* Positions Table */}
       <div className="table-scroll">
-        <table className="w-full min-w-[500px]">
+        <table className="w-full min-w-[600px]">
           <thead>
             <tr className="border-b border-[var(--border)]">
               <th className="table-header text-left pb-3">
@@ -241,10 +321,10 @@ export default function CashPage() {
               </th>
               <th className="table-header text-left pb-3">
                 <button
-                  onClick={() => handleSort('category')}
+                  onClick={() => handleSort('source')}
                   className="flex items-center gap-1 hover:text-[var(--foreground)] transition-colors"
                 >
-                  Type <SortIcon field="category" sortField={sortField} sortDirection={sortDirection} />
+                  Source <SortIcon field="source" sortField={sortField} sortDirection={sortDirection} />
                 </button>
               </th>
               <th className="table-header text-right pb-3">
@@ -263,11 +343,13 @@ export default function CashPage() {
                   Value <SortIcon field="value" sortField={sortField} sortDirection={sortDirection} />
                 </button>
               </th>
+              <th className="table-header text-right pb-3">%</th>
             </tr>
           </thead>
           <tbody>
             {filteredPositions.map((position) => {
-              const isStable = isStablecoin(position);
+              const percentage = displayTotal > 0 ? (position.value / displayTotal) * 100 : 0;
+              const displayName = getPositionDisplayName(position);
 
               return (
                 <tr
@@ -276,36 +358,49 @@ export default function CashPage() {
                 >
                   <td className="py-2">
                     <div className="flex items-center gap-2">
-                      <div
-                        className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-semibold text-white"
-                        style={{ backgroundColor: isStable ? CURRENCY_COLORS.USDT : CURRENCY_COLORS.USD }}
-                      >
-                        {position.symbol.slice(0, 2).toUpperCase()}
-                      </div>
+                      <CurrencyIcon
+                        symbol={position.symbol}
+                        size={24}
+                        logoUrl={position.logo}
+                      />
                       <div>
                         <p className="font-medium text-sm">{position.symbol.toUpperCase()}</p>
-                        <p className="text-[11px] text-[var(--foreground-muted)] truncate max-w-[150px]">
-                          {position.name}
+                        <p className="text-[11px] text-[var(--foreground-muted)] truncate max-w-[180px]">
+                          {displayName}
                         </p>
                       </div>
                     </div>
                   </td>
                   <td className="py-2">
-                    <span
-                      className="px-1.5 py-0.5 text-[10px] font-medium rounded"
-                      style={{
-                        backgroundColor: isStable ? `${CURRENCY_COLORS.USDT}1A` : `${CURRENCY_COLORS.USD}1A`,
-                        color: isStable ? CURRENCY_COLORS.USDT : CURRENCY_COLORS.USD,
-                      }}
-                    >
-                      {isStable ? 'Stablecoin' : 'Fiat'}
-                    </span>
+                    {position.walletAddress ? (
+                      <div className="flex items-center gap-1.5">
+                        <Wallet className="w-3 h-3 text-[var(--accent-primary)]" />
+                        <span className="text-[11px] font-mono text-[var(--foreground-muted)]">
+                          {formatAddress(position.walletAddress, 4)}
+                        </span>
+                        {position.chain && (
+                          <span className="tag text-[9px] py-0.5 px-1">
+                            {position.chain}
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        <Building2 className="w-3 h-3 text-[var(--foreground-muted)]" />
+                        <span className="text-[11px] text-[var(--foreground-muted)]">
+                          Manual
+                        </span>
+                      </div>
+                    )}
                   </td>
                   <td className="py-2 text-right font-mono text-xs">
                     {hideBalances ? '••••' : formatNumber(position.amount)}
                   </td>
                   <td className="py-2 text-right font-semibold text-sm">
                     {hideBalances ? '••••' : formatCurrency(position.value)}
+                  </td>
+                  <td className="py-2 text-right text-xs text-[var(--foreground-muted)]">
+                    {percentage.toFixed(1)}%
                   </td>
                 </tr>
               );
@@ -317,6 +412,18 @@ export default function CashPage() {
       {filteredPositions.length === 0 && searchQuery && (
         <div className="text-center py-12">
           <p className="text-[var(--foreground-muted)]">No positions match your search.</p>
+        </div>
+      )}
+
+      {/* Footer Summary */}
+      {filteredPositions.length > 0 && (
+        <div className="mt-4 pt-4 border-t border-[var(--border)] flex justify-between items-center">
+          <span className="text-[12px] text-[var(--foreground-muted)]">
+            {filteredPositions.length} position{filteredPositions.length !== 1 ? 's' : ''}
+          </span>
+          <span className="font-semibold">
+            {hideBalances ? '••••••' : formatCurrency(displayTotal)}
+          </span>
         </div>
       )}
     </div>

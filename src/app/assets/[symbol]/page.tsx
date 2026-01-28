@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import {
   ArrowLeft,
   Wallet,
@@ -10,6 +11,7 @@ import {
   Copy,
   Check,
   Edit2,
+  ChevronRight,
 } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import {
@@ -32,8 +34,8 @@ import { AssetWithPrice } from '@/types';
 // Aggregated position by source
 interface AggregatedPosition {
   key: string;
-  label: string;
-  sublabel?: string;
+  walletId?: string;
+  walletName?: string;
   walletAddress?: string;
   chain?: string;
   protocol?: string;
@@ -54,7 +56,7 @@ export default function AssetDetailPage() {
     asset: AssetWithPrice | null;
   }>({ isOpen: false, asset: null });
 
-  const { positions, prices, customPrices, hideBalances } = usePortfolioStore();
+  const { positions, prices, customPrices, wallets, hideBalances } = usePortfolioStore();
 
   // Get all positions with prices
   const allPositionsWithPrices = useMemo(() => {
@@ -121,30 +123,38 @@ export default function AssetDetailPage() {
   const aggregatedPositions = useMemo((): AggregatedPosition[] => {
     const groups: Record<string, AggregatedPosition> = {};
 
+    // Helper to find wallet by address
+    const findWallet = (address: string) => {
+      return wallets.find(w => w.address.toLowerCase() === address.toLowerCase());
+    };
+
     assetPositions.forEach((p) => {
       // Create a unique key for grouping
       let key: string;
-      let label: string;
-      let sublabel: string | undefined;
+      let walletId: string | undefined;
+      let walletName: string | undefined;
 
       if (p.walletAddress) {
         // Group by wallet + protocol (or chain if no protocol)
         const location = p.protocol || p.chain || 'wallet';
         key = `${p.walletAddress}-${location}-${p.isDebt ? 'debt' : 'asset'}`;
-        label = formatAddress(p.walletAddress, 4);
-        sublabel = p.protocol || p.chain;
+
+        // Find wallet info
+        const wallet = findWallet(p.walletAddress);
+        if (wallet) {
+          walletId = wallet.id;
+          walletName = wallet.name;
+        }
       } else {
         // Manual positions
         key = `manual-${p.protocol || 'none'}-${p.isDebt ? 'debt' : 'asset'}`;
-        label = 'Manual';
-        sublabel = p.protocol;
       }
 
       if (!groups[key]) {
         groups[key] = {
           key,
-          label,
-          sublabel,
+          walletId,
+          walletName,
           walletAddress: p.walletAddress,
           chain: p.chain,
           protocol: p.protocol,
@@ -161,7 +171,7 @@ export default function AssetDetailPage() {
     });
 
     return Object.values(groups).sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
-  }, [assetPositions]);
+  }, [assetPositions, wallets]);
 
   // Calculate P&L if cost basis exists
   const pnlData = useMemo(() => {
@@ -223,10 +233,7 @@ export default function AssetDetailPage() {
           <CryptoIcon symbol={assetData.symbol} size={32} logoUrl={assetData.logo} />
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-lg font-semibold">{assetData.name}</h1>
-              <span className="text-sm text-[var(--foreground-muted)]">
-                {assetData.symbol.toUpperCase()}
-              </span>
+              <h1 className="text-[15px] font-semibold">{assetData.symbol.toUpperCase()}</h1>
               <span
                 className="px-1.5 py-0.5 text-[10px] font-medium rounded"
                 style={{
@@ -242,7 +249,7 @@ export default function AssetDetailPage() {
                 onClick={openCustomPriceModal}
                 className="group flex items-center gap-1 hover:text-[var(--accent-primary)] transition-colors"
               >
-                <span className="text-sm font-medium">
+                <span className="text-[13px]">
                   {formatCurrency(assetData.currentPrice)}
                 </span>
                 {assetData.hasCustomPrice && (
@@ -250,7 +257,7 @@ export default function AssetDetailPage() {
                 )}
                 <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity" />
               </button>
-              <span className={`text-xs ${getChangeColor(assetData.changePercent24h)}`}>
+              <span className={`text-[11px] ${getChangeColor(assetData.changePercent24h)}`}>
                 {isPositive ? <TrendingUp className="w-3 h-3 inline mr-0.5" /> : <TrendingDown className="w-3 h-3 inline mr-0.5" />}
                 {formatPercent(assetData.changePercent24h)}
               </span>
@@ -260,10 +267,10 @@ export default function AssetDetailPage() {
 
         <div className="text-right">
           <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-0.5">Total Value</p>
-          <p className="text-lg font-semibold">
+          <p className="text-[15px] font-semibold">
             {hideBalances ? '••••••' : formatCurrency(assetData.totalValue)}
           </p>
-          <p className="text-xs text-[var(--foreground-muted)]">
+          <p className="text-[11px] text-[var(--foreground-muted)]">
             {assetData.allocation.toFixed(1)}% of portfolio
           </p>
         </div>
@@ -274,43 +281,43 @@ export default function AssetDetailPage() {
       {/* Stats Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-6">
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">Holdings</p>
-          <p className="text-[15px] font-semibold">
+          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-0.5">Holdings</p>
+          <p className="text-[13px] font-medium">
             {hideBalances ? '••••' : formatNumber(assetData.totalAmount)}
           </p>
-          <p className="text-xs text-[var(--foreground-muted)]">{assetData.symbol.toUpperCase()}</p>
+          <p className="text-[10px] text-[var(--foreground-muted)]">{assetData.symbol.toUpperCase()}</p>
         </div>
 
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">Avg Price</p>
-          <p className="text-[15px] font-semibold">
+          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-0.5">Avg Price</p>
+          <p className="text-[13px] font-medium">
             {hideBalances ? '••••' : formatCurrency(assetData.totalValue / assetData.totalAmount)}
           </p>
-          <p className="text-xs text-[var(--foreground-muted)]">per unit</p>
+          <p className="text-[10px] text-[var(--foreground-muted)]">per unit</p>
         </div>
 
         {pnlData ? (
           <div>
-            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">Unrealized P&L</p>
-            <p className={`text-[15px] font-semibold ${getChangeColor(pnlData.pnl)}`}>
+            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-0.5">Unrealized P&L</p>
+            <p className={`text-[13px] font-medium ${getChangeColor(pnlData.pnl)}`}>
               {hideBalances ? '••••' : `${pnlData.pnl >= 0 ? '+' : ''}${formatCurrency(pnlData.pnl)}`}
             </p>
-            <p className={`text-xs ${getChangeColor(pnlData.pnlPercent)}`}>
+            <p className={`text-[10px] ${getChangeColor(pnlData.pnlPercent)}`}>
               {pnlData.pnlPercent >= 0 ? '+' : ''}{pnlData.pnlPercent.toFixed(1)}%
             </p>
           </div>
         ) : (
           <div>
-            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">Cost Basis</p>
-            <p className="text-[15px] font-semibold text-[var(--foreground-muted)]">--</p>
-            <p className="text-xs text-[var(--foreground-muted)]">Not set</p>
+            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-0.5">Cost Basis</p>
+            <p className="text-[13px] font-medium text-[var(--foreground-muted)]">--</p>
+            <p className="text-[10px] text-[var(--foreground-muted)]">Not set</p>
           </div>
         )}
 
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">Distribution</p>
-          <p className="text-[15px] font-semibold">{aggregatedPositions.length}</p>
-          <p className="text-xs text-[var(--foreground-muted)]">
+          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-0.5">Distribution</p>
+          <p className="text-[13px] font-medium">{aggregatedPositions.length}</p>
+          <p className="text-[10px] text-[var(--foreground-muted)]">
             {aggregatedPositions.length === 1 ? 'location' : 'locations'}
           </p>
         </div>
@@ -320,98 +327,107 @@ export default function AssetDetailPage() {
 
       {/* Holdings Table */}
       <div>
-        <h2 className="text-[13px] font-medium uppercase tracking-wider text-[var(--foreground-muted)] mb-3">
+        <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">
           Holdings by Location
-        </h2>
+        </p>
 
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-[var(--border)]">
-                <th className="table-header text-left pb-2">Source</th>
-                <th className="table-header text-left pb-2">Location</th>
-                <th className="table-header text-right pb-2">Amount</th>
-                <th className="table-header text-right pb-2">Value</th>
-                <th className="table-header text-right pb-2">%</th>
-              </tr>
-            </thead>
-            <tbody>
-              {aggregatedPositions.map((group) => {
-                const percent = assetData.totalValue !== 0
-                  ? (Math.abs(group.value) / Math.abs(assetData.totalValue)) * 100
-                  : 0;
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-[var(--border)]">
+              <th className="text-[11px] font-medium text-[var(--foreground-muted)] text-left pb-2">Source</th>
+              <th className="text-[11px] font-medium text-[var(--foreground-muted)] text-left pb-2">Location</th>
+              <th className="text-[11px] font-medium text-[var(--foreground-muted)] text-right pb-2">Amount</th>
+              <th className="text-[11px] font-medium text-[var(--foreground-muted)] text-right pb-2">Value</th>
+              <th className="text-[11px] font-medium text-[var(--foreground-muted)] text-right pb-2">%</th>
+            </tr>
+          </thead>
+          <tbody>
+            {aggregatedPositions.map((group) => {
+              const percent = assetData.totalValue !== 0
+                ? (Math.abs(group.value) / Math.abs(assetData.totalValue)) * 100
+                : 0;
 
-                return (
-                  <tr
-                    key={group.key}
-                    className={`border-b border-[var(--border)] last:border-0 hover:bg-[var(--background-secondary)] transition-colors ${
-                      group.isDebt ? 'bg-[var(--negative-light)]' : ''
-                    }`}
-                  >
-                    <td className="py-2">
-                      <div className="flex items-center gap-2">
-                        {group.walletAddress ? (
-                          <>
-                            <Wallet className="w-3.5 h-3.5 text-[var(--accent-primary)]" />
-                            <button
-                              onClick={() => copyToClipboard(group.walletAddress!)}
-                              className="flex items-center gap-1 font-mono text-xs hover:text-[var(--accent-primary)] transition-colors"
-                            >
-                              {group.label}
-                              {copiedAddress === group.walletAddress ? (
-                                <Check className="w-3 h-3 text-[var(--positive)]" />
-                              ) : (
-                                <Copy className="w-3 h-3 opacity-40" />
-                              )}
-                            </button>
-                          </>
-                        ) : (
-                          <span className="text-xs text-[var(--foreground-muted)]">Manual</span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="py-2">
+              return (
+                <tr
+                  key={group.key}
+                  className={`border-b border-[var(--border)] last:border-0 hover:bg-[var(--background-secondary)] transition-colors ${
+                    group.isDebt ? 'bg-[var(--negative-light)]' : ''
+                  }`}
+                >
+                  <td className="py-1.5">
+                    {group.walletAddress ? (
                       <div className="flex items-center gap-1.5">
-                        {group.chain && (
-                          <span className="tag text-[10px] py-0 px-1.5">{group.chain}</span>
-                        )}
-                        {group.protocol && (
-                          <span className="tag text-[10px] py-0 px-1.5 bg-[var(--accent-primary)] text-white">
-                            {group.protocol}
-                          </span>
-                        )}
-                        {group.isDebt && (
-                          <span className="px-1 py-0.5 text-[9px] font-semibold bg-[var(--negative)] text-white rounded">
-                            DEBT
-                          </span>
-                        )}
-                        {!group.chain && !group.protocol && !group.isDebt && (
-                          <span className="text-xs text-[var(--foreground-muted)]">--</span>
-                        )}
+                        <Wallet className="w-3 h-3 text-[var(--accent-primary)] flex-shrink-0" />
+                        <div className="min-w-0">
+                          {group.walletId ? (
+                            <Link
+                              href={`/crypto/wallets/${group.walletId}`}
+                              className="flex items-center gap-1 text-[11px] font-medium hover:text-[var(--accent-primary)] transition-colors"
+                            >
+                              {group.walletName || 'Wallet'}
+                              <ChevronRight className="w-2.5 h-2.5 opacity-50" />
+                            </Link>
+                          ) : (
+                            <span className="text-[11px]">Unknown Wallet</span>
+                          )}
+                          <button
+                            onClick={() => copyToClipboard(group.walletAddress!)}
+                            className="flex items-center gap-1 font-mono text-[10px] text-[var(--foreground-muted)] hover:text-[var(--foreground)] transition-colors"
+                          >
+                            {formatAddress(group.walletAddress, 4)}
+                            {copiedAddress === group.walletAddress ? (
+                              <Check className="w-2 h-2 text-[var(--positive)]" />
+                            ) : (
+                              <Copy className="w-2 h-2 opacity-40" />
+                            )}
+                          </button>
+                        </div>
                       </div>
-                    </td>
-                    <td className="py-2 text-right font-mono text-xs">
-                      {hideBalances ? '••••' : formatNumber(group.amount)}
-                    </td>
-                    <td className={`py-2 text-right text-sm font-semibold ${group.isDebt ? 'text-[var(--negative)]' : ''}`}>
-                      {hideBalances ? '••••' : formatCurrency(group.value)}
-                    </td>
-                    <td className="py-2 text-right text-xs text-[var(--foreground-muted)]">
-                      {percent.toFixed(1)}%
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                    ) : (
+                      <span className="text-[11px] text-[var(--foreground-muted)]">Manual</span>
+                    )}
+                  </td>
+                  <td className="py-1.5">
+                    <div className="flex items-center gap-1">
+                      {group.chain && (
+                        <span className="text-[10px] px-1 py-0 rounded bg-[var(--background-tertiary)] text-[var(--foreground-muted)]">{group.chain}</span>
+                      )}
+                      {group.protocol && (
+                        <span className="text-[10px] px-1 py-0 rounded bg-[var(--accent-primary)] text-white">
+                          {group.protocol}
+                        </span>
+                      )}
+                      {group.isDebt && (
+                        <span className="px-1 py-0 text-[9px] font-semibold bg-[var(--negative)] text-white rounded">
+                          DEBT
+                        </span>
+                      )}
+                      {!group.chain && !group.protocol && !group.isDebt && (
+                        <span className="text-[10px] text-[var(--foreground-muted)]">--</span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="py-1.5 text-right font-mono text-[11px]">
+                    {hideBalances ? '••••' : formatNumber(group.amount)}
+                  </td>
+                  <td className={`py-1.5 text-right text-[11px] font-medium ${group.isDebt ? 'text-[var(--negative)]' : ''}`}>
+                    {hideBalances ? '••••' : formatCurrency(group.value)}
+                  </td>
+                  <td className="py-1.5 text-right text-[10px] text-[var(--foreground-muted)]">
+                    {percent.toFixed(1)}%
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
 
         {/* Summary Footer */}
-        <div className="mt-3 pt-3 border-t border-[var(--border)] flex justify-between items-center">
-          <span className="text-xs text-[var(--foreground-muted)]">
+        <div className="mt-2 pt-2 border-t border-[var(--border)] flex justify-between items-center">
+          <span className="text-[10px] text-[var(--foreground-muted)]">
             {assetPositions.length} position{assetPositions.length !== 1 ? 's' : ''} across {aggregatedPositions.length} location{aggregatedPositions.length !== 1 ? 's' : ''}
           </span>
-          <span className="text-sm font-semibold">
+          <span className="text-xs font-medium">
             {hideBalances ? '••••••' : formatCurrency(assetData.totalValue)}
           </span>
         </div>
