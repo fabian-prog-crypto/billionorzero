@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Banknote, ArrowUpDown, ChevronDown, ChevronUp, Wallet, Building2 } from 'lucide-react';
+import { Banknote, ArrowUpDown, ChevronDown, ChevronUp, Wallet, Building2, ToggleLeft, ToggleRight } from 'lucide-react';
 import DonutChart, { DonutChartItem } from '@/components/charts/DonutChart';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import {
@@ -15,7 +15,6 @@ import CurrencyIcon from '@/components/ui/CurrencyIcon';
 
 type SortField = 'symbol' | 'value' | 'amount' | 'source';
 type SortDirection = 'asc' | 'desc';
-type ViewMode = 'fiat' | 'stablecoins' | 'all';
 
 function SortIcon({ field, sortField, sortDirection }: { field: SortField; sortField: SortField; sortDirection: SortDirection }) {
   if (sortField !== field) return <ArrowUpDown className="w-3 h-3 opacity-50" />;
@@ -26,31 +25,80 @@ function SortIcon({ field, sortField, sortDirection }: { field: SortField; sortF
   );
 }
 
-// Get friendly name for position
-function getPositionDisplayName(position: { symbol: string; name: string; walletAddress?: string; protocol?: string; chain?: string }): string {
-  const symbol = position.symbol.toUpperCase();
+// Currency display names
+const CURRENCY_NAMES: Record<string, string> = {
+  usd: 'US Dollar',
+  eur: 'Euro',
+  gbp: 'British Pound',
+  chf: 'Swiss Franc',
+  jpy: 'Japanese Yen',
+  cny: 'Chinese Yuan',
+  cad: 'Canadian Dollar',
+  aud: 'Australian Dollar',
+  nzd: 'New Zealand Dollar',
+  hkd: 'Hong Kong Dollar',
+  sgd: 'Singapore Dollar',
+  sek: 'Swedish Krona',
+  nok: 'Norwegian Krone',
+  dkk: 'Danish Krone',
+  krw: 'South Korean Won',
+  inr: 'Indian Rupee',
+  brl: 'Brazilian Real',
+  mxn: 'Mexican Peso',
+  zar: 'South African Rand',
+  aed: 'UAE Dirham',
+  thb: 'Thai Baht',
+  pln: 'Polish Zloty',
+  czk: 'Czech Koruna',
+  ils: 'Israeli Shekel',
+  php: 'Philippine Peso',
+  idr: 'Indonesian Rupiah',
+  myr: 'Malaysian Ringgit',
+  try: 'Turkish Lira',
+  rub: 'Russian Ruble',
+  // Stablecoins
+  usdt: 'Tether USD',
+  usdc: 'USD Coin',
+  dai: 'Dai',
+  busd: 'Binance USD',
+  tusd: 'TrueUSD',
+  frax: 'Frax',
+  lusd: 'Liquity USD',
+  usdd: 'USDD',
+  gusd: 'Gemini Dollar',
+  usdp: 'Pax Dollar',
+  pyusd: 'PayPal USD',
+  eurs: 'STASIS Euro',
+  eurc: 'Euro Coin',
+  usde: 'Ethena USDe',
+  susde: 'Staked USDe',
+  gho: 'GHO',
+  crvusd: 'Curve USD',
+};
 
-  // If it has a protocol, include that
+// Get clean display name for position
+function getPositionDisplayName(position: { symbol: string; name: string; walletAddress?: string; protocol?: string; chain?: string }): string {
+  const symbol = position.symbol.toLowerCase();
+
+  // If it has a protocol, show protocol name
   if (position.protocol) {
-    return `${symbol} (${position.protocol})`;
+    return position.protocol;
   }
 
-  // If it's from a wallet, indicate the chain
+  // If from a wallet, show chain
   if (position.walletAddress && position.chain) {
     const chainName = position.chain.charAt(0).toUpperCase() + position.chain.slice(1);
-    return `${symbol} on ${chainName}`;
+    return chainName;
   }
 
-  // If name is just the symbol or very similar, make it descriptive
-  if (position.name.toLowerCase() === symbol.toLowerCase() ||
-      position.name.toLowerCase().includes(symbol.toLowerCase())) {
-    // Check if it seems like a bank account
-    if (!position.walletAddress && !position.protocol) {
-      return `${symbol} Cash`;
-    }
+  // For manual entries, show clean currency name or "Bank Account"
+  const currencyName = CURRENCY_NAMES[symbol];
+  if (currencyName) {
+    return position.walletAddress ? currencyName : 'Bank Account';
   }
 
-  return position.name;
+  // Default to "Cash" for unrecognized manual entries
+  return position.walletAddress ? 'Wallet' : 'Cash';
 }
 
 export default function CashPage() {
@@ -58,45 +106,35 @@ export default function CashPage() {
   const [sortField, setSortField] = useState<SortField>('value');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [searchQuery, setSearchQuery] = useState('');
-  const [viewMode, setViewMode] = useState<ViewMode>('all');
+  const [includeStablecoins, setIncludeStablecoins] = useState(true);
 
   // Calculate all positions with prices
   const allPositions = useMemo(() => {
     return calculateAllPositionsWithPrices(positions, prices, customPrices);
   }, [positions, prices, customPrices]);
 
-  // Use centralized service for cash breakdown - include stablecoins for full breakdown
+  // Use centralized service for cash breakdown - always get full data
   const breakdownData = useMemo(() => {
     return calculateCashBreakdown(allPositions, true);
   }, [allPositions]);
 
-  // Combined cash positions based on view mode
+  // Combined cash positions based on toggle
   const cashPositions = useMemo(() => {
-    switch (viewMode) {
-      case 'fiat':
-        return breakdownData.fiatPositions;
-      case 'stablecoins':
-        return breakdownData.stablecoinPositions;
-      case 'all':
-      default:
-        return [...breakdownData.fiatPositions, ...breakdownData.stablecoinPositions];
+    if (includeStablecoins) {
+      return [...breakdownData.fiatPositions, ...breakdownData.stablecoinPositions];
     }
-  }, [breakdownData, viewMode]);
+    return breakdownData.fiatPositions;
+  }, [breakdownData, includeStablecoins]);
 
-  // Calculate total based on view mode
+  // Calculate total based on toggle
   const displayTotal = useMemo(() => {
-    switch (viewMode) {
-      case 'fiat':
-        return breakdownData.fiat.value;
-      case 'stablecoins':
-        return breakdownData.stablecoins.value;
-      case 'all':
-      default:
-        return breakdownData.total;
+    if (includeStablecoins) {
+      return breakdownData.total;
     }
-  }, [breakdownData, viewMode]);
+    return breakdownData.fiat.value;
+  }, [breakdownData, includeStablecoins]);
 
-  // Filter and sort positions (UI-only logic)
+  // Filter and sort positions
   const filteredPositions = useMemo(() => {
     let filtered = cashPositions;
 
@@ -106,7 +144,7 @@ export default function CashPage() {
       filtered = filtered.filter(
         (p) =>
           p.symbol.toLowerCase().includes(query) ||
-          p.name.toLowerCase().includes(query)
+          CURRENCY_NAMES[p.symbol.toLowerCase()]?.toLowerCase().includes(query)
       );
     }
 
@@ -189,7 +227,7 @@ export default function CashPage() {
       <div className="flex items-start justify-between mb-6">
         <div>
           <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">
-            {viewMode === 'all' ? 'TOTAL CASH & EQUIVALENTS' : viewMode === 'fiat' ? 'FIAT CURRENCIES' : 'STABLECOINS'}
+            {includeStablecoins ? 'TOTAL CASH & EQUIVALENTS' : 'FIAT CASH'}
           </p>
           <h2 className="text-2xl font-semibold mb-1">
             {hideBalances ? '••••••••' : formatCurrency(displayTotal)}
@@ -213,30 +251,22 @@ export default function CashPage() {
 
       <hr className="border-[var(--border)] mb-6" />
 
-      {/* View Mode Toggle */}
-      <div className="flex items-center gap-2 mb-6">
-        <div className="inline-flex rounded-lg bg-[var(--background-secondary)] p-0.5">
-          {[
-            { value: 'all', label: 'All' },
-            { value: 'fiat', label: 'Fiat' },
-            { value: 'stablecoins', label: 'Stablecoins' },
-          ].map((option) => (
-            <button
-              key={option.value}
-              onClick={() => setViewMode(option.value as ViewMode)}
-              className={`px-3 py-1.5 text-[12px] font-medium rounded-md transition-all ${
-                viewMode === option.value
-                  ? 'bg-[var(--background)] text-[var(--foreground)] shadow-sm'
-                  : 'text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
-              }`}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
+      {/* Stablecoin Toggle */}
+      <div className="flex items-center gap-3 mb-6">
+        <button
+          onClick={() => setIncludeStablecoins(!includeStablecoins)}
+          className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--background-secondary)] hover:bg-[var(--background-tertiary)] transition-colors"
+        >
+          {includeStablecoins ? (
+            <ToggleRight className="w-5 h-5 text-[var(--accent-primary)]" />
+          ) : (
+            <ToggleLeft className="w-5 h-5 text-[var(--foreground-muted)]" />
+          )}
+          <span className="text-[13px] font-medium">Include Stablecoins</span>
+        </button>
       </div>
 
-      {/* Pie Chart - Currency Breakdown */}
+      {/* Pie Chart and Summary */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
         <DonutChart
           title="By Currency"
@@ -250,8 +280,8 @@ export default function CashPage() {
           {/* Fiat Summary */}
           <div className="p-4 rounded-xl bg-[var(--background-secondary)]">
             <div className="flex items-center gap-2 mb-3">
-              <div className="w-8 h-8 rounded-lg bg-[var(--positive)]20 flex items-center justify-center">
-                <Building2 className="w-4 h-4 text-[var(--positive)]" />
+              <div className="w-8 h-8 rounded-lg bg-[#4CAF50]/20 flex items-center justify-center">
+                <Building2 className="w-4 h-4 text-[#4CAF50]" />
               </div>
               <div>
                 <p className="text-[11px] text-[var(--foreground-muted)]">Fiat Currencies</p>
@@ -263,7 +293,7 @@ export default function CashPage() {
             <div className="text-[12px] text-[var(--foreground-muted)]">
               {breakdownData.fiat.count} position{breakdownData.fiat.count !== 1 ? 's' : ''}
               {breakdownData.total > 0 && (
-                <span> · {((breakdownData.fiat.value / breakdownData.total) * 100).toFixed(0)}% of total</span>
+                <span> · {((breakdownData.fiat.value / breakdownData.total) * 100).toFixed(0)}%</span>
               )}
             </div>
           </div>
@@ -271,8 +301,8 @@ export default function CashPage() {
           {/* Stablecoin Summary */}
           <div className="p-4 rounded-xl bg-[var(--background-secondary)]">
             <div className="flex items-center gap-2 mb-3">
-              <div className="w-8 h-8 rounded-lg bg-[var(--accent-primary)]20 flex items-center justify-center">
-                <Wallet className="w-4 h-4 text-[var(--accent-primary)]" />
+              <div className="w-8 h-8 rounded-lg bg-[#2775CA]/20 flex items-center justify-center">
+                <Wallet className="w-4 h-4 text-[#2775CA]" />
               </div>
               <div>
                 <p className="text-[11px] text-[var(--foreground-muted)]">Stablecoins</p>
@@ -284,7 +314,7 @@ export default function CashPage() {
             <div className="text-[12px] text-[var(--foreground-muted)]">
               {breakdownData.stablecoins.count} position{breakdownData.stablecoins.count !== 1 ? 's' : ''}
               {breakdownData.total > 0 && (
-                <span> · {((breakdownData.stablecoins.value / breakdownData.total) * 100).toFixed(0)}% of total</span>
+                <span> · {((breakdownData.stablecoins.value / breakdownData.total) * 100).toFixed(0)}%</span>
               )}
             </div>
           </div>
@@ -293,7 +323,7 @@ export default function CashPage() {
 
       <hr className="border-[var(--border)] mb-6" />
 
-      {/* Search and Count */}
+      {/* Search */}
       <div className="flex items-center justify-between gap-3 mb-4">
         <SearchInput
           value={searchQuery}
@@ -349,7 +379,7 @@ export default function CashPage() {
           <tbody>
             {filteredPositions.map((position) => {
               const percentage = displayTotal > 0 ? (position.value / displayTotal) * 100 : 0;
-              const displayName = getPositionDisplayName(position);
+              const currencyName = CURRENCY_NAMES[position.symbol.toLowerCase()] || position.symbol.toUpperCase();
 
               return (
                 <tr
@@ -365,8 +395,8 @@ export default function CashPage() {
                       />
                       <div>
                         <p className="font-medium text-sm">{position.symbol.toUpperCase()}</p>
-                        <p className="text-[11px] text-[var(--foreground-muted)] truncate max-w-[180px]">
-                          {displayName}
+                        <p className="text-[11px] text-[var(--foreground-muted)]">
+                          {currencyName}
                         </p>
                       </div>
                     </div>
@@ -383,12 +413,17 @@ export default function CashPage() {
                             {position.chain}
                           </span>
                         )}
+                        {position.protocol && (
+                          <span className="tag text-[9px] py-0.5 px-1 bg-[var(--accent-primary)] text-white">
+                            {position.protocol}
+                          </span>
+                        )}
                       </div>
                     ) : (
                       <div className="flex items-center gap-1.5">
                         <Building2 className="w-3 h-3 text-[var(--foreground-muted)]" />
                         <span className="text-[11px] text-[var(--foreground-muted)]">
-                          Manual
+                          Bank Account
                         </span>
                       </div>
                     )}
