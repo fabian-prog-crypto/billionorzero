@@ -42,7 +42,8 @@ function isSpamToken(symbol: string, name?: string): boolean {
 
 export interface WalletProviderConfig {
   debankApiKey?: string;
-  heliusApiKey?: string; // For Solana wallets
+  heliusApiKey?: string; // For Solana wallets (primary)
+  birdeyeApiKey?: string; // For Solana wallets (fallback/alternative)
   useDemoData?: boolean;
   cacheTtlMs?: number; // Cache TTL in milliseconds (default 5 min)
 }
@@ -398,6 +399,7 @@ export class WalletProvider {
       forceRefresh,
       hasDebankKey: !!this.config.debankApiKey,
       hasHeliusKey: !!this.config.heliusApiKey,
+      hasBirdeyeKey: !!this.config.birdeyeApiKey,
       useDemoData: this.config.useDemoData,
     });
 
@@ -591,21 +593,23 @@ export class WalletProvider {
   }
 
   /**
-   * Fetch Solana wallet tokens using Helius API
+   * Fetch Solana wallet tokens using Helius API (primary) with Birdeye fallback
    */
   async getSolanaWalletTokens(address: string, forceRefresh: boolean = false): Promise<WalletTokensResult> {
     console.log('[WalletProvider] getSolanaWalletTokens called:', {
-      hasApiKey: !!this.config.heliusApiKey,
+      hasHeliusKey: !!this.config.heliusApiKey,
+      hasBirdeyeKey: !!this.config.birdeyeApiKey,
       address: address.slice(0, 10) + '...',
     });
 
-    // If no Helius API key, return empty (not demo data for Solana)
-    if (!this.config.heliusApiKey) {
-      console.warn('[WalletProvider] No Helius API key configured for Solana wallet');
+    // Check if any Solana API key is configured
+    const hasAnyProvider = this.config.heliusApiKey || this.config.birdeyeApiKey;
+    if (!hasAnyProvider) {
+      console.warn('[WalletProvider] No Solana API keys configured');
       return {
         tokens: [],
         isDemo: false,
-        error: 'Helius API key not configured. Add it in Settings to track Solana wallets.',
+        error: 'No Solana API key configured. Add Helius or Birdeye key in Settings.',
       };
     }
 
@@ -619,57 +623,104 @@ export class WalletProvider {
       }
     }
 
-    try {
-      console.log('[WalletProvider] Calling Helius API...');
-      const url = `/api/solana/tokens?address=${encodeURIComponent(address)}&apiKey=${encodeURIComponent(this.config.heliusApiKey)}`;
-      const response = await fetch(url);
+    let tokens: WalletBalance[] = [];
+    let provider = 'none';
+    let error: string | undefined;
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new ApiError(
-          errorData.error || 'Failed to fetch Solana tokens',
-          response.status,
-          'helius'
-        );
+    // Try Helius first (primary provider)
+    if (this.config.heliusApiKey) {
+      try {
+        console.log('[WalletProvider] Trying Helius API (primary)...');
+        const url = `/api/solana/tokens?address=${encodeURIComponent(address)}&apiKey=${encodeURIComponent(this.config.heliusApiKey)}`;
+        const response = await fetch(url);
+
+        if (response.ok) {
+          const rawTokens = await response.json();
+          console.log('[WalletProvider] Helius returned', rawTokens.length, 'tokens');
+
+          if (rawTokens.length > 0) {
+            tokens = this.transformSolanaTokens(rawTokens);
+            provider = 'helius';
+          }
+        } else {
+          const errorData = await response.json().catch(() => ({}));
+          console.warn('[WalletProvider] Helius API error:', errorData);
+        }
+      } catch (heliusError) {
+        console.error('[WalletProvider] Helius API error:', heliusError);
       }
+    }
 
-      const rawTokens = await response.json();
-      console.log('[WalletProvider] Helius API returned', rawTokens.length, 'tokens');
+    // Try Birdeye as fallback if Helius failed or returned no tokens
+    if (tokens.length === 0 && this.config.birdeyeApiKey) {
+      try {
+        console.log('[WalletProvider] Trying Birdeye API (fallback)...');
+        const url = `/api/solana/birdeye?address=${encodeURIComponent(address)}&apiKey=${encodeURIComponent(this.config.birdeyeApiKey)}`;
+        const response = await fetch(url);
 
-      // Transform to WalletBalance format (already filtered by API route)
-      const tokens: WalletBalance[] = rawTokens
-        .filter((token: any) => {
-          // Skip spam tokens
-          if (isSpamToken(token.symbol, token.name)) return false;
-          return true;
-        })
-        .map((token: any) => ({
-          symbol: token.symbol,
-          name: token.name,
-          amount: token.amount,
-          price: token.price || 0,
-          value: token.value || 0,
-          chain: 'sol',
-          logo: token.logo_url,
-          isVerified: token.is_verified,
-        }));
+        if (response.ok) {
+          const rawTokens = await response.json();
+          console.log('[WalletProvider] Birdeye returned', rawTokens.length, 'tokens');
 
-      const result = { tokens, isDemo: false };
+          if (rawTokens.length > 0) {
+            tokens = this.transformSolanaTokens(rawTokens);
+            provider = 'birdeye';
+          }
+        } else {
+          const errorData = await response.json().catch(() => ({}));
+          console.warn('[WalletProvider] Birdeye API error:', errorData);
+          error = errorData.error || 'Birdeye API error';
+        }
+      } catch (birdeyeError) {
+        console.error('[WalletProvider] Birdeye API error:', birdeyeError);
+        error = 'Failed to fetch from Birdeye';
+      }
+    }
 
-      // Cache the result
+    // If both failed
+    if (tokens.length === 0 && !error) {
+      error = 'No tokens found from any provider';
+    }
+
+    console.log(`[WalletProvider] Solana tokens result: ${tokens.length} tokens from ${provider}`);
+
+    const result: WalletTokensResult = {
+      tokens,
+      isDemo: false,
+      error: tokens.length === 0 ? error : undefined,
+    };
+
+    // Cache the result if we got tokens
+    if (tokens.length > 0) {
       const ttl = this.config.cacheTtlMs || DEFAULT_CACHE_TTL_MS;
       setCache(cacheKey, result, ttl);
-      console.log(`[CACHE] Cached ${tokens.length} Solana tokens for ${address.slice(0, 8)}...`);
-
-      return result;
-    } catch (error) {
-      console.error('[WalletProvider] Helius API error:', error);
-      return {
-        tokens: [],
-        isDemo: false,
-        error: error instanceof ApiError ? error.message : 'Failed to fetch Solana tokens',
-      };
+      console.log(`[CACHE] Cached ${tokens.length} Solana tokens for ${address.slice(0, 8)}... (provider: ${provider})`);
     }
+
+    return result;
+  }
+
+  /**
+   * Transform raw Solana tokens to WalletBalance format
+   */
+  private transformSolanaTokens(rawTokens: any[]): WalletBalance[] {
+    return rawTokens
+      .filter((token: any) => {
+        // Skip spam tokens
+        if (isSpamToken(token.symbol, token.name)) return false;
+        return true;
+      })
+      .map((token: any) => ({
+        symbol: token.symbol,
+        name: token.name,
+        amount: token.amount,
+        price: token.price || 0,
+        value: token.value || 0,
+        chain: 'sol',
+        logo: token.logo_url,
+        isVerified: token.is_verified,
+        tokenId: token.mint,
+      }));
   }
 }
 
@@ -681,6 +732,7 @@ export function getWalletProvider(config?: WalletProviderConfig): WalletProvider
     hasConfig: !!config,
     hasDebankKey: !!config?.debankApiKey,
     hasHeliusKey: !!config?.heliusApiKey,
+    hasBirdeyeKey: !!config?.birdeyeApiKey,
     useDemoData: config?.useDemoData,
     instanceExists: !!instance,
   });
@@ -697,6 +749,7 @@ export function getWalletProvider(config?: WalletProviderConfig): WalletProvider
   console.log('[getWalletProvider] Instance config after update:', {
     hasDebankKey: !!instance['config'].debankApiKey,
     hasHeliusKey: !!instance['config'].heliusApiKey,
+    hasBirdeyeKey: !!instance['config'].birdeyeApiKey,
     useDemoData: instance['config'].useDemoData,
   });
 

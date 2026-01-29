@@ -5,7 +5,8 @@
 
 export interface ServiceConfig {
   debankApiKey?: string;
-  heliusApiKey?: string; // For Solana wallets
+  heliusApiKey?: string; // For Solana wallets (Helius DAS API)
+  birdeyeApiKey?: string; // For Solana wallets (Birdeye API - alternative/fallback)
   stockApiKey?: string;
   useDemoData: boolean;
   refreshInterval: number; // in milliseconds
@@ -14,6 +15,7 @@ export interface ServiceConfig {
 const CONFIG_KEYS = {
   debankApiKey: 'debank_api_key',
   heliusApiKey: 'helius_api_key',
+  birdeyeApiKey: 'birdeye_api_key',
   stockApiKey: 'stock_api_key',
   useDemoData: 'use_demo_data',
 } as const;
@@ -21,6 +23,7 @@ const CONFIG_KEYS = {
 const DEFAULT_CONFIG: ServiceConfig = {
   debankApiKey: undefined,
   heliusApiKey: undefined,
+  birdeyeApiKey: undefined,
   stockApiKey: undefined,
   useDemoData: false,
   refreshInterval: 10 * 60 * 1000, // 10 minutes
@@ -46,6 +49,7 @@ export class ConfigManager {
 
     const rawDebankKey = localStorage.getItem(CONFIG_KEYS.debankApiKey);
     const rawHeliusKey = localStorage.getItem(CONFIG_KEYS.heliusApiKey);
+    const rawBirdeyeKey = localStorage.getItem(CONFIG_KEYS.birdeyeApiKey);
     const rawStockKey = localStorage.getItem(CONFIG_KEYS.stockApiKey);
     const rawUseDemoData = localStorage.getItem(CONFIG_KEYS.useDemoData);
 
@@ -53,6 +57,7 @@ export class ConfigManager {
     console.log('[ConfigManager] Loading from localStorage:', {
       debankKey: rawDebankKey ? `${rawDebankKey.slice(0, 8)}... (${rawDebankKey.length} chars)` : 'NOT SET',
       heliusKey: rawHeliusKey ? 'SET' : 'NOT SET',
+      birdeyeKey: rawBirdeyeKey ? 'SET' : 'NOT SET',
       stockKey: rawStockKey ? 'SET' : 'NOT SET',
       useDemoData: rawUseDemoData,
     });
@@ -61,6 +66,7 @@ export class ConfigManager {
       ...DEFAULT_CONFIG,
       debankApiKey: rawDebankKey || undefined,
       heliusApiKey: rawHeliusKey || undefined,
+      birdeyeApiKey: rawBirdeyeKey || undefined,
       stockApiKey: rawStockKey || undefined,
       useDemoData: rawUseDemoData === 'true',
     };
@@ -104,6 +110,13 @@ export class ConfigManager {
           localStorage.removeItem(CONFIG_KEYS.heliusApiKey);
         }
       }
+      if (updates.birdeyeApiKey !== undefined) {
+        if (updates.birdeyeApiKey) {
+          localStorage.setItem(CONFIG_KEYS.birdeyeApiKey, updates.birdeyeApiKey);
+        } else {
+          localStorage.removeItem(CONFIG_KEYS.birdeyeApiKey);
+        }
+      }
       if (updates.stockApiKey !== undefined) {
         if (updates.stockApiKey) {
           localStorage.setItem(CONFIG_KEYS.stockApiKey, updates.stockApiKey);
@@ -131,6 +144,13 @@ export class ConfigManager {
    */
   setHeliusApiKey(apiKey: string | undefined): void {
     this.setConfig({ heliusApiKey: apiKey });
+  }
+
+  /**
+   * Set Birdeye API key (for Solana - alternative provider)
+   */
+  setBirdeyeApiKey(apiKey: string | undefined): void {
+    this.setConfig({ birdeyeApiKey: apiKey });
   }
 
   /**
@@ -169,6 +189,20 @@ export class ConfigManager {
   }
 
   /**
+   * Check if Birdeye (Solana alternative) is configured
+   */
+  isBirdeyeConfigured(): boolean {
+    return !!this.config.birdeyeApiKey;
+  }
+
+  /**
+   * Check if any Solana provider is configured
+   */
+  hasSolanaProvider(): boolean {
+    return this.isHeliusConfigured() || this.isBirdeyeConfigured();
+  }
+
+  /**
    * Check if stock API is configured
    */
   isStockApiConfigured(): boolean {
@@ -198,6 +232,7 @@ export class ConfigManager {
     if (typeof window !== 'undefined') {
       localStorage.removeItem(CONFIG_KEYS.debankApiKey);
       localStorage.removeItem(CONFIG_KEYS.heliusApiKey);
+      localStorage.removeItem(CONFIG_KEYS.birdeyeApiKey);
       localStorage.removeItem(CONFIG_KEYS.stockApiKey);
       localStorage.removeItem(CONFIG_KEYS.useDemoData);
     }

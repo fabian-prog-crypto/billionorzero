@@ -15,6 +15,7 @@ import {
 export default function SettingsPage() {
   const [debankApiKey, setDebankApiKey] = useState('');
   const [heliusApiKey, setHeliusApiKey] = useState('');
+  const [birdeyeApiKey, setBirdeyeApiKey] = useState('');
   const [stockApiKey, setStockApiKey] = useState('');
   const [saved, setSaved] = useState(false);
   const [hasPasskey, setHasPasskey] = useState(false);
@@ -35,6 +36,7 @@ export default function SettingsPage() {
   useEffect(() => {
     setDebankApiKey(localStorage.getItem('debank_api_key') || '');
     setHeliusApiKey(localStorage.getItem('helius_api_key') || '');
+    setBirdeyeApiKey(localStorage.getItem('birdeye_api_key') || '');
     setStockApiKey(localStorage.getItem('stock_api_key') || '');
 
     // Check passkey support and status
@@ -73,6 +75,7 @@ export default function SettingsPage() {
   const handleSave = () => {
     localStorage.setItem('debank_api_key', debankApiKey);
     localStorage.setItem('helius_api_key', heliusApiKey);
+    localStorage.setItem('birdeye_api_key', birdeyeApiKey);
     localStorage.setItem('stock_api_key', stockApiKey);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -328,7 +331,7 @@ export default function SettingsPage() {
 
             <div>
               <label className="block text-sm font-medium mb-1">
-                Helius API Key (Solana)
+                Helius API Key (Solana - Primary)
                 <a
                   href="https://dev.helius.xyz/"
                   target="_blank"
@@ -346,7 +349,31 @@ export default function SettingsPage() {
                 className="w-full"
               />
               <p className="text-xs text-[var(--foreground-muted)] mt-1">
-                Used for Solana wallet tracking and token balances
+                Primary provider for Solana tokens using DAS API
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                Birdeye API Key (Solana - Fallback)
+                <a
+                  href="https://docs.birdeye.so/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="ml-2 text-[var(--accent-primary)] text-xs"
+                >
+                  Get API key
+                </a>
+              </label>
+              <input
+                type="password"
+                placeholder="Enter your Birdeye API key (optional)"
+                value={birdeyeApiKey}
+                onChange={(e) => setBirdeyeApiKey(e.target.value)}
+                className="w-full"
+              />
+              <p className="text-xs text-[var(--foreground-muted)] mt-1">
+                Alternative provider with better token coverage (used as fallback)
               </p>
             </div>
 

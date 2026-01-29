@@ -54,17 +54,21 @@ export class PortfolioService {
       hasDebankKey: !!config.debankApiKey,
       debankKeyLength: config.debankApiKey?.length || 0,
       debankKeyPreview: config.debankApiKey ? config.debankApiKey.slice(0, 8) + '...' : 'NONE',
+      hasHeliusKey: !!config.heliusApiKey,
+      hasBirdeyeKey: !!config.birdeyeApiKey,
       useDemoData: config.useDemoData,
     });
 
     const walletProviderConfig = {
       debankApiKey: config.debankApiKey,
       heliusApiKey: config.heliusApiKey,
+      birdeyeApiKey: config.birdeyeApiKey,
       useDemoData: config.useDemoData,
     };
     console.log('[PortfolioService.updateProviders] Calling getWalletProvider with:', {
       hasDebankKey: !!walletProviderConfig.debankApiKey,
       hasHeliusKey: !!walletProviderConfig.heliusApiKey,
+      hasBirdeyeKey: !!walletProviderConfig.birdeyeApiKey,
       useDemoData: walletProviderConfig.useDemoData,
     });
 
