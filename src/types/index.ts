@@ -31,6 +31,7 @@ export interface Position {
   protocol?: string; // DeFi protocol name (e.g., "Morpho", "Aave")
   isDebt?: boolean; // True if this is a borrowed/debt position
   detailTypes?: string[]; // Position detail types from DeBank (e.g., ['vesting'], ['locked'])
+  unlockAt?: number; // Unix timestamp when vesting/locked position unlocks
   logo?: string; // Token logo URL from DeBank/API (prioritized for display)
   addedAt: string;
   updatedAt: string;
@@ -115,6 +116,7 @@ export interface DefiPosition {
     amount: number;
     price: number;
     detailTypes?: string[]; // Raw detail_types from DeBank (e.g., ['vesting'])
+    unlockAt?: number; // Unix timestamp when vesting/locked position unlocks
   }[];
   debtTokens?: {
     symbol: string;

@@ -3,7 +3,8 @@
 import { useState, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Plus, Trash2, Wallet, RefreshCw, Eye, EyeOff, ArrowUpDown, Download, Layers, Grid3X3, Edit2 } from 'lucide-react';
+import { Plus, Trash2, Wallet, RefreshCw, Eye, EyeOff, ArrowUpDown, Download, Layers, Grid3X3, Edit2, Clock, Lock } from 'lucide-react';
+import { format, formatDistanceToNow, isPast } from 'date-fns';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import { calculateAllPositionsWithPrices, calculatePortfolioSummary, aggregatePositionsBySymbol, calculateUnrealizedPnL, filterDustPositions, DUST_THRESHOLD } from '@/services';
 import AddPositionModal from '@/components/modals/AddPositionModal';
@@ -561,37 +562,86 @@ export default function PositionsPage() {
                           <div className="flex items-center gap-2">
                             <p className="font-medium text-sm hover:text-[var(--accent-primary)] transition-colors">{position.symbol.toUpperCase()}</p>
                             {isDebt && (
-                              <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-[var(--negative)] text-white ">
+                              <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-[var(--negative)] text-white">
                                 DEBT
                               </span>
                             )}
                             {position.detailTypes?.includes('vesting') && (
-                              <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-[var(--accent-secondary)] text-white ">
-                                VESTING
-                              </span>
+                              <div className="group relative inline-flex items-center">
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-semibold bg-gradient-to-r from-purple-500 to-indigo-500 text-white">
+                                  <Clock className="w-2.5 h-2.5" />
+                                  VESTING
+                                </span>
+                                {position.unlockAt && (
+                                  <div className="tooltip whitespace-nowrap">
+                                    <div className="flex items-center gap-1.5">
+                                      <Clock className="w-3 h-3" />
+                                      <span>
+                                        {isPast(new Date(position.unlockAt * 1000))
+                                          ? 'Unlocked'
+                                          : `Unlocks ${formatDistanceToNow(new Date(position.unlockAt * 1000), { addSuffix: true })}`}
+                                      </span>
+                                    </div>
+                                    <div className="text-[10px] opacity-75 mt-0.5">
+                                      {format(new Date(position.unlockAt * 1000), 'MMM d, yyyy')}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
                             )}
                             {position.detailTypes?.includes('locked') && !position.detailTypes?.includes('vesting') && (
-                              <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-[var(--foreground-muted)] text-white ">
-                                LOCKED
-                              </span>
+                              <div className="group relative inline-flex items-center">
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-semibold bg-[var(--foreground-muted)] text-white">
+                                  <Lock className="w-2.5 h-2.5" />
+                                  LOCKED
+                                </span>
+                                {position.unlockAt && (
+                                  <div className="tooltip whitespace-nowrap">
+                                    <div className="flex items-center gap-1.5">
+                                      <Lock className="w-3 h-3" />
+                                      <span>
+                                        {isPast(new Date(position.unlockAt * 1000))
+                                          ? 'Unlocked'
+                                          : `Unlocks ${formatDistanceToNow(new Date(position.unlockAt * 1000), { addSuffix: true })}`}
+                                      </span>
+                                    </div>
+                                    <div className="text-[10px] opacity-75 mt-0.5">
+                                      {format(new Date(position.unlockAt * 1000), 'MMM d, yyyy')}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
                             )}
                           </div>
                         </Link>
                       </td>
                       <td className="py-2">
                         {isWalletPosition ? (
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <Wallet className="w-3 h-3 text-[var(--accent-primary)]" />
-                            <span className="text-[11px] text-[var(--foreground-muted)]">
-                              {formatAddress(position.walletAddress!, 4)}
-                            </span>
-                            {position.chain && (
-                              <span className="tag text-[10px] py-0 px-1.5">{position.chain}</span>
-                            )}
-                            {position.protocol && (
-                              <span className="tag text-[10px] py-0 px-1.5 bg-[var(--accent-primary)] text-white">
-                                {position.protocol}
+                          <div className="flex flex-col gap-0.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <Wallet className="w-3 h-3 text-[var(--accent-primary)]" />
+                              <span className="text-[11px] text-[var(--foreground-muted)]">
+                                {formatAddress(position.walletAddress!, 4)}
                               </span>
+                              {position.chain && (
+                                <span className="tag text-[10px] py-0 px-1.5">{position.chain}</span>
+                              )}
+                              {position.protocol && (
+                                <span className="tag text-[10px] py-0 px-1.5 bg-[var(--accent-primary)] text-white">
+                                  {position.protocol}
+                                </span>
+                              )}
+                            </div>
+                            {/* Show unlock date for vesting/locked positions */}
+                            {position.unlockAt && (position.detailTypes?.includes('vesting') || position.detailTypes?.includes('locked')) && (
+                              <div className="flex items-center gap-1 text-[10px] text-[var(--foreground-muted)]">
+                                <Clock className="w-2.5 h-2.5" />
+                                <span>
+                                  {isPast(new Date(position.unlockAt * 1000))
+                                    ? 'Unlocked'
+                                    : `Unlocks ${format(new Date(position.unlockAt * 1000), 'MMM d, yyyy')}`}
+                                </span>
+                              </div>
                             )}
                           </div>
                         ) : (

@@ -35,6 +35,40 @@ export async function GET(request: NextRequest) {
     }
 
     const data = await response.json();
+
+    // Log Sablier data specifically for debugging vesting positions
+    if (Array.isArray(data)) {
+      const sablierProtocols = data.filter((p: any) =>
+        p.name?.toLowerCase().includes('sablier') ||
+        p.id?.toLowerCase().includes('sablier')
+      );
+      if (sablierProtocols.length > 0) {
+        console.log('[API /debank/protocols] Sablier protocols found:', JSON.stringify(sablierProtocols, null, 2));
+      }
+
+      // Also log any protocols with vesting detail_types
+      const vestingProtocols = data.filter((p: any) =>
+        p.portfolio_item_list?.some((item: any) =>
+          item.detail_types?.includes('vesting') ||
+          item.detail_types?.includes('locked')
+        )
+      );
+      if (vestingProtocols.length > 0) {
+        console.log('[API /debank/protocols] Protocols with vesting/locked:',
+          vestingProtocols.map((p: any) => ({
+            name: p.name,
+            items: p.portfolio_item_list?.map((i: any) => ({
+              name: i.name,
+              detail_types: i.detail_types,
+              stats: i.stats,
+              supply_tokens: i.detail?.supply_token_list?.length || 0,
+              reward_tokens: i.detail?.reward_token_list?.length || 0,
+            }))
+          }))
+        );
+      }
+    }
+
     return NextResponse.json(data);
   } catch (error) {
     console.error('Error fetching from DeBank:', error);

@@ -228,9 +228,9 @@ export class WalletProvider {
       for (const protocol of rawProtocols) {
         // Aggregate all tokens across portfolio items at the protocol level
         // This prevents duplicates when there are multiple positions in the same protocol
-        const aggregatedSupply = new Map<string, { symbol: string; amount: number; price: number; detailTypes?: string[] }>();
+        const aggregatedSupply = new Map<string, { symbol: string; amount: number; price: number; detailTypes?: string[]; unlockAt?: number }>();
         const aggregatedDebt = new Map<string, { symbol: string; amount: number; price: number }>();
-        const aggregatedRewards = new Map<string, { symbol: string; amount: number; price: number; detailTypes?: string[] }>();
+        const aggregatedRewards = new Map<string, { symbol: string; amount: number; price: number; detailTypes?: string[]; unlockAt?: number }>();
         let totalValue = 0;
 
         for (const item of protocol.portfolio_item_list || []) {
@@ -238,6 +238,11 @@ export class WalletProvider {
 
           // Get raw detail_types from DeBank (e.g., ['vesting'], ['locked', 'reward'])
           const detailTypes = Array.isArray(item.detail_types) ? item.detail_types : undefined;
+
+          // Get unlock timestamp - DeBank uses 'end_at' for vesting or 'unlock_at' for locked
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const itemAny = item as any;
+          const unlockAt = itemAny.detail?.end_at || itemAny.detail?.unlock_at;
 
           // Aggregate supply tokens (filter spam)
           for (const t of item.detail?.supply_token_list || []) {
@@ -251,8 +256,47 @@ export class WalletProvider {
               if (detailTypes && !existing.detailTypes) {
                 existing.detailTypes = detailTypes;
               }
+              // Keep earliest unlock time
+              if (unlockAt && (!existing.unlockAt || unlockAt < existing.unlockAt)) {
+                existing.unlockAt = unlockAt;
+              }
             } else {
-              aggregatedSupply.set(key, { symbol: t.symbol, amount: t.amount, price: t.price, detailTypes });
+              aggregatedSupply.set(key, { symbol: t.symbol, amount: t.amount, price: t.price, detailTypes, unlockAt });
+            }
+          }
+
+          // For VESTING protocols only: process asset_token_list when supply_token_list is empty
+          // This is where DeBank puts vesting tokens for protocols like Sablier
+          const isVestingItem = detailTypes?.includes('vesting') || detailTypes?.includes('locked');
+          const hasNoSupplyTokens = !item.detail?.supply_token_list || item.detail.supply_token_list.length === 0;
+
+          if (isVestingItem && hasNoSupplyTokens && Array.isArray(itemAny.asset_token_list)) {
+            for (const t of itemAny.asset_token_list) {
+              if (!t?.symbol || isSpamToken(t.symbol, t.name)) continue;
+
+              const key = `${t.symbol.toLowerCase()}-${t.chain || ''}`;
+              const existing = aggregatedSupply.get(key);
+              if (existing) {
+                existing.amount += t.amount;
+                if (detailTypes && !existing.detailTypes) {
+                  existing.detailTypes = detailTypes;
+                }
+                if (unlockAt && (!existing.unlockAt || unlockAt < existing.unlockAt)) {
+                  existing.unlockAt = unlockAt;
+                }
+              } else {
+                aggregatedSupply.set(key, { symbol: t.symbol, amount: t.amount, price: t.price, detailTypes, unlockAt });
+              }
+            }
+          }
+
+          // For VESTING protocols only: process single detail.token when no other tokens found
+          if (isVestingItem && hasNoSupplyTokens && itemAny.detail?.token && !isSpamToken(itemAny.detail.token.symbol, itemAny.detail.token.name)) {
+            const t = itemAny.detail.token;
+            const key = `${t.symbol.toLowerCase()}-${t.chain || ''}`;
+            // Only add if not already in supply (asset_token_list takes priority)
+            if (!aggregatedSupply.has(key)) {
+              aggregatedSupply.set(key, { symbol: t.symbol, amount: t.amount, price: t.price, detailTypes, unlockAt });
             }
           }
 
@@ -270,8 +314,12 @@ export class WalletProvider {
           }
 
           // Aggregate reward tokens (vesting, claimable rewards - e.g., Sablier)
-          // For Sablier, if no detailTypes, mark as vesting
-          const rewardDetailTypes = detailTypes || (protocol.name.toLowerCase().includes('sablier') ? ['vesting'] : undefined);
+          // For Sablier or vesting protocols, ensure detailTypes includes 'vesting'
+          const isSablierLike = protocol.name.toLowerCase().includes('sablier') ||
+                                protocol.name.toLowerCase().includes('vesting') ||
+                                detailTypes?.includes('vesting');
+          const rewardDetailTypes = detailTypes || (isSablierLike ? ['vesting'] : undefined);
+
           for (const t of item.detail?.reward_token_list || []) {
             if (isSpamToken(t.symbol, t.name)) continue;
 
@@ -282,8 +330,11 @@ export class WalletProvider {
               if (rewardDetailTypes && !existing.detailTypes) {
                 existing.detailTypes = rewardDetailTypes;
               }
+              if (unlockAt && (!existing.unlockAt || unlockAt < existing.unlockAt)) {
+                existing.unlockAt = unlockAt;
+              }
             } else {
-              aggregatedRewards.set(key, { symbol: t.symbol, amount: t.amount, price: t.price, detailTypes: rewardDetailTypes });
+              aggregatedRewards.set(key, { symbol: t.symbol, amount: t.amount, price: t.price, detailTypes: rewardDetailTypes, unlockAt });
             }
           }
 
@@ -312,12 +363,36 @@ export class WalletProvider {
             if (reward.detailTypes) {
               existing.detailTypes = reward.detailTypes;
             }
+            // Keep earliest unlock time
+            if (reward.unlockAt && (!existing.unlockAt || reward.unlockAt < existing.unlockAt)) {
+              existing.unlockAt = reward.unlockAt;
+            }
           } else {
             aggregatedSupply.set(key, reward);
           }
         }
         const tokens = Array.from(aggregatedSupply.values());
         const debtTokens = Array.from(aggregatedDebt.values());
+
+        // Log detailed info for vesting/Sablier protocols
+        const hasVesting = tokens.some(t => t.detailTypes?.includes('vesting'));
+        const isSablier = protocol.name.toLowerCase().includes('sablier');
+
+        // Extra logging for Sablier/vesting protocols
+        if (isSablier || hasVesting) {
+          console.log(`[WalletProvider] VESTING PROTOCOL ${protocol.name}:`, {
+            chain: protocol.chain,
+            totalValue,
+            tokens: tokens.map(t => ({
+              symbol: t.symbol,
+              amount: t.amount,
+              price: t.price,
+              value: t.amount * t.price,
+              detailTypes: t.detailTypes,
+              unlockAt: t.unlockAt ? new Date(t.unlockAt * 1000).toISOString() : undefined,
+            })),
+          });
+        }
 
         console.log(`[WalletProvider] Protocol ${protocol.name} processed:`, {
           chain: protocol.chain,
@@ -326,6 +401,8 @@ export class WalletProvider {
           debtTokens: debtTokens.length,
           rewardTokens: aggregatedRewards.size,
           tokenSymbols: tokens.map(t => t.symbol).join(', '),
+          hasVesting,
+          isSablier,
         });
 
         if (tokens.length > 0 || debtTokens.length > 0) {
@@ -423,10 +500,15 @@ export class WalletProvider {
       const seenPositionIds = new Set<string>();
 
       for (const defiPos of protocolPositions) {
-        // Add supply tokens (collateral, lending, staking, LP)
+        // Add supply tokens (collateral, lending, staking, LP, vesting)
         for (const token of defiPos.tokens) {
-          // Skip tokens with zero amount, but allow price=0 (pre-market, new tokens)
-          if (token.amount <= 0) continue;
+          // Check if this is a vesting/locked position
+          const isVestingOrLocked = token.detailTypes?.includes('vesting') ||
+                                     token.detailTypes?.includes('locked');
+
+          // Skip tokens with zero amount, UNLESS they are vesting/locked
+          // Vesting tokens should always show even if fully locked (amount=0)
+          if (token.amount <= 0 && !isVestingOrLocked) continue;
 
           // Skip spam tokens using pattern matching
           if (isSpamToken(token.symbol)) continue;
@@ -460,6 +542,7 @@ export class WalletProvider {
             chain: defiPos.chain,
             protocol: defiPos.protocol,
             detailTypes: token.detailTypes, // Raw detail_types from DeBank (e.g., ['vesting'])
+            unlockAt: token.unlockAt, // Unlock timestamp for vesting/locked positions
             debankPriceKey: priceKey,
             addedAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),

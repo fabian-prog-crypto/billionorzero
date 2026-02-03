@@ -42,6 +42,7 @@ export interface DebankProtocolResponse {
       reward_token_list?: DebankTokenResponse[];
       // Additional fields that may contain tokens for certain protocols
       token_list?: DebankTokenResponse[]; // Generic token list for some protocols
+      unlock_at?: number; // Unix timestamp for vesting/locked positions
     };
   }[];
 }
