@@ -321,6 +321,35 @@ Store hooks follow the pattern `usePortfolioStore`, `useAuthStore`, `useThemeSto
 3. If adding persistent fields, they auto-persist via Zustand's `persist` middleware
 4. Consider migration if changing the persisted schema shape (current version: 2)
 
+## Pre-Merge QA: Portfolio Diff Check (MANDATORY)
+
+Before merging any branch into main, you **must** perform a quantitative portfolio comparison to verify your changes do not silently alter existing portfolio data. This is a hard gate -- do not skip it.
+
+### Procedure
+
+1. **Baseline snapshot (main):** Check out `main`, run the app (`npm run dev`), trigger a full portfolio sync, and record the complete output -- all positions, prices, asset classifications, and calculated values (net worth, exposure metrics, category totals).
+
+2. **Branch snapshot:** Check out your feature branch, run the app, trigger a full portfolio sync with the same wallets/accounts, and record the same data.
+
+3. **Diff the two snapshots.** Compare position-by-position:
+   - Position count, symbols, amounts, chains, protocols
+   - Prices and 24h change values
+   - Calculated values (position value, allocation %)
+   - Exposure classifications (`classifyAssetExposure()` outputs)
+   - Portfolio summary totals (net worth, gross assets, debts, category breakdowns)
+
+### Decision rules
+
+| Diff result | Action |
+|-------------|--------|
+| **Existing positions/prices/values changed** | **ABORT the merge.** Investigate why existing data differs. Fix the regression before proceeding. Do not merge until the baseline matches. |
+| **Only new/additional positions appear** | **ASK the user** for explicit approval before merging. Explain what new positions were added and why. |
+| **No differences** | Safe to merge. |
+
+### Why this matters
+
+This app has no test suite. The portfolio sync pipeline touches multiple external APIs, providers, and classification logic. A small change in any layer (API parsing, provider fallback, classification rules, price resolution order) can silently corrupt portfolio values. This diff check is the primary regression safety net.
+
 ## Existing Documentation
 
 - `docs/SERVICE_ARCHITECTURE.md` -- Detailed architecture diagrams and data flows
