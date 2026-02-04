@@ -50,8 +50,8 @@ export default function NetWorthChart({
       <AreaChart data={data} margin={{ top: 5, right: 5, left: minimal ? -10 : 0, bottom: 0 }}>
         <defs>
           <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="#22D3EE" stopOpacity={0.3} />
-            <stop offset="95%" stopColor="#22D3EE" stopOpacity={0} />
+            <stop offset="5%" stopColor="var(--accent-primary)" stopOpacity={0.3} />
+            <stop offset="95%" stopColor="var(--accent-primary)" stopOpacity={0} />
           </linearGradient>
         </defs>
         {!minimal && (
@@ -95,7 +95,7 @@ export default function NetWorthChart({
         <Area
           type="monotone"
           dataKey="value"
-          stroke="#22D3EE"
+          stroke="var(--accent-primary)"
           strokeWidth={2}
           fill="url(#colorValue)"
         />

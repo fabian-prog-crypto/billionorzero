@@ -96,11 +96,11 @@ export default function CategoryView({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Header Stats */}
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-[11px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">{title.toUpperCase()}</p>
+          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">{title.toUpperCase()}</p>
           <h2 className="text-2xl font-semibold mb-1">
             {hideBalances ? '••••••••' : formatCurrency(totalValue)}
           </h2>
@@ -169,7 +169,7 @@ export default function CategoryView({
         <>
           <div>
             <h3 className="text-[15px] font-medium mb-4">Crypto Metrics</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
               <MetricCard
                 label="STABLECOIN RATIO"
                 value={`${cryptoMetrics.stablecoinRatio.toFixed(1)}%`}
@@ -209,11 +209,11 @@ export default function CategoryView({
 function MetricCard({ label, value, color }: { label: string; value: string; color?: string }) {
   return (
     <div>
-      <div className="flex items-center gap-1.5 mb-1">
-        {color && <div className="w-2 h-2 " style={{ backgroundColor: color }} />}
+      <div className="flex items-center gap-1.5 mb-2">
+        {color && <div className="w-2 h-2" style={{ backgroundColor: color }} />}
         <span className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)]">{label}</span>
       </div>
-      <p className="text-2xl font-semibold">{value}</p>
+      <p className="text-xl font-semibold">{value}</p>
     </div>
   );
 }

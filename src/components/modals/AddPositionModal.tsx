@@ -198,9 +198,9 @@ export default function AddPositionModal({
             <button
               type="button"
               onClick={() => setEquityType('stock')}
-              className={`px-3 py-1.5  text-sm font-medium transition-colors ${
+              className={`px-3 py-1.5 text-sm font-medium transition-colors ${
                 equityType === 'stock'
-                  ? 'bg-[#E91E63] text-white'
+                  ? 'bg-[var(--accent-primary)] text-white'
                   : 'bg-[var(--background-secondary)] text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
               }`}
             >
@@ -209,9 +209,9 @@ export default function AddPositionModal({
             <button
               type="button"
               onClick={() => setEquityType('etf')}
-              className={`px-3 py-1.5  text-sm font-medium transition-colors ${
+              className={`px-3 py-1.5 text-sm font-medium transition-colors ${
                 equityType === 'etf'
-                  ? 'bg-[#9C27B0] text-white'
+                  ? 'bg-[var(--accent-primary)] text-white'
                   : 'bg-[var(--background-secondary)] text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
               }`}
             >

@@ -568,7 +568,7 @@ export default function PositionsPage() {
                             )}
                             {position.detailTypes?.includes('vesting') && (
                               <div className="group relative inline-flex items-center">
-                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-semibold bg-gradient-to-r from-purple-500 to-indigo-500 text-white">
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-semibold bg-[var(--accent-primary)] text-white">
                                   <Clock className="w-2.5 h-2.5" />
                                   VESTING
                                 </span>

@@ -460,7 +460,7 @@ input::placeholder {
 }
 
 .stat-label {
-  font-size: 13px;
+  font-size: 10px;
   font-weight: 500;
   color: var(--foreground-muted);
   text-transform: uppercase;

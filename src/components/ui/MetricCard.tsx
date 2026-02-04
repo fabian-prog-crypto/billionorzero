@@ -33,7 +33,7 @@ export default function MetricCard({
           {label}
         </p>
       </div>
-      <p className="text-2xl font-semibold">{value}</p>
+      <p className="text-xl font-semibold">{value}</p>
       {subValue && (
         <p className="text-[13px] text-[var(--foreground-muted)] mt-0.5">{subValue}</p>
       )}
