@@ -255,14 +255,167 @@ Store hooks follow the pattern `usePortfolioStore`, `useAuthStore`, `useThemeSto
 - **localStorage TTL cache** (5-minute default) to reduce API calls
 - **Discriminated unions** for asset types and classifications
 
-### Styling
-- Tailwind CSS 4 utility classes
-- CSS custom properties in `globals.css` for theming (light/dark mode)
-- Three font families available: `--font-geist-sans`, `--font-geist-mono`, `--font-poppins`
-
 ### ESLint
 - Extends `eslint-config-next/core-web-vitals` and `eslint-config-next/typescript`
 - Run with `npm run lint`
+
+## Design Language & Style Guide
+
+**Every new feature and UI change must follow this guide.** The app uses a minimal, data-dense financial dashboard aesthetic with sharp edges, muted neutrals, and restrained color. Reference `src/app/globals.css` as the single source of truth for design tokens.
+
+### Visual identity
+
+- **Sharp edges everywhere.** No `rounded-*` classes, no `border-radius`. Cards, buttons, inputs, tags, modals, tooltips -- all have square corners.
+- **No gradients.** Background fills are flat solid colors.
+- **Minimal chrome.** Thin 1px borders, subtle hover transitions (0.15s ease), no shadows except modals and tooltips which use restrained `box-shadow`.
+- **Data-dense layout.** Compact spacing, small font sizes, uppercase micro-labels. Prioritize information density over whitespace.
+
+### Color system (CSS custom properties)
+
+All colors are referenced via `var(--token)`, never hardcoded hex values in components. Both dark (default) and light themes are defined in `globals.css`.
+
+| Token | Dark value | Purpose |
+|-------|-----------|---------|
+| `--background` | `#141414` | Page background |
+| `--background-secondary` | `#1C1C1C` | Slightly elevated surfaces |
+| `--background-tertiary` | `#242424` | Buttons, tags, input backgrounds |
+| `--foreground` | `#E5E5E5` | Primary text |
+| `--foreground-muted` | `#858585` | Secondary/label text |
+| `--foreground-subtle` | `#5C5C5C` | Placeholders, disabled text |
+| `--card-bg` | `#1C1C1C` | Card backgrounds |
+| `--card-border` | `#2C2C2C` | Card borders |
+| `--card-hover` | `#242424` | Card hover state |
+| `--sidebar-bg` | `#181818` | Sidebar background |
+| `--accent-primary` | `#4A7C59` | Primary actions, active states (muted green) |
+| `--accent-secondary` | `#5E9E6E` | Hover state for primary actions |
+| `--accent-glow` | `rgba(74,124,89,0.12)` | Active nav item background |
+| `--positive` | `#7CB98B` | Gains, success |
+| `--positive-light` | `rgba(124,185,139,0.1)` | Positive badge background |
+| `--negative` | `#C97B7B` | Losses, errors, debt |
+| `--negative-light` | `rgba(201,123,123,0.1)` | Negative badge background |
+| `--warning` | `#C9B07B` | Warnings, caution |
+| `--border` | `#2C2C2C` | Standard borders |
+| `--border-light` | `#3C3C3C` | Hover borders |
+| `--tag-bg` | `#242424` | Tag backgrounds |
+| `--tag-text` | `#858585` | Tag text |
+
+### Typography
+
+| Context | Font | Size | Weight | Extra |
+|---------|------|------|--------|-------|
+| **Body** | Inter / system sans-serif | 16px base | 400 | `letter-spacing: -0.01em`, `line-height: 1.6` |
+| **Logo / category tabs** | Georgia, serif | 28px (tabs), base (logo) | 400-500 | Serif font for brand identity |
+| **Metric labels** | Inherited | **10px** | 500 | `uppercase`, `letter-spacing: 0.06em`, color `--foreground-muted` |
+| **Metric values** | Inherited | **20-21px** (`text-xl`) | 600 (semibold) | |
+| **Large stat values** | Inherited | 32px / 48px | 600 | `letter-spacing: -0.02em` |
+| **Hero net worth** | Inherited | 30px (`text-3xl`) | 600 | |
+| **Section headers** | Inherited | 15px | 500 (medium) | e.g., "Asset Allocation", "Risk Metrics" |
+| **Table headers** | Inherited | 13px | 500 | `uppercase`, `letter-spacing: 0.06em` |
+| **Buttons** | Inherited | 13px | 500 | |
+| **Tags** | Inherited | 13px | 500 | `uppercase`, `letter-spacing: 0.02em` |
+| **Nav items** | Inherited | 13px | 500 | |
+| **Chart legends** | Inherited | 12px | 400/500 | |
+| **Tooltips** | Inherited | 10px | 400 | |
+| **Muted secondary text** | Inherited | 13-14px | 400 | color `--foreground-muted` |
+| **"% of assets" helper** | Inherited | 12px (`text-xs`) | 400 | color `--foreground-muted` |
+
+### Spacing patterns
+
+| Context | Value |
+|---------|-------|
+| **Page padding** | `px-6 lg:px-8 py-6` (main content area) |
+| **Section vertical gap** | `space-y-8` between major sections |
+| **Section dividers** | `<hr className="border-[var(--border)]" />` between sections |
+| **Grid gaps** | `gap-6` for metric grids, `gap-8` for chart grids |
+| **Card padding** | 24px (desktop), 16px (mobile) |
+| **Modal padding** | 28px (desktop), 20px (mobile) |
+| **Label-to-value gap** | `mb-1` to `mb-2` |
+| **Section header to content** | `mb-4` |
+
+### Component patterns
+
+**Metric label + value** (the most repeated pattern):
+```tsx
+<p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">LABEL</p>
+<p className="text-xl font-semibold">{value}</p>
+<p className="text-xs text-[var(--foreground-muted)]">helper text</p>
+```
+
+**Metric grids**: `grid grid-cols-2 md:grid-cols-4 gap-6` or `md:grid-cols-5` depending on item count.
+
+**Section pattern**:
+```tsx
+<div>
+  <h3 className="font-medium mb-4">Section Title</h3>
+  <div className="grid ...">
+    {/* metric cards */}
+  </div>
+</div>
+```
+
+**Change badges** (gain/loss pill):
+```tsx
+<div className={`flex items-center gap-1.5 px-3 py-1.5 ${
+  value >= 0 ? 'bg-[var(--positive-light)]' : 'bg-[var(--negative-light)]'
+}`}>
+  <TrendingUp className="w-4 h-4 text-[var(--positive)]" />
+  <span className={getChangeColor(value) + ' font-semibold'}>{formatPercent(value)}</span>
+</div>
+```
+
+**Buttons** (use CSS classes from `globals.css`):
+- `.btn.btn-primary` -- Green accent, white text. Primary actions (Add Position, Save).
+- `.btn.btn-secondary` -- Tertiary bg, bordered. Secondary actions.
+- `.btn-ghost` -- Transparent, muted text. Icon-only header buttons (`p-1.5`).
+- `.btn-danger` -- Red bg, white text. Destructive actions.
+- All buttons: `font-size: 13px`, `font-weight: 500`, `padding: 6px 12px`, square corners.
+
+**Cards**: Use `.card` class (1px border, 24px padding, no radius). Hover lightens border to `--border-light`.
+
+**Modals**: `.modal-backdrop` (blurred overlay) + `.modal-content` (card bg, 28px padding, `max-width: 480px`).
+
+**Tables**: `.table-header` for column headers (13px uppercase muted). `.hover-row` for row hover effect.
+
+**Tabs**: Category tabs use Georgia serif at 28px. Active tab gets `font-weight: 500` + 1.5px bottom underline in `--foreground`. Inactive tabs are `#B5B5B5`.
+
+**Empty states**: Use the `EmptyState` component with icon, title (15px semibold), description (13px muted), optional action.
+
+### Icons
+
+- **Library**: Lucide React exclusively. Never use other icon libraries.
+- **Standard size**: `w-4 h-4` for most inline/button icons.
+- **Empty state icons**: `w-5 h-5` to `w-6 h-6` inside a container.
+- **Color**: Inherit from parent text color, or explicitly `text-[var(--foreground-muted)]`.
+
+### Formatting functions (use these, don't re-implement)
+
+All in `src/lib/utils.ts`:
+- `formatCurrency(value)` -- Handles negative, sub-penny, sub-dollar, and $10+ formatting.
+- `formatPercent(value)` -- Always prefixes `+` or `-`, e.g., `+2.50%`.
+- `formatNumber(value, decimals)` -- Locale-formatted with commas.
+- `getChangeColor(value)` -- Returns `text-positive`, `text-negative`, or muted.
+- `cn(...classes)` -- Simple class name joiner (truthy filter).
+
+### Responsive breakpoints
+
+| Breakpoint | Usage |
+|------------|-------|
+| Default (mobile) | Single column grids, compact padding |
+| `md` (768px) | Multi-column metric grids (`grid-cols-4`, `grid-cols-5`) |
+| `lg` (1024px) | Sidebar visible, wider page padding (`px-8`), flex row layouts |
+
+### Rules for new features
+
+1. **Use CSS custom properties** for all colors. Never hardcode hex in components.
+2. **Keep edges sharp.** No `rounded-*` anywhere.
+3. **Follow the metric label pattern** (10px uppercase muted label, xl semibold value, xs muted helper).
+4. **Use existing CSS classes** (`.btn`, `.card`, `.tag`, `.table-header`, `.metric-card`) before writing inline styles.
+5. **Use Lucide React** for icons. Match the `w-4 h-4` standard size.
+6. **Use formatting functions** from `@/lib/utils` -- never format currency/percentages manually.
+7. **Match existing spacing** -- `space-y-8` between sections, `gap-6` in grids, `mb-4` after section headers.
+8. **Separate sections with `<hr>`** using `border-[var(--border)]`.
+9. **Support `hideBalances`** -- any new value display must check this flag and show `'••••'` when true.
+10. **Transitions are 0.15s ease.** Do not use longer or flashier animations.
 
 ## Provider Hierarchy (Root Layout)
 
