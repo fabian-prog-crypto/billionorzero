@@ -340,7 +340,7 @@ export default function PositionsPage() {
       {/* NAV Summary */}
       <div className="flex items-start justify-between mb-6">
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">NET ASSET VALUE</p>
+          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">NET ASSET VALUE</p>
           <h2 className="text-2xl font-semibold mb-1">{hideBalances ? '••••••••' : formatCurrency(totalNAV)}</h2>
           <div className="flex items-center gap-2">
             <span className={getChangeColor(totalChangePercent)}>

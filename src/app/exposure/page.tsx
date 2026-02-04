@@ -46,11 +46,11 @@ export default function ExposurePage() {
   const tokensItem = simpleBreakdown.find(s => s.id === 'tokens');
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Professional Exposure Metrics */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">GROSS EXPOSURE</p>
+          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">GROSS EXPOSURE</p>
           <p className="text-xl font-semibold">{hideBalances ? '••••' : formatCurrency(exposureMetrics.grossExposure)}</p>
           <div className="flex gap-2 text-xs mt-1">
             <span className="text-[var(--positive)]">L: {hideBalances ? '••••' : formatCurrency(exposureMetrics.longExposure)}</span>
@@ -58,7 +58,7 @@ export default function ExposurePage() {
           </div>
         </div>
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">NET EXPOSURE</p>
+          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">NET EXPOSURE</p>
           <p className={`text-xl font-semibold ${exposureMetrics.netExposure >= 0 ? '' : 'text-[var(--negative)]'}`}>
             {hideBalances ? '••••' : formatCurrency(exposureMetrics.netExposure)}
           </p>
@@ -67,7 +67,7 @@ export default function ExposurePage() {
           </p>
         </div>
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">LEVERAGE</p>
+          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">LEVERAGE</p>
           <p className={`text-xl font-semibold ${
             exposureMetrics.leverage > 2 ? 'text-[var(--negative)]' :
             exposureMetrics.leverage > 1.5 ? 'text-[var(--warning)]' : ''
@@ -79,7 +79,7 @@ export default function ExposurePage() {
           </p>
         </div>
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">CASH POSITION</p>
+          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">CASH POSITION</p>
           <p className="text-xl font-semibold">{hideBalances ? '••••' : formatCurrency(exposureMetrics.cashPosition)}</p>
           <p className="text-xs text-[var(--foreground-muted)] mt-1">
             {exposureMetrics.cashPercentage.toFixed(1)}% of gross
@@ -130,17 +130,17 @@ export default function ExposurePage() {
       {/* Portfolio Summary */}
       <div className="grid grid-cols-3 gap-6">
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">GROSS ASSETS</p>
+          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">GROSS ASSETS</p>
           <p className="text-xl font-semibold">{hideBalances ? '••••' : formatCurrency(grossAssets)}</p>
         </div>
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">TOTAL DEBT</p>
+          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">TOTAL DEBT</p>
           <p className="text-xl font-semibold text-[var(--negative)]">
             {totalDebts > 0 ? (hideBalances ? '••••' : `-${formatCurrency(totalDebts)}`) : '$0'}
           </p>
         </div>
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">NET WORTH</p>
+          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">NET WORTH</p>
           <p className="text-xl font-semibold">{hideBalances ? '••••' : formatCurrency(totalValue)}</p>
         </div>
       </div>
@@ -201,21 +201,21 @@ export default function ExposurePage() {
         <h3 className="text-[15px] font-medium mb-4">Concentration Risk</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
           <div>
-            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">TOP POSITION</p>
+            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">TOP POSITION</p>
             <p className={`text-xl font-semibold ${concentrationMetrics.top1Percentage > 30 ? 'text-[var(--warning)]' : ''}`}>
               {concentrationMetrics.top1Percentage.toFixed(1)}%
             </p>
           </div>
           <div>
-            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">TOP 5</p>
+            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">TOP 5</p>
             <p className="text-xl font-semibold">{concentrationMetrics.top5Percentage.toFixed(1)}%</p>
           </div>
           <div>
-            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">TOP 10</p>
+            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">TOP 10</p>
             <p className="text-xl font-semibold">{concentrationMetrics.top10Percentage.toFixed(1)}%</p>
           </div>
           <div>
-            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">HHI INDEX</p>
+            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">HHI INDEX</p>
             <p className={`text-xl font-semibold ${
               concentrationMetrics.herfindahlIndex > 2500 ? 'text-[var(--negative)]' :
               concentrationMetrics.herfindahlIndex > 1500 ? 'text-[var(--warning)]' : ''
@@ -313,30 +313,30 @@ export default function ExposurePage() {
             <h3 className="text-[15px] font-medium mb-4">Perpetual Positions</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-4">
               <div>
-                <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">COLLATERAL</p>
+                <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">COLLATERAL</p>
                 <p className="text-xl font-semibold">{hideBalances ? '••••' : formatCurrency(perpsMetrics.collateral)}</p>
                 <p className="text-xs text-[var(--foreground-muted)]">Margin deposited</p>
               </div>
               <div>
-                <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">GROSS NOTIONAL</p>
+                <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">GROSS NOTIONAL</p>
                 <p className="text-xl font-semibold">{hideBalances ? '••••' : formatCurrency(perpsMetrics.grossNotional)}</p>
                 <p className="text-xs text-[var(--foreground-muted)]">|Long| + |Short|</p>
               </div>
               <div>
-                <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">NET NOTIONAL</p>
+                <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">NET NOTIONAL</p>
                 <p className={`text-xl font-semibold ${perpsMetrics.netNotional >= 0 ? 'text-[var(--positive)]' : 'text-[var(--negative)]'}`}>
                   {hideBalances ? '••••' : formatCurrency(perpsMetrics.netNotional)}
                 </p>
                 <p className="text-xs text-[var(--foreground-muted)]">{perpsMetrics.netNotional >= 0 ? 'Net Long' : 'Net Short'}</p>
               </div>
               <div className="relative group">
-                <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1 flex items-center gap-1">
+                <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2 flex items-center gap-1">
                   EST. UTILIZATION
-                  <Info className="w-3 h-3 text-amber-500" />
+                  <Info className="w-3 h-3 text-[var(--warning)]" />
                 </p>
                 <p className={`text-xl font-semibold ${
                   perpsMetrics.utilizationRate > 80 ? 'text-[var(--negative)]' :
-                  perpsMetrics.utilizationRate > 60 ? 'text-[var(--warning)]' : 'text-amber-600'
+                  perpsMetrics.utilizationRate > 60 ? 'text-[var(--warning)]' : 'text-[var(--warning)]'
                 }`}>
                   ~{perpsMetrics.utilizationRate.toFixed(0)}%
                 </p>
@@ -359,16 +359,16 @@ export default function ExposurePage() {
               <div className="flex justify-between text-[13px] group relative">
                 <span className="text-[var(--foreground-muted)] flex items-center gap-1">
                   Est. Margin Used
-                  <Info className="w-3 h-3 text-amber-500" />
+                  <Info className="w-3 h-3 text-[var(--warning)]" />
                 </span>
-                <span className="text-amber-600">{hideBalances ? '••••' : formatCurrency(perpsMetrics.marginUsed)}</span>
+                <span className="text-[var(--warning)]">{hideBalances ? '••••' : formatCurrency(perpsMetrics.marginUsed)}</span>
               </div>
               <div className="flex justify-between text-[13px] group relative">
                 <span className="text-[var(--foreground-muted)] flex items-center gap-1">
                   Est. Available
-                  <Info className="w-3 h-3 text-amber-500" />
+                  <Info className="w-3 h-3 text-[var(--warning)]" />
                 </span>
-                <span className={`${perpsMetrics.marginAvailable < perpsMetrics.collateral * 0.2 ? 'text-[var(--warning)]' : 'text-amber-600'}`}>
+                <span className={`${perpsMetrics.marginAvailable < perpsMetrics.collateral * 0.2 ? 'text-[var(--warning)]' : 'text-[var(--warning)]'}`}>
                   {hideBalances ? '••••' : formatCurrency(perpsMetrics.marginAvailable)}
                 </span>
               </div>

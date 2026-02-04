@@ -76,7 +76,7 @@ export default function AccountsPage() {
       {/* Summary */}
       <div className="flex items-start justify-between mb-6">
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">TOTAL CEX HOLDINGS</p>
+          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">TOTAL CEX HOLDINGS</p>
           <h2 className="text-2xl font-semibold">{hideBalances ? '••••••••' : formatCurrency(totalCexValue)}</h2>
           <p className="text-[13px] text-[var(--foreground-muted)] mt-1">
             {accounts.length} account{accounts.length !== 1 ? 's' : ''} connected

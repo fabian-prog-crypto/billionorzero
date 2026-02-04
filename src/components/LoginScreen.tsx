@@ -131,7 +131,7 @@ export default function LoginScreen() {
     <div className="fixed inset-0 landing-bg grid-bg overflow-hidden">
       {/* Ambient glow elements */}
       <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-[var(--accent-primary)] opacity-[0.03]  blur-3xl" />
-      <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-purple-500 opacity-[0.03]  blur-3xl" />
+      <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-[var(--accent-primary)] opacity-[0.03] blur-3xl" />
 
       <div className="relative z-10 min-h-screen flex flex-col items-center justify-center p-6">
         {/* Main content */}

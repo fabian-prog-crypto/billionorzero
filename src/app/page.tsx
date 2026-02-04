@@ -89,7 +89,7 @@ export default function OverviewPage() {
       {/* Hero Section: Net Worth + Chart */}
       <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-8">
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">NET WORTH</p>
+          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">NET WORTH</p>
           <h2 className="text-3xl font-semibold mb-3">
             {hideBalances ? '••••••••' : formatCurrency(summary.totalValue)}
           </h2>

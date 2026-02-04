@@ -67,28 +67,28 @@ export default function PerpsPage() {
           {/* Professional Metrics */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-6">
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">COLLATERAL</p>
+              <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">COLLATERAL</p>
               <p className="text-xl font-semibold">
                 {hideBalances ? '••••' : formatCurrency(perpsMetrics.collateral)}
               </p>
               <p className="text-xs text-[var(--foreground-muted)]">Margin deposited</p>
             </div>
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">GROSS NOTIONAL</p>
+              <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">GROSS NOTIONAL</p>
               <p className="text-xl font-semibold">
                 {hideBalances ? '••••' : formatCurrency(perpsMetrics.grossNotional)}
               </p>
               <p className="text-xs text-[var(--foreground-muted)]">|Long| + |Short|</p>
             </div>
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">NET NOTIONAL</p>
+              <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">NET NOTIONAL</p>
               <p className={`text-xl font-semibold ${perpsMetrics.netNotional >= 0 ? 'text-[var(--positive)]' : 'text-[var(--negative)]'}`}>
                 {hideBalances ? '••••' : formatCurrency(perpsMetrics.netNotional)}
               </p>
               <p className="text-xs text-[var(--foreground-muted)]">{perpsMetrics.netNotional >= 0 ? 'Net Long' : 'Net Short'}</p>
             </div>
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">UTILIZATION</p>
+              <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">UTILIZATION</p>
               <p className={`text-xl font-semibold ${
                 perpsMetrics.utilizationRate > 80 ? 'text-[var(--negative)]' :
                 perpsMetrics.utilizationRate > 60 ? 'text-[var(--warning)]' : ''
@@ -102,25 +102,25 @@ export default function PerpsPage() {
           {/* Long/Short Breakdown */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-6">
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">LONG NOTIONAL</p>
+              <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">LONG NOTIONAL</p>
               <p className="text-xl font-semibold text-[var(--positive)]">
                 {hideBalances ? '••••' : formatCurrency(perpsMetrics.longNotional)}
               </p>
             </div>
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">SHORT NOTIONAL</p>
+              <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">SHORT NOTIONAL</p>
               <p className="text-xl font-semibold text-[var(--negative)]">
                 {hideBalances ? '••••' : formatCurrency(perpsMetrics.shortNotional)}
               </p>
             </div>
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">EST. MARGIN USED</p>
+              <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">EST. MARGIN USED</p>
               <p className="text-xl font-semibold">
                 {hideBalances ? '••••' : formatCurrency(perpsMetrics.marginUsed)}
               </p>
             </div>
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">MARGIN AVAILABLE</p>
+              <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">MARGIN AVAILABLE</p>
               <p className={`text-xl font-semibold ${perpsMetrics.marginAvailable < perpsMetrics.collateral * 0.2 ? 'text-[var(--warning)]' : ''}`}>
                 {hideBalances ? '••••' : formatCurrency(perpsMetrics.marginAvailable)}
               </p>

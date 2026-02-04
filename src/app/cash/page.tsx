@@ -222,7 +222,7 @@ export default function CashPage() {
       {/* Header Stats */}
       <div className="flex items-start justify-between mb-6">
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">
+          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">
             {includeStablecoins ? 'CASH & EQUIVALENTS' : 'FIAT CASH'}
           </p>
           <h2 className="text-2xl font-semibold mb-1">

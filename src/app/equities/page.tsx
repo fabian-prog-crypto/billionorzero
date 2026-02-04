@@ -113,7 +113,7 @@ export default function EquitiesPage() {
       {/* Header Stats */}
       <div className="flex items-start justify-between mb-6">
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">TOTAL EQUITIES</p>
+          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">TOTAL EQUITIES</p>
           <h2 className="text-2xl font-semibold mb-1">
             {hideBalances ? '••••••••' : formatCurrency(breakdownData.total)}
           </h2>
