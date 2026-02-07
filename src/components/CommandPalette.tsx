@@ -168,7 +168,7 @@ export default function CommandPalette({
       />
 
       {/* Panel */}
-      <div className="command-palette" onClick={handleBackdropClick}>
+      <div className="command-palette">
         <div
           className={`command-palette-panel ${closing ? 'closing' : ''}`}
           onClick={(e) => e.stopPropagation()}
