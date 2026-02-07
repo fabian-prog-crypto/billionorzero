@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Save, Key, RefreshCw, Trash2, Download, Upload, Fingerprint, LogOut, Shield, Sun, Moon, Monitor, TrendingUp } from 'lucide-react';
+import { Save, Key, RefreshCw, Trash2, Download, Upload, Fingerprint, LogOut, Shield, Sun, Moon, Monitor, TrendingUp, Bot, Loader2, CheckCircle, XCircle } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import { useAuthStore } from '@/store/authStore';
 import { useThemeStore, applyTheme } from '@/store/themeStore';
@@ -17,6 +17,10 @@ export default function SettingsPage() {
   const [heliusApiKey, setHeliusApiKey] = useState('');
   const [birdeyeApiKey, setBirdeyeApiKey] = useState('');
   const [stockApiKey, setStockApiKey] = useState('');
+  const [ollamaUrl, setOllamaUrl] = useState('http://localhost:11434');
+  const [ollamaModel, setOllamaModel] = useState('llama3.2');
+  const [ollamaStatus, setOllamaStatus] = useState<'idle' | 'testing' | 'connected' | 'error'>('idle');
+  const [ollamaError, setOllamaError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [hasPasskey, setHasPasskey] = useState(false);
   const [passkeySupported, setPasskeySupported] = useState(true);
@@ -38,6 +42,8 @@ export default function SettingsPage() {
     setHeliusApiKey(localStorage.getItem('helius_api_key') || '');
     setBirdeyeApiKey(localStorage.getItem('birdeye_api_key') || '');
     setStockApiKey(localStorage.getItem('stock_api_key') || '');
+    setOllamaUrl(localStorage.getItem('ollama_url') || 'http://localhost:11434');
+    setOllamaModel(localStorage.getItem('ollama_model') || 'llama3.2');
 
     // Check passkey support and status
     setPasskeySupported(isPasskeySupported());
@@ -72,11 +78,44 @@ export default function SettingsPage() {
     logout();
   };
 
+  const handleTestOllama = async () => {
+    setOllamaStatus('testing');
+    setOllamaError(null);
+    try {
+      const response = await fetch(`${ollamaUrl}/api/tags`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      const models = data.models?.map((m: { name: string }) => m.name) || [];
+      const hasModel = models.some((m: string) => m.startsWith(ollamaModel));
+      if (hasModel) {
+        setOllamaStatus('connected');
+      } else {
+        setOllamaStatus('error');
+        setOllamaError(
+          `Connected but model "${ollamaModel}" not found. Available: ${models.join(', ') || 'none'}. Run: ollama pull ${ollamaModel}`
+        );
+      }
+    } catch {
+      setOllamaStatus('error');
+      setOllamaError('Cannot connect to Ollama. Make sure it is running (ollama serve).');
+    }
+  };
+
   const handleSave = () => {
     localStorage.setItem('debank_api_key', debankApiKey);
     localStorage.setItem('helius_api_key', heliusApiKey);
     localStorage.setItem('birdeye_api_key', birdeyeApiKey);
     localStorage.setItem('stock_api_key', stockApiKey);
+    if (ollamaUrl && ollamaUrl !== 'http://localhost:11434') {
+      localStorage.setItem('ollama_url', ollamaUrl);
+    } else {
+      localStorage.removeItem('ollama_url');
+    }
+    if (ollamaModel && ollamaModel !== 'llama3.2') {
+      localStorage.setItem('ollama_model', ollamaModel);
+    } else {
+      localStorage.removeItem('ollama_model');
+    }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -289,6 +328,91 @@ export default function SettingsPage() {
                 Annual risk-free rate used to calculate Sharpe ratio. Default is 5% (approximate US Treasury rate).
               </p>
             </div>
+          </div>
+        </div>
+
+        <hr className="border-[var(--border)]" />
+
+        {/* Ollama (NL Input) */}
+        <div>
+          <h3 className="text-[15px] font-medium mb-4 flex items-center gap-2">
+            <Bot className="w-5 h-5" />
+            Natural Language Input (Ollama)
+          </h3>
+          <p className="text-[13px] text-[var(--foreground-muted)] mb-2">
+            Configure a local Ollama instance to parse natural language commands like &quot;Sold 50% of GOOG today&quot;.
+          </p>
+          <p className="text-[11px] text-[var(--foreground-muted)] mb-4">
+            All data stays on your machine — no API keys needed
+          </p>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Ollama URL</label>
+              <input
+                type="text"
+                placeholder="http://localhost:11434"
+                value={ollamaUrl}
+                onChange={(e) => {
+                  setOllamaUrl(e.target.value);
+                  setOllamaStatus('idle');
+                }}
+                className="w-full"
+              />
+              <p className="text-xs text-[var(--foreground-muted)] mt-1">
+                Base URL for your local Ollama instance
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">Model</label>
+              <input
+                type="text"
+                placeholder="llama3.2"
+                value={ollamaModel}
+                onChange={(e) => {
+                  setOllamaModel(e.target.value);
+                  setOllamaStatus('idle');
+                }}
+                className="w-full"
+              />
+              <p className="text-xs text-[var(--foreground-muted)] mt-1">
+                Ollama model to use for parsing. Default: llama3.2
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleTestOllama}
+                disabled={ollamaStatus === 'testing'}
+                className="btn btn-secondary"
+              >
+                {ollamaStatus === 'testing' ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Testing...
+                  </span>
+                ) : (
+                  <>
+                    <RefreshCw className="w-4 h-4" />
+                    Test Connection
+                  </>
+                )}
+              </button>
+            </div>
+
+            {ollamaStatus === 'connected' && (
+              <div className="p-3 bg-[var(--positive-light)] border border-[rgba(124,185,139,0.2)] flex items-center gap-1.5 text-[13px] text-[var(--positive)]">
+                <CheckCircle className="w-4 h-4 flex-shrink-0" />
+                Connected — {ollamaModel} available
+              </div>
+            )}
+
+            {ollamaStatus === 'error' && ollamaError && (
+              <div className="p-3 bg-[var(--negative-light)] border border-[rgba(201,123,123,0.2)] text-[var(--negative)] text-[13px]">
+                {ollamaError}
+              </div>
+            )}
           </div>
         </div>
 

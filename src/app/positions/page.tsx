@@ -353,7 +353,7 @@ export default function PositionsPage() {
         </div>
       </div>
 
-      <hr className="border-[var(--border)] mb-6" />
+      <hr className="border-[var(--border)] mb-4" />
 
       {/* Quick Category Selectors */}
       <div className="flex flex-wrap gap-2 mb-3">

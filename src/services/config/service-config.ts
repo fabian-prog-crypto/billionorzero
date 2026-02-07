@@ -8,6 +8,8 @@ export interface ServiceConfig {
   heliusApiKey?: string; // For Solana wallets (Helius DAS API)
   birdeyeApiKey?: string; // For Solana wallets (Birdeye API - alternative/fallback)
   stockApiKey?: string;
+  ollamaUrl?: string;     // Base URL for Ollama (default: http://localhost:11434)
+  ollamaModel?: string;   // Ollama model name (default: llama3.2)
   useDemoData: boolean;
   refreshInterval: number; // in milliseconds
 }
@@ -17,6 +19,8 @@ const CONFIG_KEYS = {
   heliusApiKey: 'helius_api_key',
   birdeyeApiKey: 'birdeye_api_key',
   stockApiKey: 'stock_api_key',
+  ollamaUrl: 'ollama_url',
+  ollamaModel: 'ollama_model',
   useDemoData: 'use_demo_data',
 } as const;
 
@@ -25,6 +29,8 @@ const DEFAULT_CONFIG: ServiceConfig = {
   heliusApiKey: undefined,
   birdeyeApiKey: undefined,
   stockApiKey: undefined,
+  ollamaUrl: undefined,
+  ollamaModel: undefined,
   useDemoData: false,
   refreshInterval: 10 * 60 * 1000, // 10 minutes
 };
@@ -51,6 +57,8 @@ export class ConfigManager {
     const rawHeliusKey = localStorage.getItem(CONFIG_KEYS.heliusApiKey);
     const rawBirdeyeKey = localStorage.getItem(CONFIG_KEYS.birdeyeApiKey);
     const rawStockKey = localStorage.getItem(CONFIG_KEYS.stockApiKey);
+    const rawOllamaUrl = localStorage.getItem(CONFIG_KEYS.ollamaUrl);
+    const rawOllamaModel = localStorage.getItem(CONFIG_KEYS.ollamaModel);
     const rawUseDemoData = localStorage.getItem(CONFIG_KEYS.useDemoData);
 
     // Debug: Log raw localStorage values
@@ -59,6 +67,8 @@ export class ConfigManager {
       heliusKey: rawHeliusKey ? 'SET' : 'NOT SET',
       birdeyeKey: rawBirdeyeKey ? 'SET' : 'NOT SET',
       stockKey: rawStockKey ? 'SET' : 'NOT SET',
+      ollamaUrl: rawOllamaUrl || 'DEFAULT',
+      ollamaModel: rawOllamaModel || 'DEFAULT',
       useDemoData: rawUseDemoData,
     });
 
@@ -68,6 +78,8 @@ export class ConfigManager {
       heliusApiKey: rawHeliusKey || undefined,
       birdeyeApiKey: rawBirdeyeKey || undefined,
       stockApiKey: rawStockKey || undefined,
+      ollamaUrl: rawOllamaUrl || undefined,
+      ollamaModel: rawOllamaModel || undefined,
       useDemoData: rawUseDemoData === 'true',
     };
 
@@ -124,6 +136,20 @@ export class ConfigManager {
           localStorage.removeItem(CONFIG_KEYS.stockApiKey);
         }
       }
+      if (updates.ollamaUrl !== undefined) {
+        if (updates.ollamaUrl) {
+          localStorage.setItem(CONFIG_KEYS.ollamaUrl, updates.ollamaUrl);
+        } else {
+          localStorage.removeItem(CONFIG_KEYS.ollamaUrl);
+        }
+      }
+      if (updates.ollamaModel !== undefined) {
+        if (updates.ollamaModel) {
+          localStorage.setItem(CONFIG_KEYS.ollamaModel, updates.ollamaModel);
+        } else {
+          localStorage.removeItem(CONFIG_KEYS.ollamaModel);
+        }
+      }
       if (updates.useDemoData !== undefined) {
         localStorage.setItem(CONFIG_KEYS.useDemoData, String(updates.useDemoData));
       }
@@ -165,6 +191,20 @@ export class ConfigManager {
    */
   setUseDemoData(useDemoData: boolean): void {
     this.setConfig({ useDemoData });
+  }
+
+  /**
+   * Get Ollama URL (with default)
+   */
+  getOllamaUrl(): string {
+    return this.config.ollamaUrl || 'http://localhost:11434';
+  }
+
+  /**
+   * Get Ollama model (with default)
+   */
+  getOllamaModel(): string {
+    return this.config.ollamaModel || 'llama3.2';
   }
 
   /**
@@ -234,6 +274,8 @@ export class ConfigManager {
       localStorage.removeItem(CONFIG_KEYS.heliusApiKey);
       localStorage.removeItem(CONFIG_KEYS.birdeyeApiKey);
       localStorage.removeItem(CONFIG_KEYS.stockApiKey);
+      localStorage.removeItem(CONFIG_KEYS.ollamaUrl);
+      localStorage.removeItem(CONFIG_KEYS.ollamaModel);
       localStorage.removeItem(CONFIG_KEYS.useDemoData);
     }
     this.config = { ...DEFAULT_CONFIG };

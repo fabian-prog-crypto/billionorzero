@@ -37,8 +37,9 @@ export default function AddPositionModal({
   const [cashAccountName, setCashAccountName] = useState('');
   const [cashCurrency, setCashCurrency] = useState('USD');
   const [cashBalance, setCashBalance] = useState('');
+  const [selectedBrokerageId, setSelectedBrokerageId] = useState('');
 
-  const { addPosition, updatePrice } = usePortfolioStore();
+  const { addPosition, updatePrice, brokerageAccounts } = usePortfolioStore();
   const { refresh } = useRefresh();
 
   // Reset form when modal opens
@@ -58,8 +59,9 @@ export default function AddPositionModal({
       setCashAccountName('');
       setCashCurrency('USD');
       setCashBalance('');
+      setSelectedBrokerageId(brokerageAccounts.length === 1 ? brokerageAccounts[0].id : '');
     }
-  }, [isOpen, defaultTab]);
+  }, [isOpen, defaultTab, brokerageAccounts]);
 
   // Search debounce
   useEffect(() => {
@@ -133,11 +135,21 @@ export default function AddPositionModal({
       });
     } else {
       if (!selectedAsset || !amount) return;
+      if (tab === 'stock' && brokerageAccounts.length > 1 && !selectedBrokerageId) return;
 
       // For stock tab, use the equityType (stock or etf)
       const type: AssetType = tab === 'stock' ? equityType : tab;
-      const symbol = tab === 'crypto' ? selectedAsset.symbol : selectedAsset.symbol;
+      const symbol = selectedAsset.symbol;
       const name = tab === 'crypto' ? selectedAsset.name : selectedAsset.description;
+
+      // Determine brokerage protocol for equities
+      const brokerageProtocol = tab === 'stock' && brokerageAccounts.length > 0
+        ? brokerageAccounts.length === 1
+          ? `brokerage:${brokerageAccounts[0].id}`
+          : selectedBrokerageId
+            ? `brokerage:${selectedBrokerageId}`
+            : undefined
+        : undefined;
 
       addPosition({
         type,
@@ -146,6 +158,7 @@ export default function AddPositionModal({
         amount: parseFloat(amount),
         costBasis: costBasis ? parseFloat(costBasis) : undefined,
         purchaseDate: purchaseDate || undefined,
+        ...(brokerageProtocol ? { protocol: brokerageProtocol } : {}),
       });
 
       // Trigger refresh to fetch price for the new position
@@ -180,6 +193,9 @@ export default function AddPositionModal({
                 setSearchQuery('');
                 setSearchResults([]);
                 setSelectedAsset(null);
+                setAmount('');
+                setCostBasis('');
+                setPurchaseDate('');
               }}
               className={`px-4 py-2  text-sm font-medium transition-colors ${
                 tab === t
@@ -221,6 +237,23 @@ export default function AddPositionModal({
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Brokerage account selector for equities with multiple accounts */}
+          {tab === 'stock' && brokerageAccounts.length > 1 && (
+            <div>
+              <label className="block text-sm font-medium mb-1">Brokerage Account</label>
+              <select
+                value={selectedBrokerageId}
+                onChange={(e) => setSelectedBrokerageId(e.target.value)}
+                className="form-input w-full"
+              >
+                <option value="">Select account...</option>
+                {brokerageAccounts.map((a) => (
+                  <option key={a.id} value={a.id}>{a.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {tab === 'cash' ? (
             <>
               {/* Cash account inputs */}
@@ -457,7 +490,7 @@ export default function AddPositionModal({
                   ? !cashAccountName || !cashBalance
                   : tab === 'manual'
                   ? !manualSymbol || !manualName || !amount || !manualPrice
-                  : !selectedAsset || !amount
+                  : !selectedAsset || !amount || (tab === 'stock' && brokerageAccounts.length > 1 && !selectedBrokerageId)
               }
             >
               Add Position

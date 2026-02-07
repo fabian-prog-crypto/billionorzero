@@ -1,16 +1,20 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Plus, RefreshCw, Eye, EyeOff, Settings, Wallet, Sun, Moon, Menu, X, PieChart, TrendingUp, Layers, CandlestickChart, Building2, LayoutDashboard } from 'lucide-react';
+import { Plus, RefreshCw, Eye, EyeOff, Settings, Wallet, Sun, Moon, Menu, X, PieChart, TrendingUp, Layers, CandlestickChart, Building2, LayoutDashboard, MessageSquare } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import { useThemeStore, applyTheme } from '@/store/themeStore';
 import { useRefresh } from '@/components/PortfolioProvider';
 import AddPositionModal from '@/components/modals/AddPositionModal';
 import AddWalletModal from '@/components/modals/AddWalletModal';
+import CommandPalette from '@/components/CommandPalette';
+import ConfirmPositionActionModal from '@/components/modals/ConfirmPositionActionModal';
+import { calculateAllPositionsWithPrices } from '@/services';
 import { calculateSyncCost } from '@/lib/constants';
 import { formatDistanceToNow } from 'date-fns';
+import { ParsedPositionAction } from '@/types';
 
 type MainTab = 'portfolio' | 'insights';
 type SubTab = 'overview' | 'crypto' | 'equities' | 'cash' | 'other';
@@ -36,6 +40,7 @@ const sidebarItemsByCategory: Record<SubTab, { path: string; icon: typeof Layers
     { path: '', icon: LayoutDashboard, label: 'Overview' },
     { path: 'positions', icon: Layers, label: 'Assets' },
     { path: 'exposure', icon: PieChart, label: 'Exposure' },
+    { path: 'accounts', icon: Building2, label: 'Accounts' },
   ],
   cash: [
     { path: '', icon: LayoutDashboard, label: 'Overview' },
@@ -75,15 +80,22 @@ export default function AppShell({ children }: AppShellProps) {
   const [showAddWallet, setShowAddWallet] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [nlAction, setNlAction] = useState<ParsedPositionAction | null>(null);
+  const [showNlConfirm, setShowNlConfirm] = useState(false);
 
   // Track client-side mount to avoid hydration mismatch with dates
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  const { hideBalances, toggleHideBalances, wallets, lastRefresh } = usePortfolioStore();
+  const { hideBalances, toggleHideBalances, wallets, lastRefresh, positions, prices, customPrices } = usePortfolioStore();
   const { theme, setTheme } = useThemeStore();
   const { refresh, isRefreshing } = useRefresh();
+
+  const allPositionsWithPrices = useMemo(() => {
+    return calculateAllPositionsWithPrices(positions, prices, customPrices);
+  }, [positions, prices, customPrices]);
 
   // Calculate sync costs
   const walletCount = wallets.length;
@@ -106,6 +118,18 @@ export default function AppShell({ children }: AppShellProps) {
   useEffect(() => {
     setSidebarOpen(false);
   }, [pathname]);
+
+  // Cmd+K / Ctrl+K global shortcut
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setCommandPaletteOpen((prev) => !prev);
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, []);
 
   // Determine active sub-tab from pathname
   const getActiveSubTab = (): SubTab => {
@@ -215,6 +239,15 @@ export default function AppShell({ children }: AppShellProps) {
                 </div>
               )}
             </div>
+
+            <button
+              onClick={() => setCommandPaletteOpen(true)}
+              className="btn-ghost p-1.5 flex items-center gap-1"
+              title="Command palette (⌘K)"
+            >
+              <MessageSquare className="w-4 h-4" />
+              <span className="text-[10px] text-[var(--foreground-subtle)] border border-[var(--border)] px-1 py-0.5 hidden sm:inline">⌘K</span>
+            </button>
 
             <button
               onClick={() => setShowAddWallet(true)}
@@ -355,6 +388,28 @@ export default function AppShell({ children }: AppShellProps) {
         isOpen={showAddWallet}
         onClose={() => setShowAddWallet(false)}
       />
+      <CommandPalette
+        isOpen={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        onParsed={(action) => {
+          setCommandPaletteOpen(false);
+          setNlAction(action);
+          setShowNlConfirm(true);
+        }}
+        positions={positions}
+      />
+      {nlAction && (
+        <ConfirmPositionActionModal
+          isOpen={showNlConfirm}
+          onClose={() => {
+            setShowNlConfirm(false);
+            setNlAction(null);
+          }}
+          parsedAction={nlAction}
+          positions={positions}
+          positionsWithPrices={allPositionsWithPrices}
+        />
+      )}
     </div>
   );
 }

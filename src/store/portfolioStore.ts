@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
-import { Position, Wallet, PriceData, NetWorthSnapshot, CexAccount } from '@/types';
+import { Position, Wallet, PriceData, NetWorthSnapshot, CexAccount, BrokerageAccount, Transaction } from '@/types';
 
 // Custom price entry
 export interface CustomPrice {
@@ -15,9 +15,11 @@ interface PortfolioState {
   positions: Position[];
   wallets: Wallet[];
   accounts: CexAccount[];
+  brokerageAccounts: BrokerageAccount[];
   prices: Record<string, PriceData>;
   customPrices: Record<string, CustomPrice>;  // Symbol -> custom price override
   fxRates: Record<string, number>;  // Currency -> USD rate (e.g., CHF -> 1.12)
+  transactions: Transaction[];
   snapshots: NetWorthSnapshot[];
   lastRefresh: string | null;
   isRefreshing: boolean;
@@ -28,7 +30,7 @@ interface PortfolioState {
   riskFreeRate: number;  // Annual risk-free rate for Sharpe ratio (e.g., 0.05 = 5%)
 
   // Position actions
-  addPosition: (position: Omit<Position, 'id' | 'addedAt' | 'updatedAt'>) => void;
+  addPosition: (position: Omit<Position, 'id' | 'addedAt' | 'updatedAt'> & { id?: string }) => void;
   removePosition: (id: string) => void;
   updatePosition: (id: string, updates: Partial<Position>) => void;
 
@@ -41,6 +43,11 @@ interface PortfolioState {
   addAccount: (account: Omit<CexAccount, 'id' | 'addedAt'>) => void;
   removeAccount: (id: string) => void;
   updateAccount: (id: string, updates: Partial<CexAccount>) => void;
+
+  // Brokerage Account actions
+  addBrokerageAccount: (account: Omit<BrokerageAccount, 'id' | 'addedAt'>) => void;
+  removeBrokerageAccount: (id: string) => void;
+  updateBrokerageAccount: (id: string, updates: Partial<BrokerageAccount>) => void;
 
   // Wallet positions - replaces all positions from wallets
   setWalletPositions: (walletPositions: Position[]) => void;
@@ -58,6 +65,11 @@ interface PortfolioState {
   // Custom price actions
   setCustomPrice: (symbol: string, price: number, note?: string) => void;
   removeCustomPrice: (symbol: string) => void;
+
+  // Transaction actions
+  addTransaction: (tx: Omit<Transaction, 'id' | 'createdAt'>) => void;
+  getTransactionsBySymbol: (symbol: string) => Transaction[];
+  getTransactionsByPosition: (positionId: string) => Transaction[];
 
   // Snapshot actions
   addSnapshot: (snapshot: Omit<NetWorthSnapshot, 'id'>) => void;
@@ -83,9 +95,11 @@ export const usePortfolioStore = create<PortfolioState>()(
       positions: [],
       wallets: [],
       accounts: [],
+      brokerageAccounts: [],
       prices: {},
       customPrices: {},
       fxRates: {},
+      transactions: [],
       snapshots: [],
       lastRefresh: null,
       isRefreshing: false,
@@ -101,7 +115,7 @@ export const usePortfolioStore = create<PortfolioState>()(
             ...state.positions,
             {
               ...position,
-              id: uuidv4(),
+              id: position.id || uuidv4(),
               addedAt: now,
               updatedAt: now,
             },
@@ -197,6 +211,37 @@ export const usePortfolioStore = create<PortfolioState>()(
         }));
       },
 
+      // Add a brokerage account
+      addBrokerageAccount: (account) => {
+        set((state) => ({
+          brokerageAccounts: [
+            ...state.brokerageAccounts,
+            {
+              ...account,
+              id: uuidv4(),
+              addedAt: new Date().toISOString(),
+            },
+          ],
+        }));
+      },
+
+      // Remove a brokerage account and its positions
+      removeBrokerageAccount: (id) => {
+        set((state) => ({
+          brokerageAccounts: state.brokerageAccounts.filter((a) => a.id !== id),
+          positions: state.positions.filter((p) => p.protocol !== `brokerage:${id}`),
+        }));
+      },
+
+      // Update brokerage account details
+      updateBrokerageAccount: (id, updates) => {
+        set((state) => ({
+          brokerageAccounts: state.brokerageAccounts.map((a) =>
+            a.id === id ? { ...a, ...updates } : a
+          ),
+        }));
+      },
+
       // Replace all wallet positions (keeps manual and CEX positions intact)
       setWalletPositions: (walletPositions) => {
         set((state) => {
@@ -264,6 +309,32 @@ export const usePortfolioStore = create<PortfolioState>()(
         });
       },
 
+      // Add a transaction record
+      addTransaction: (tx) => {
+        set((state) => ({
+          transactions: [
+            ...state.transactions,
+            {
+              ...tx,
+              id: uuidv4(),
+              createdAt: new Date().toISOString(),
+            },
+          ],
+        }));
+      },
+
+      // Get transactions by symbol
+      getTransactionsBySymbol: (symbol) => {
+        return get().transactions.filter(
+          (t) => t.symbol.toLowerCase() === symbol.toLowerCase()
+        );
+      },
+
+      // Get transactions by position ID
+      getTransactionsByPosition: (positionId) => {
+        return get().transactions.filter((t) => t.positionId === positionId);
+      },
+
       // Add a daily snapshot
       addSnapshot: (snapshot) => {
         set((state) => ({
@@ -304,8 +375,10 @@ export const usePortfolioStore = create<PortfolioState>()(
           positions: [],
           wallets: [],
           accounts: [],
+          brokerageAccounts: [],
           prices: {},
           customPrices: {},
+          transactions: [],
           snapshots: [],
           lastRefresh: null,
           isRefreshing: false,
@@ -314,19 +387,44 @@ export const usePortfolioStore = create<PortfolioState>()(
     }),
     {
       name: 'portfolio-storage',
-      version: 2,
+      version: 4,
       migrate: (persistedState: unknown, version: number) => {
-        // Handle migration from any version - just return the state as-is
-        // This ensures data saved with version: 2 can still be read
-        return persistedState as unknown as PortfolioState;
+        const state = persistedState as Record<string, unknown>;
+        // v2 → v3: add transactions array
+        if (version < 3) {
+          state.transactions = state.transactions || [];
+        }
+        // v3 → v4: add brokerageAccounts, tag existing equities
+        if (version < 4) {
+          state.brokerageAccounts = state.brokerageAccounts || [];
+          const positions = (state.positions || []) as Array<Record<string, unknown>>;
+          const equityPositions = positions.filter(
+            (p) => (p.type === 'stock' || p.type === 'etf') && !p.protocol
+          );
+          if (equityPositions.length > 0) {
+            const accountId = uuidv4();
+            (state.brokerageAccounts as Array<Record<string, unknown>>).push({
+              id: accountId,
+              name: 'Revolut',
+              isActive: true,
+              addedAt: new Date().toISOString(),
+            });
+            equityPositions.forEach((p) => {
+              p.protocol = `brokerage:${accountId}`;
+            });
+          }
+        }
+        return state as unknown as PortfolioState;
       },
       // Don't persist volatile UI state - this prevents sync from getting stuck
       partialize: (state) => ({
         positions: state.positions,
         wallets: state.wallets,
         accounts: state.accounts,
+        brokerageAccounts: state.brokerageAccounts,
         prices: state.prices,
         customPrices: state.customPrices,
+        transactions: state.transactions,
         snapshots: state.snapshots,
         lastRefresh: state.lastRefresh,
         hideBalances: state.hideBalances,

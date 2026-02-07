@@ -17,6 +17,13 @@ export interface CexAccount {
   lastSync?: string;
 }
 
+export interface BrokerageAccount {
+  id: string;
+  name: string;        // e.g., "Revolut", "IBKR Main"
+  isActive: boolean;
+  addedAt: string;
+}
+
 export interface Position {
   id: string;
   type: AssetType;
@@ -104,6 +111,45 @@ export interface WalletBalance {
   logo?: string;
   isVerified?: boolean;
   tokenId?: string;
+}
+
+// NL Position Management
+export type PositionActionType = 'buy' | 'sell_partial' | 'sell_all' | 'update';
+
+export interface ParsedPositionAction {
+  action: PositionActionType;
+  symbol: string;
+  name?: string;
+  assetType: AssetType;
+  amount?: number;
+  pricePerUnit?: number;
+  totalCost?: number;
+  sellAmount?: number;
+  sellPercent?: number;
+  sellPrice?: number;
+  totalProceeds?: number;
+  date?: string;
+  matchedPositionId?: string;
+  missingFields?: string[];
+  confidence: number;
+  summary: string;
+}
+
+export interface Transaction {
+  id: string;
+  type: 'buy' | 'sell' | 'transfer';
+  symbol: string;
+  name: string;
+  assetType: AssetType;
+  amount: number;
+  pricePerUnit: number;
+  totalValue: number;
+  costBasisAtExecution?: number;
+  realizedPnL?: number;
+  positionId: string;
+  date: string;
+  notes?: string;
+  createdAt: string;
 }
 
 export interface DefiPosition {

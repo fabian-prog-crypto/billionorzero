@@ -1141,6 +1141,8 @@ export function calculateCustodyBreakdown(assets: AssetWithPrice[]): CustodyBrea
       // Perp DEXes (Hyperliquid, Vertex, Drift, etc.) are decentralized
       // Only margin (stablecoins) should show here, not notional
       category = 'Perp DEX';
+    } else if (asset.protocol?.startsWith('brokerage:')) {
+      category = 'Banks & Brokers';
     } else if (asset.type === 'stock' || asset.type === 'cash') {
       category = 'Banks & Brokers';
     } else if (asset.walletAddress) {
