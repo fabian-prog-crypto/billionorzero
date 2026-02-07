@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Fingerprint, KeyRound, AlertCircle, TrendingUp, Shield, Zap } from 'lucide-react';
+import { Fingerprint, KeyRound, AlertCircle, Shield, Zap, TrendingUp } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
+import Logo from '@/components/ui/Logo';
 import {
   isPasskeySupported,
   isPasskeyRegistered,
@@ -142,11 +143,8 @@ export default function LoginScreen() {
             style={{ animationDelay: '0.1s', animationFillMode: 'forwards' }}
           >
             {/* Logo */}
-            <div className="relative inline-flex mb-8">
-              <div className="w-20 h-20  bg-gradient-to-br from-[var(--accent-primary)] to-purple-600 flex items-center justify-center animate-float">
-                <TrendingUp className="w-10 h-10 text-white" strokeWidth={2.5} />
-              </div>
-              <div className="absolute inset-0  bg-gradient-to-br from-[var(--accent-primary)] to-purple-600 blur-xl opacity-40" />
+            <div className="inline-flex mb-8">
+              <Logo size={80} className="text-[var(--foreground)] animate-float" />
             </div>
 
             {/* Title */}

@@ -10,6 +10,7 @@ import { useRefresh } from '@/components/PortfolioProvider';
 import AddPositionModal from '@/components/modals/AddPositionModal';
 import AddWalletModal from '@/components/modals/AddWalletModal';
 import CommandPalette from '@/components/CommandPalette';
+import Logo from '@/components/ui/Logo';
 import ConfirmPositionActionModal from '@/components/modals/ConfirmPositionActionModal';
 import { calculateAllPositionsWithPrices } from '@/services';
 import { calculateSyncCost } from '@/lib/constants';
@@ -192,7 +193,8 @@ export default function AppShell({ children }: AppShellProps) {
         {/* Row 1: Main Navigation */}
         <div className="flex items-center justify-between px-6 lg:px-8 border-b border-[var(--border)]">
           {/* Logo */}
-          <Link href="/" className="flex items-center py-3">
+          <Link href="/" className="flex items-center gap-2 py-3">
+            <Logo size={20} />
             <span className="text-base tracking-tight" style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}>
               billionorzero
             </span>
