@@ -132,6 +132,26 @@ export default function AppShell({ children }: AppShellProps) {
     return () => document.removeEventListener('keydown', handler);
   }, []);
 
+  // Tab / Shift+Tab to cycle category tabs
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return;
+      e.preventDefault();
+
+      const routes = ['/', '/crypto', '/equities', '/cash', '/other'];
+      const currentIdx = routes.findIndex((r) =>
+        r === '/' ? pathname === '/' : pathname.startsWith(r)
+      );
+      const idx = currentIdx === -1 ? 0 : currentIdx;
+      const next = e.shiftKey
+        ? (idx - 1 + routes.length) % routes.length
+        : (idx + 1) % routes.length;
+      router.push(routes[next]);
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [pathname, router]);
+
   // Determine active sub-tab from pathname
   const getActiveSubTab = (): SubTab => {
     if (pathname.startsWith('/crypto')) return 'crypto';
