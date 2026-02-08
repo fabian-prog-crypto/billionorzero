@@ -8,7 +8,8 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import { Position, CashAccount } from '@/types';
+import { Position, CashAccount, AssetWithPrice } from '@/types';
+import { extractCurrencyCode } from './portfolio-calculator';
 
 /** Normalize a name to a stable internal slug for matching. */
 export function toSlug(name: string): string {
@@ -116,4 +117,46 @@ export function linkOrphanedCashPositions(
     positions: updatedPositions,
     cashAccounts: updatedCashAccounts,
   };
+}
+
+/**
+ * Aggregate cash positions by currency code.
+ *
+ * Groups all positions by their extracted currency code (e.g., EUR, USD, CHF),
+ * summing amounts and values into a single row per currency.
+ * Returns sorted by value descending.
+ */
+export function aggregateCashByCurrency(positions: AssetWithPrice[]): AssetWithPrice[] {
+  if (positions.length === 0) return [];
+
+  const currencyMap = new Map<string, AssetWithPrice>();
+  const totalValue = positions
+    .filter((p) => p.value > 0)
+    .reduce((sum, p) => sum + p.value, 0);
+
+  for (const p of positions) {
+    const currency = extractCurrencyCode(p.symbol);
+    const existing = currencyMap.get(currency);
+
+    if (existing) {
+      const newAmount = existing.amount + p.amount;
+      const newValue = existing.value + p.value;
+      const newAllocation = totalValue > 0 ? (Math.max(0, newValue) / totalValue) * 100 : 0;
+      currencyMap.set(currency, {
+        ...existing,
+        amount: newAmount,
+        value: newValue,
+        allocation: newAllocation,
+      });
+    } else {
+      const allocation = totalValue > 0 ? (Math.max(0, p.value) / totalValue) * 100 : 0;
+      currencyMap.set(currency, {
+        ...p,
+        name: currency,
+        allocation,
+      });
+    }
+  }
+
+  return Array.from(currencyMap.values()).sort((a, b) => b.value - a.value);
 }

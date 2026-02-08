@@ -46,6 +46,7 @@ const sidebarItemsByCategory: Record<SubTab, { path: string; icon: typeof Layers
   cash: [
     { path: '', icon: LayoutDashboard, label: 'Overview' },
     { path: 'positions', icon: Layers, label: 'Assets' },
+    { path: 'accounts', icon: Building2, label: 'Accounts' },
   ],
   other: [
     { path: '', icon: LayoutDashboard, label: 'Overview' },

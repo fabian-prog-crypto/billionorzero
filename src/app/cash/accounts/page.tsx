@@ -481,7 +481,7 @@ export default function CashAccountsPage() {
                           >
                             <td className="py-2">
                               <Link
-                                href={`/assets/${entry.symbol.toLowerCase()}`}
+                                href={`/cash/currency/${extractCurrencyCode(entry.symbol).toLowerCase()}`}
                                 className="flex items-center gap-2 hover:opacity-80 transition-opacity"
                               >
                                 <CurrencyIcon symbol={entry.currency} size={20} logoUrl={entry.logo} />
