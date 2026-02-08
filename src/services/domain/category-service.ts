@@ -291,6 +291,13 @@ export class CategoryService {
   };
 
   /**
+   * Get the set of fiat currency codes (lowercase)
+   */
+  getFiatCurrencies(): Set<string> {
+    return this.fiatCurrencies;
+  }
+
+  /**
    * Check if a protocol is a perps/derivatives protocol
    */
   isPerpProtocol(protocol?: string): boolean {
@@ -850,4 +857,8 @@ export function getUnderlyingFiatCurrency(symbol: string): string | null {
 
 export function isStablecoin(symbol: string): boolean {
   return getCategoryService().isStablecoin(symbol);
+}
+
+export function getFiatCurrencies(): Set<string> {
+  return getCategoryService().getFiatCurrencies();
 }

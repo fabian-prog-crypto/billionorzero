@@ -12,10 +12,27 @@ interface CommandPaletteProps {
   positions: Position[];
 }
 
-const EXAMPLES = [
-  'Bought 10 AAPL at $185',
-  'Sold half of my ETH',
-  'Closed TSLA position at $420',
+const EXAMPLE_GROUPS = [
+  {
+    label: 'TRADE',
+    examples: [
+      'Bought 10 AAPL at $185',
+      'Sold half of my ETH',
+    ],
+  },
+  {
+    label: 'CASH',
+    examples: [
+      '49750 EUR to Revolut',
+    ],
+  },
+  {
+    label: 'MANAGE',
+    examples: [
+      'Remove DOGE',
+      'BTC price 95000',
+    ],
+  },
 ];
 
 export default function CommandPalette({
@@ -248,19 +265,26 @@ export default function CommandPalette({
           {/* Examples section */}
           {showExamples && (
             <div className="border-t border-[var(--border)] px-4 py-3">
-              <div className="space-y-1.5">
-                {EXAMPLES.map((example) => (
-                  <button
-                    key={example}
-                    onClick={() => {
-                      setText(example);
-                      inputRef.current?.focus();
-                    }}
-                    className="flex items-center gap-2 w-full text-left text-[13px] text-[var(--foreground-muted)] hover:text-[var(--foreground)] transition-colors py-0.5"
-                  >
-                    <span className="text-[var(--foreground-subtle)]">·</span>
-                    <span>&ldquo;{example}&rdquo;</span>
-                  </button>
+              <div className="space-y-3">
+                {EXAMPLE_GROUPS.map((group) => (
+                  <div key={group.label}>
+                    <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">{group.label}</p>
+                    <div className="space-y-1">
+                      {group.examples.map((example) => (
+                        <button
+                          key={example}
+                          onClick={() => {
+                            setText(example);
+                            inputRef.current?.focus();
+                          }}
+                          className="flex items-center gap-2 w-full text-left text-[13px] text-[var(--foreground-muted)] hover:text-[var(--foreground)] transition-colors py-0.5"
+                        >
+                          <span className="text-[var(--foreground-subtle)]">·</span>
+                          <span>&ldquo;{example}&rdquo;</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>

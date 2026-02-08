@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { X, AlertCircle, TrendingUp, TrendingDown } from 'lucide-react';
+import { X, AlertCircle, TrendingUp, TrendingDown, DollarSign, Trash2, RefreshCw, Tag } from 'lucide-react';
 import { ParsedPositionAction, Position, AssetWithPrice } from '@/types';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import {
@@ -19,6 +19,8 @@ interface ConfirmPositionActionModalProps {
   positionsWithPrices: AssetWithPrice[];
 }
 
+const FIAT_CURRENCIES = ['USD', 'EUR', 'GBP', 'CHF', 'JPY', 'CNY', 'CAD', 'AUD', 'NZD', 'HKD', 'SGD', 'SEK', 'NOK', 'DKK', 'KRW', 'INR', 'BRL', 'MXN', 'ZAR', 'AED', 'THB', 'PLN', 'CZK', 'ILS', 'PHP', 'IDR', 'MYR', 'TRY', 'RUB', 'HUF', 'RON', 'BGN', 'HRK', 'ISK', 'TWD', 'VND'];
+
 export default function ConfirmPositionActionModal({
   isOpen,
   onClose,
@@ -26,7 +28,7 @@ export default function ConfirmPositionActionModal({
   positions,
   positionsWithPrices,
 }: ConfirmPositionActionModalProps) {
-  const { updatePosition, removePosition, addPosition, addTransaction, updatePrice, brokerageAccounts } =
+  const { updatePosition, removePosition, addPosition, addTransaction, updatePrice, setCustomPrice, brokerageAccounts } =
     usePortfolioStore();
 
   // Editable fields
@@ -56,6 +58,11 @@ export default function ConfirmPositionActionModal({
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // New action fields
+  const [cashCurrency, setCashCurrency] = useState(parsedAction.currency || 'USD');
+  const [accountName, setAccountName] = useState(parsedAction.accountName || '');
+  const [newPrice, setNewPrice] = useState(parsedAction.newPrice?.toString() || '');
+
   const firstMissingRef = useRef<HTMLInputElement>(null);
 
   // Reset when modal opens with new action
@@ -72,6 +79,9 @@ export default function ConfirmPositionActionModal({
       setAddToExisting(true);
       setError(null);
       setIsSubmitting(false);
+      setCashCurrency(parsedAction.currency || 'USD');
+      setAccountName(parsedAction.accountName || '');
+      setNewPrice(parsedAction.newPrice?.toString() || '');
 
       // Auto-fill price from current market price when missing
       const matched = parsedAction.matchedPositionId
@@ -113,6 +123,10 @@ export default function ConfirmPositionActionModal({
 
   const isSell = action === 'sell_partial' || action === 'sell_all';
   const isBuy = action === 'buy';
+  const isAddCash = action === 'add_cash';
+  const isRemove = action === 'remove';
+  const isUpdateCash = action === 'update_cash';
+  const isSetPrice = action === 'set_price';
 
   // Find matched position
   const matchedPosition = matchedPositionId
@@ -133,6 +147,7 @@ export default function ConfirmPositionActionModal({
   const numSellPrice = parseFloat(sellPrice) || 0;
   const numAmount = parseFloat(amount) || 0;
   const numPricePerUnit = parseFloat(pricePerUnit) || 0;
+  const numNewPrice = parseFloat(newPrice) || 0;
 
   const sellTotal = numSellAmount * numSellPrice;
   const effectiveSellTotal = action === 'sell_all' && matchedPosition
@@ -185,6 +200,11 @@ export default function ConfirmPositionActionModal({
     missingFields.push('sellAmount exceeds position');
   if (isBuy && !numAmount) missingFields.push('amount');
   if (isBuy && numPricePerUnit <= 0) missingFields.push('pricePerUnit');
+  if (isAddCash && numAmount <= 0) missingFields.push('amount');
+  if (isAddCash && !cashCurrency) missingFields.push('currency');
+  if (isAddCash && !accountName.trim()) missingFields.push('accountName');
+  if (isUpdateCash && numAmount <= 0) missingFields.push('amount');
+  if (isSetPrice && numNewPrice <= 0) missingFields.push('newPrice');
 
   const canConfirm = missingFields.length === 0;
 
@@ -254,6 +274,24 @@ export default function ConfirmPositionActionModal({
   const realizedPnLPercent = realizedPnL !== undefined && costBasisAtExecution && costBasisAtExecution > 0
     ? (realizedPnL / costBasisAtExecution) * 100
     : null;
+
+  // For add_cash: find existing cash positions matching same currency
+  const existingCashPositions = isAddCash
+    ? positions.filter(p => p.type === 'cash' && p.symbol.toUpperCase().includes(`CASH_${cashCurrency}`))
+    : [];
+
+  // For update_cash: find matching cash positions
+  const updateCashCandidates = isUpdateCash
+    ? positions.filter(p => p.type === 'cash')
+    : [];
+  const updateCashMatched = isUpdateCash && matchedPositionId
+    ? positions.find(p => p.id === matchedPositionId)
+    : updateCashCandidates.length === 1 ? updateCashCandidates[0] : null;
+
+  // For set_price: find all positions affected by this symbol
+  const setPriceAffectedPositions = isSetPrice
+    ? positionsWithPrices.filter(p => p.symbol.toUpperCase() === symbol.toUpperCase())
+    : [];
 
   // Cash side-effect: update or create cash position in the same brokerage account.
   // Returns true if a warning was shown (caller should NOT close the modal).
@@ -383,6 +421,69 @@ export default function ConfirmPositionActionModal({
 
         const warned = handleCashSideEffect(-result.transaction.totalValue, effectiveBrokerageId ?? null);
         if (warned) return;
+      } else if (isAddCash) {
+        // Add cash: create a new cash position (or add to existing)
+        const existingMatch = addToExisting && existingCashPositions.length > 0
+          ? existingCashPositions[0]
+          : null;
+
+        if (existingMatch) {
+          // Add to existing cash position
+          const newAmount = existingMatch.amount + numAmount;
+          updatePosition(existingMatch.id, {
+            amount: newAmount,
+            costBasis: newAmount,
+          });
+        } else {
+          // Create new cash position
+          const cashSymbol = `CASH_${cashCurrency}_${Date.now()}`;
+          addPosition({
+            type: 'cash',
+            symbol: cashSymbol,
+            name: accountName.trim() ? `${accountName.trim()} (${cashCurrency})` : `Cash (${cashCurrency})`,
+            amount: numAmount,
+            costBasis: numAmount,
+          });
+          // Set price to 1 for fiat (value = amount)
+          updatePrice(cashSymbol.toLowerCase(), {
+            symbol: cashCurrency,
+            price: 1,
+            change24h: 0,
+            changePercent24h: 0,
+            lastUpdated: new Date().toISOString(),
+          });
+        }
+      } else if (isRemove) {
+        // Remove position(s)
+        if (matchedPositionId) {
+          removePosition(matchedPositionId);
+        } else if (symbolMatches.length > 0) {
+          // Remove all matching positions
+          for (const p of symbolMatches) {
+            removePosition(p.id);
+          }
+        } else {
+          setError(`No position found for ${symbol}`);
+          return;
+        }
+      } else if (isUpdateCash) {
+        // Update cash balance
+        const target = updateCashMatched;
+        if (!target) {
+          setError('No matching cash position found');
+          return;
+        }
+        updatePosition(target.id, {
+          amount: numAmount,
+          costBasis: numAmount,
+        });
+      } else if (isSetPrice) {
+        // Set custom price override
+        if (numNewPrice <= 0) {
+          setError('Price must be greater than 0');
+          return;
+        }
+        setCustomPrice(symbol.toLowerCase(), numNewPrice, 'Set via command palette');
       }
 
       onClose();
@@ -393,16 +494,62 @@ export default function ConfirmPositionActionModal({
     }
   };
 
-  const actionLabel = isSell ? 'Sell' : isBuy ? 'Buy' : 'Update';
+  // Action label and confirm button
+  const actionLabel = isSell ? 'Sell' : isBuy ? 'Buy' : isAddCash ? 'Add Cash' : isRemove ? 'Remove' : isUpdateCash ? 'Update Cash' : isSetPrice ? 'Set Price' : 'Update';
 
-  // Build a descriptive confirm button label
+  const fmtAmount = numAmount > 0
+    ? numAmount.toLocaleString('en-US', { maximumFractionDigits: 2 })
+    : '';
+
   const confirmLabel = isSell
     ? matchedPosition
       ? `Sell ${formatNumber(effectiveSellAmount)} ${symbol} (${Math.round(sellPercentOfPosition)}%)`
       : `Sell ${symbol}`
     : isBuy
     ? `Buy ${numAmount > 0 ? formatNumber(numAmount) + ' ' : ''}${symbol}`
+    : isAddCash
+    ? `Add ${fmtAmount} ${cashCurrency}`
+    : isRemove
+    ? `Remove ${symbol}`
+    : isUpdateCash
+    ? `Update to ${fmtAmount} ${cashCurrency}`
+    : isSetPrice
+    ? `Set Price to ${numNewPrice > 0 ? formatCurrency(numNewPrice) : '?'}`
     : actionLabel;
+
+  // Header accent color
+  const headerBorderColor = isRemove
+    ? 'border-[var(--negative)]'
+    : isSell
+    ? 'border-[var(--negative)]'
+    : 'border-[var(--accent-primary)]';
+
+  const headerTextColor = isRemove
+    ? 'text-[var(--negative)]'
+    : isSell
+    ? 'text-[var(--negative)]'
+    : 'text-[var(--accent-primary)]';
+
+  // Summary banner background
+  const bannerBg = isRemove
+    ? 'bg-[var(--negative-light)]'
+    : isSell
+    ? 'bg-[var(--negative-light)]'
+    : 'bg-[var(--positive-light)]';
+
+  // Action icon
+  const ActionIcon = isAddCash ? DollarSign
+    : isRemove ? Trash2
+    : isUpdateCash ? RefreshCw
+    : isSetPrice ? Tag
+    : isSell ? TrendingDown
+    : TrendingUp;
+
+  const actionIconColor = isRemove
+    ? 'text-[var(--negative)]'
+    : isSell
+    ? 'text-[var(--negative)]'
+    : 'text-[var(--positive)]';
 
   const MissingDot = () => (
     <span className="inline-block w-1.5 h-1.5 bg-[var(--negative)] animate-pulse rounded-full ml-1.5" />
@@ -416,13 +563,13 @@ export default function ConfirmPositionActionModal({
       >
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
-          <div className={`border-l-2 pl-3 ${isSell ? 'border-[var(--negative)]' : 'border-[var(--positive)]'}`}>
+          <div className={`border-l-2 pl-3 ${headerBorderColor}`}>
             <h2 className="text-lg font-semibold">
               Confirm:{' '}
-              <span className={isSell ? 'text-[var(--negative)]' : 'text-[var(--positive)]'}>
+              <span className={headerTextColor}>
                 {actionLabel}
               </span>{' '}
-              {symbol}
+              {isAddCash ? cashCurrency : isSetPrice ? symbol : isUpdateCash ? '' : symbol}
             </h2>
           </div>
           <button
@@ -434,21 +581,13 @@ export default function ConfirmPositionActionModal({
         </div>
 
         {/* Summary banner */}
-        <div className={`p-3 mb-4 text-[13px] flex items-center gap-2 ${
-          isSell
-            ? 'bg-[var(--negative-light)]'
-            : 'bg-[var(--positive-light)]'
-        }`}>
-          {isSell ? (
-            <TrendingDown className={`w-4 h-4 flex-shrink-0 text-[var(--negative)]`} />
-          ) : (
-            <TrendingUp className={`w-4 h-4 flex-shrink-0 text-[var(--positive)]`} />
-          )}
+        <div className={`p-3 mb-4 text-[13px] flex items-center gap-2 ${bannerBg}`}>
+          <ActionIcon className={`w-4 h-4 flex-shrink-0 ${actionIconColor}`} />
           {parsedAction.summary}
         </div>
 
-        {/* Position selector if ambiguous */}
-        {symbolMatches.length > 1 && (
+        {/* Position selector if ambiguous (for sell/remove) */}
+        {(isSell || isRemove) && symbolMatches.length > 1 && (
           <div className="mb-4">
             <label className="block text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">
               Multiple positions found — select one
@@ -474,6 +613,7 @@ export default function ConfirmPositionActionModal({
 
         {/* Fields */}
         <div className="space-y-3">
+          {/* ===== SELL FIELDS ===== */}
           {isSell && (
             <>
               {action === 'sell_partial' && (
@@ -570,6 +710,7 @@ export default function ConfirmPositionActionModal({
             </>
           )}
 
+          {/* ===== BUY FIELDS ===== */}
           {isBuy && (
             <>
               <div className="grid grid-cols-2 gap-3">
@@ -684,36 +825,334 @@ export default function ConfirmPositionActionModal({
             </>
           )}
 
-          {/* Date */}
-          <div>
-            <label className="block text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">
-              Date
-            </label>
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="w-full"
-              max={new Date().toISOString().split('T')[0]}
-            />
-          </div>
+          {/* ===== ADD CASH FIELDS ===== */}
+          {isAddCash && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="flex items-center text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">
+                    Amount
+                    {missingFields.includes('amount') && (
+                      <>
+                        <MissingDot />
+                        <span className="text-[10px] uppercase text-[var(--negative)] ml-1">Required</span>
+                      </>
+                    )}
+                  </label>
+                  <input
+                    ref={missingFields[0] === 'amount' ? firstMissingRef : undefined}
+                    type="number"
+                    step="any"
+                    min="0"
+                    placeholder="0"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    className={`w-full ${
+                      missingFields.includes('amount')
+                        ? 'border-[var(--negative)] bg-[var(--negative-light)]'
+                        : ''
+                    }`}
+                  />
+                </div>
+                <div>
+                  <label className="flex items-center text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">
+                    Currency
+                    {missingFields.includes('currency') && (
+                      <>
+                        <MissingDot />
+                        <span className="text-[10px] uppercase text-[var(--negative)] ml-1">Required</span>
+                      </>
+                    )}
+                  </label>
+                  <select
+                    value={cashCurrency}
+                    onChange={(e) => setCashCurrency(e.target.value)}
+                    className="w-full"
+                  >
+                    {FIAT_CURRENCIES.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="flex items-center text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">
+                  Account Name
+                  {missingFields.includes('accountName') && (
+                    <>
+                      <MissingDot />
+                      <span className="text-[10px] uppercase text-[var(--negative)] ml-1">Required</span>
+                    </>
+                  )}
+                </label>
+                <input
+                  ref={missingFields[0] === 'accountName' ? firstMissingRef : undefined}
+                  type="text"
+                  placeholder="e.g., Revolut, IBKR"
+                  value={accountName}
+                  onChange={(e) => setAccountName(e.target.value)}
+                  className={`w-full ${
+                    missingFields.includes('accountName')
+                      ? 'border-[var(--negative)] bg-[var(--negative-light)]'
+                      : ''
+                  }`}
+                />
+              </div>
 
-          {/* Notes */}
-          <div>
-            <label className="block text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">
-              Notes (optional)
-            </label>
-            <input
-              type="text"
-              placeholder="e.g., Tax-loss harvest"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              className="w-full"
-            />
-          </div>
+              {/* Existing cash position: add-to or create separate */}
+              {existingCashPositions.length > 0 && (
+                <div className="p-3 bg-[var(--background-secondary)]">
+                  <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">
+                    Existing {cashCurrency} cash: {formatNumber(existingCashPositions[0].amount)} ({existingCashPositions[0].name})
+                  </p>
+                  <div className="bg-[var(--background-secondary)] p-1 flex gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setAddToExisting(true)}
+                      className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                        addToExisting
+                          ? 'bg-[var(--card-bg)] shadow-sm'
+                          : 'text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
+                      }`}
+                    >
+                      Add to existing
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAddToExisting(false)}
+                      className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                        !addToExisting
+                          ? 'bg-[var(--card-bg)] shadow-sm'
+                          : 'text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
+                      }`}
+                    >
+                      Create separate
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ===== REMOVE FIELDS ===== */}
+          {isRemove && (
+            <>
+              {symbolMatches.length > 0 ? (
+                <div className="p-3 bg-[var(--background-secondary)]">
+                  {symbolMatches.map((p) => {
+                    const withPrice = positionsWithPrices.find(pw => pw.id === p.id);
+                    return (
+                      <div key={p.id} className="flex items-center justify-between text-sm py-1">
+                        <div>
+                          <span className="font-medium">{p.symbol.toUpperCase()}</span>
+                          <span className="text-[var(--foreground-muted)] ml-2">{formatNumber(p.amount)} units</span>
+                        </div>
+                        {withPrice && (
+                          <span className="font-mono text-sm">{formatCurrency(withPrice.value)}</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="p-3 bg-[var(--negative-light)] text-[13px] text-[var(--negative)] flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  No position found for {symbol}
+                </div>
+              )}
+              <div className="p-3 bg-[var(--negative-light)] text-[13px] text-[var(--negative)] flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                This action cannot be undone
+              </div>
+            </>
+          )}
+
+          {/* ===== UPDATE CASH FIELDS ===== */}
+          {isUpdateCash && (
+            <>
+              {updateCashCandidates.length > 1 && (
+                <div>
+                  <label className="block text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">
+                    Select cash position
+                  </label>
+                  <select
+                    value={matchedPositionId}
+                    onChange={(e) => setMatchedPositionId(e.target.value)}
+                    className="w-full"
+                  >
+                    <option value="">Select...</option>
+                    {updateCashCandidates.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} — {formatNumber(p.amount)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div>
+                <label className="flex items-center text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">
+                  New Balance
+                  {missingFields.includes('amount') && (
+                    <>
+                      <MissingDot />
+                      <span className="text-[10px] uppercase text-[var(--negative)] ml-1">Required</span>
+                    </>
+                  )}
+                </label>
+                <input
+                  ref={missingFields[0] === 'amount' ? firstMissingRef : undefined}
+                  type="number"
+                  step="any"
+                  min="0"
+                  placeholder="0"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  className={`w-full ${
+                    missingFields.includes('amount')
+                      ? 'border-[var(--negative)] bg-[var(--negative-light)]'
+                      : ''
+                  }`}
+                />
+              </div>
+
+              {/* Before → After preview */}
+              {updateCashMatched && numAmount > 0 && (
+                <div className="p-3 bg-[var(--card-bg)] border border-[var(--card-border)]">
+                  <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">
+                    Balance Change
+                  </p>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-[var(--foreground-muted)]">{updateCashMatched.name}</span>
+                    <div className="font-mono">
+                      <span>{formatNumber(updateCashMatched.amount)}</span>
+                      <span className="text-[var(--foreground-muted)] mx-2">→</span>
+                      <span>{formatNumber(numAmount)}</span>
+                    </div>
+                  </div>
+                  {(() => {
+                    const diff = numAmount - updateCashMatched.amount;
+                    const color = diff >= 0 ? 'text-[var(--positive)]' : 'text-[var(--negative)]';
+                    return (
+                      <div className="flex justify-end mt-1">
+                        <span className={`text-xs font-mono ${color}`}>
+                          {diff >= 0 ? '+' : ''}{formatNumber(diff)} {cashCurrency}
+                        </span>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ===== SET PRICE FIELDS ===== */}
+          {isSetPrice && (
+            <>
+              <div>
+                <label className="flex items-center text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">
+                  New Price ($)
+                  {missingFields.includes('newPrice') && (
+                    <>
+                      <MissingDot />
+                      <span className="text-[10px] uppercase text-[var(--negative)] ml-1">Required</span>
+                    </>
+                  )}
+                </label>
+                <input
+                  ref={missingFields[0] === 'newPrice' ? firstMissingRef : undefined}
+                  type="number"
+                  step="any"
+                  min="0"
+                  placeholder="0.00"
+                  value={newPrice}
+                  onChange={(e) => setNewPrice(e.target.value)}
+                  className={`w-full ${
+                    missingFields.includes('newPrice')
+                      ? 'border-[var(--negative)] bg-[var(--negative-light)]'
+                      : ''
+                  }`}
+                />
+              </div>
+
+              {/* Current vs new price comparison */}
+              {setPriceAffectedPositions.length > 0 && numNewPrice > 0 && (
+                <div className="p-3 bg-[var(--card-bg)] border border-[var(--card-border)]">
+                  <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">
+                    Affected Positions
+                  </p>
+                  <div className="space-y-2">
+                    {setPriceAffectedPositions.map((p) => {
+                      const oldValue = p.value;
+                      const newValue = p.amount * numNewPrice;
+                      const diff = newValue - oldValue;
+                      const diffColor = diff >= 0 ? 'text-[var(--positive)]' : 'text-[var(--negative)]';
+                      return (
+                        <div key={p.id} className="space-y-1">
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-[var(--foreground-muted)]">{formatNumber(p.amount)} {symbol}</span>
+                            <div className="font-mono text-xs">
+                              <span>{formatCurrency(oldValue)}</span>
+                              <span className="text-[var(--foreground-muted)] mx-2">→</span>
+                              <span>{formatCurrency(newValue)}</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-[var(--foreground-muted)]">Price</span>
+                            <div className="font-mono">
+                              <span>{formatCurrency(p.currentPrice)}</span>
+                              <span className="text-[var(--foreground-muted)] mx-2">→</span>
+                              <span>{formatCurrency(numNewPrice)}</span>
+                              <span className={`ml-2 ${diffColor}`}>
+                                ({diff >= 0 ? '+' : ''}{formatCurrency(diff)})
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[11px] text-[var(--foreground-muted)] mt-3">
+                    Custom prices override market prices until removed
+                  </p>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Date (only for buy/sell) */}
+          {(isBuy || isSell) && (
+            <div>
+              <label className="block text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">
+                Date
+              </label>
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="w-full"
+                max={new Date().toISOString().split('T')[0]}
+              />
+            </div>
+          )}
+
+          {/* Notes (only for buy/sell) */}
+          {(isBuy || isSell) && (
+            <div>
+              <label className="block text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">
+                Notes (optional)
+              </label>
+              <input
+                type="text"
+                placeholder="e.g., Tax-loss harvest"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                className="w-full"
+              />
+            </div>
+          )}
         </div>
 
-        {/* Execution Preview */}
+        {/* Execution Preview (buy/sell only) */}
         {((isSell && matchedPosition && effectiveSellAmount > 0) || (isBuy && numAmount > 0 && numPricePerUnit > 0)) && (
           <div className="mt-4 bg-[var(--card-bg)] border border-[var(--card-border)] p-4">
             <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-3">
@@ -885,6 +1324,24 @@ export default function ConfirmPositionActionModal({
           </div>
         )}
 
+        {/* Add Cash preview */}
+        {isAddCash && numAmount > 0 && existingCashPositions.length > 0 && addToExisting && (
+          <div className="mt-4 bg-[var(--card-bg)] border border-[var(--card-border)] p-4">
+            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-3">
+              Preview
+            </p>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-[var(--foreground-muted)]">{cashCurrency} Balance</span>
+              <div className="font-mono text-xs">
+                <span>{formatNumber(existingCashPositions[0].amount)}</span>
+                <span className="text-[var(--foreground-muted)] mx-2">→</span>
+                <span>{formatNumber(existingCashPositions[0].amount + numAmount)}</span>
+                <span className="text-[var(--positive)] ml-2">+{formatNumber(numAmount)}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Error */}
         {error && (
           <div className="mt-3 p-3 bg-[var(--negative-light)] border border-[rgba(201,123,123,0.2)] text-[var(--negative)] text-[13px] flex items-center gap-2">
@@ -900,12 +1357,14 @@ export default function ConfirmPositionActionModal({
           </button>
           <button
             onClick={handleConfirm}
-            disabled={!canConfirm || isSubmitting}
+            disabled={!canConfirm || isSubmitting || (isRemove && symbolMatches.length === 0)}
             className={`btn flex-1 ${
-              isSell
+              isRemove
+                ? 'btn-danger'
+                : isSell
                 ? 'btn-danger'
                 : 'btn-primary'
-            } ${!canConfirm || isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
+            } ${!canConfirm || isSubmitting || (isRemove && symbolMatches.length === 0) ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
             {confirmLabel}
           </button>

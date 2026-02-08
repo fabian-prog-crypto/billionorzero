@@ -114,7 +114,7 @@ export interface WalletBalance {
 }
 
 // NL Position Management
-export type PositionActionType = 'buy' | 'sell_partial' | 'sell_all' | 'update';
+export type PositionActionType = 'buy' | 'sell_partial' | 'sell_all' | 'update' | 'add_cash' | 'remove' | 'update_cash' | 'set_price';
 
 export interface ParsedPositionAction {
   action: PositionActionType;
@@ -133,6 +133,9 @@ export interface ParsedPositionAction {
   missingFields?: string[];
   confidence: number;
   summary: string;
+  currency?: string;
+  accountName?: string;
+  newPrice?: number;
 }
 
 export interface Transaction {
