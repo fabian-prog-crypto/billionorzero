@@ -1,7 +1,8 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Banknote, ArrowUpDown, ChevronDown, ChevronUp } from 'lucide-react';
+import Link from 'next/link';
+import { Banknote, ArrowUpDown, ChevronDown, ChevronUp, Download } from 'lucide-react';
 import DonutChart, { DonutChartItem } from '@/components/charts/DonutChart';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import {
@@ -14,6 +15,7 @@ import {
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import { CURRENCY_COLORS } from '@/lib/colors';
 import CurrencyIcon from '@/components/ui/CurrencyIcon';
+import SearchInput from '@/components/ui/SearchInput';
 
 type SortField = 'account' | 'currency' | 'value' | 'amount';
 type SortDirection = 'asc' | 'desc';
@@ -33,6 +35,7 @@ export default function CashPage() {
   const [sortField, setSortField] = useState<SortField>('value');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [includeStablecoins, setIncludeStablecoins] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Calculate all positions with prices (including FX conversion for fiat)
   const allPositions = useMemo(() => {
@@ -61,9 +64,21 @@ export default function CashPage() {
   }, [breakdownData, includeStablecoins]);
 
 
+  // Filter by search
+  const searchedPositions = useMemo(() => {
+    if (!searchQuery) return cashPositions;
+    const query = searchQuery.toLowerCase();
+    return cashPositions.filter((p) => {
+      const accountName = extractAccountName(p).toLowerCase();
+      const currencyCode = extractCurrencyCode(p.symbol).toLowerCase();
+      const symbol = p.symbol.toLowerCase();
+      return accountName.includes(query) || currencyCode.includes(query) || symbol.includes(query);
+    });
+  }, [cashPositions, searchQuery]);
+
   // Sort positions
   const sortedPositions = useMemo(() => {
-    return [...cashPositions].sort((a, b) => {
+    return [...searchedPositions].sort((a, b) => {
       let comparison = 0;
       switch (sortField) {
         case 'account': {
@@ -87,7 +102,7 @@ export default function CashPage() {
       }
       return sortDirection === 'asc' ? comparison : -comparison;
     });
-  }, [cashPositions, sortField, sortDirection]);
+  }, [searchedPositions, sortField, sortDirection]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -96,6 +111,32 @@ export default function CashPage() {
       setSortField(field);
       setSortDirection('desc');
     }
+  };
+
+  const exportCSV = () => {
+    const headers = ['Account', 'Currency', 'Amount', 'Value', 'Allocation'];
+    const rows = sortedPositions.map((p) => {
+      const pct = displayTotal > 0 ? (p.value / displayTotal) * 100 : 0;
+      return [
+        extractAccountName(p),
+        extractCurrencyCode(p.symbol),
+        p.amount,
+        p.value,
+        pct.toFixed(2),
+      ];
+    });
+    const escapeCsv = (val: unknown) => {
+      const str = String(val ?? '');
+      return str.includes(',') || str.includes('"') || str.includes('\n') ? `"${str.replace(/"/g, '""')}"` : str;
+    };
+    const csv = [headers, ...rows].map((row) => row.map(escapeCsv).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `cash-positions-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   // Build currency chart data with breakdowns for tooltips
@@ -261,15 +302,42 @@ export default function CashPage() {
           hideValues={hideBalances}
           maxItems={6}
         />
-        <DonutChart
-          title={secondaryChartData.title}
-          data={secondaryChartData.data}
-          hideValues={hideBalances}
-          maxItems={6}
-        />
+        <div>
+          <DonutChart
+            title={secondaryChartData.title}
+            data={secondaryChartData.data}
+            hideValues={hideBalances}
+            maxItems={6}
+          />
+          {!includeStablecoins && (
+            <div className="mt-2 text-right">
+              <Link
+                href="/cash/accounts"
+                className="text-[10px] text-[var(--foreground-muted)] hover:text-[var(--foreground)] transition-colors"
+              >
+                Manage accounts &rarr;
+              </Link>
+            </div>
+          )}
+        </div>
       </div>
 
       <hr className="border-[var(--border)] mb-6" />
+
+      {/* Controls Row */}
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <div className="flex-1" />
+
+        <SearchInput
+          value={searchQuery}
+          onChange={setSearchQuery}
+          placeholder="Search..."
+        />
+
+        <button onClick={exportCSV} className="btn btn-secondary p-2" title="Export CSV">
+          <Download className="w-4 h-4" />
+        </button>
+      </div>
 
       {/* Positions Table */}
       <div className="table-scroll">
@@ -322,24 +390,27 @@ export default function CashPage() {
                   className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--background-secondary)] transition-colors"
                 >
                   <td className="py-2">
-                    <div>
-                      <p className="font-medium text-sm">{accountName}</p>
-                      {position.protocol && position.protocol !== 'wallet' && (
-                        <p className="text-[10px] text-[var(--foreground-muted)]">
-                          {position.protocol}
-                        </p>
-                      )}
-                    </div>
-                  </td>
-                  <td className="py-2">
-                    <div className="flex items-center gap-2">
+                    <Link
+                      href={`/cash/currency/${extractCurrencyCode(position.symbol).toLowerCase()}`}
+                      className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+                    >
                       <CurrencyIcon
                         symbol={cleanSymbol}
                         size={20}
                         logoUrl={position.logo}
                       />
-                      <span className="text-sm font-medium">{cleanSymbol}</span>
-                    </div>
+                      <div>
+                        <p className="font-medium text-sm hover:text-[var(--accent-primary)] transition-colors">{accountName}</p>
+                        {position.protocol && position.protocol !== 'wallet' && (
+                          <p className="text-[10px] text-[var(--foreground-muted)]">
+                            {position.protocol}
+                          </p>
+                        )}
+                      </div>
+                    </Link>
+                  </td>
+                  <td className="py-2">
+                    <span className="text-sm font-medium">{cleanSymbol}</span>
                   </td>
                   <td className="py-2 text-right font-mono text-xs">
                     {hideBalances ? '••••' : formatNumber(position.amount)}

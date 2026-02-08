@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
-import { Position, Wallet, PriceData, NetWorthSnapshot, CexAccount, BrokerageAccount, Transaction } from '@/types';
+import { Position, Wallet, PriceData, NetWorthSnapshot, CexAccount, BrokerageAccount, CashAccount, Transaction } from '@/types';
+import { toSlug, extractCashAccountName, linkOrphanedCashPositions } from '@/services/domain/cash-account-service';
 
 // Custom price entry
 export interface CustomPrice {
@@ -16,6 +17,7 @@ interface PortfolioState {
   wallets: Wallet[];
   accounts: CexAccount[];
   brokerageAccounts: BrokerageAccount[];
+  cashAccounts: CashAccount[];
   prices: Record<string, PriceData>;
   customPrices: Record<string, CustomPrice>;  // Symbol -> custom price override
   fxRates: Record<string, number>;  // Currency -> USD rate (e.g., CHF -> 1.12)
@@ -48,6 +50,11 @@ interface PortfolioState {
   addBrokerageAccount: (account: Omit<BrokerageAccount, 'id' | 'addedAt'>) => void;
   removeBrokerageAccount: (id: string) => void;
   updateBrokerageAccount: (id: string, updates: Partial<BrokerageAccount>) => void;
+
+  // Cash Account actions
+  addCashAccount: (account: Omit<CashAccount, 'id' | 'slug' | 'addedAt'>) => string;
+  removeCashAccount: (id: string) => void;
+  updateCashAccount: (id: string, updates: Partial<CashAccount>) => void;
 
   // Wallet positions - replaces all positions from wallets
   setWalletPositions: (walletPositions: Position[]) => void;
@@ -96,6 +103,7 @@ export const usePortfolioStore = create<PortfolioState>()(
       wallets: [],
       accounts: [],
       brokerageAccounts: [],
+      cashAccounts: [],
       prices: {},
       customPrices: {},
       fxRates: {},
@@ -242,6 +250,46 @@ export const usePortfolioStore = create<PortfolioState>()(
         }));
       },
 
+      // Add a cash account (auto-generates slug; rejects duplicate slugs)
+      addCashAccount: (account) => {
+        const slug = toSlug(account.name);
+        const existing = get().cashAccounts.find((a) => a.slug === slug);
+        if (existing) return existing.id; // Merge: return existing account's ID
+        const id = uuidv4();
+        set((state) => ({
+          cashAccounts: [
+            ...state.cashAccounts,
+            {
+              ...account,
+              id,
+              slug,
+              addedAt: new Date().toISOString(),
+            },
+          ],
+        }));
+        return id;
+      },
+
+      // Remove a cash account and its positions
+      removeCashAccount: (id) => {
+        set((state) => ({
+          cashAccounts: state.cashAccounts.filter((a) => a.id !== id),
+          positions: state.positions.filter((p) => p.protocol !== `cash-account:${id}`),
+        }));
+      },
+
+      // Update cash account details (name only — slug is immutable)
+      updateCashAccount: (id, updates) => {
+        set((state) => ({
+          cashAccounts: state.cashAccounts.map((a) => {
+            if (a.id !== id) return a;
+            // Never allow slug to be changed via updates
+            const { slug: _ignored, ...safeUpdates } = updates as Record<string, unknown>;
+            return { ...a, ...safeUpdates };
+          }),
+        }));
+      },
+
       // Replace all wallet positions (keeps manual and CEX positions intact)
       setWalletPositions: (walletPositions) => {
         set((state) => {
@@ -376,6 +424,7 @@ export const usePortfolioStore = create<PortfolioState>()(
           wallets: [],
           accounts: [],
           brokerageAccounts: [],
+          cashAccounts: [],
           prices: {},
           customPrices: {},
           transactions: [],
@@ -387,7 +436,7 @@ export const usePortfolioStore = create<PortfolioState>()(
     }),
     {
       name: 'portfolio-storage',
-      version: 4,
+      version: 7,
       migrate: (persistedState: unknown, version: number) => {
         const state = persistedState as Record<string, unknown>;
         // v2 → v3: add transactions array
@@ -414,7 +463,74 @@ export const usePortfolioStore = create<PortfolioState>()(
             });
           }
         }
+        // v4 → v5: add cashAccounts, tag existing cash positions
+        if (version < 5) {
+          state.cashAccounts = state.cashAccounts || [];
+          const positions = (state.positions || []) as Array<Record<string, unknown>>;
+          const cashPositions = positions.filter(
+            (p) => p.type === 'cash' && !String(p.protocol || '').startsWith('cash-account:')
+          );
+          const accountNames = new Map<string, string>();
+          cashPositions.forEach((p) => {
+            const match = String(p.name || '').match(/^(.+?)\s*\(/);
+            const accountName = (match ? match[1].trim() : String(p.name || '')) || 'Manual';
+            if (!accountNames.has(accountName)) {
+              const accountId = uuidv4();
+              accountNames.set(accountName, accountId);
+              (state.cashAccounts as Array<Record<string, unknown>>).push({
+                id: accountId,
+                name: accountName,
+                isActive: true,
+                addedAt: new Date().toISOString(),
+              });
+            }
+            p.protocol = `cash-account:${accountNames.get(accountName)}`;
+          });
+        }
+        // v5 → v6: ensure cashAccounts array exists (linking handled by onRehydrateStorage)
+        if (version < 6) {
+          state.cashAccounts = state.cashAccounts || [];
+        }
+        // v6 → v7: rebuild CashAccounts from positions with slug-based matching
+        if (version < 7) {
+          // Wipe existing cashAccounts (may be corrupted from prior migrations)
+          state.cashAccounts = [];
+          const positions = (state.positions || []) as Array<Record<string, unknown>>;
+          const cashPositions = positions.filter((p) => p.type === 'cash');
+          const slugToAccount = new Map<string, Record<string, unknown>>();
+
+          cashPositions.forEach((p) => {
+            const accountName = extractCashAccountName(String(p.name || ''));
+            const slug = toSlug(accountName);
+
+            if (!slugToAccount.has(slug)) {
+              const accountId = uuidv4();
+              const account = {
+                id: accountId,
+                slug,
+                name: accountName,
+                isActive: true,
+                addedAt: new Date().toISOString(),
+              };
+              slugToAccount.set(slug, account);
+              (state.cashAccounts as Array<Record<string, unknown>>).push(account);
+            }
+
+            // Set protocol on position to point to the account
+            const account = slugToAccount.get(slug)!;
+            p.protocol = `cash-account:${account.id}`;
+          });
+        }
         return state as unknown as PortfolioState;
+      },
+      onRehydrateStorage: () => {
+        return () => {
+          const state = usePortfolioStore.getState();
+          const result = linkOrphanedCashPositions(state.positions, state.cashAccounts);
+          if (result) {
+            usePortfolioStore.setState(result);
+          }
+        };
       },
       // Don't persist volatile UI state - this prevents sync from getting stuck
       partialize: (state) => ({
@@ -422,6 +538,7 @@ export const usePortfolioStore = create<PortfolioState>()(
         wallets: state.wallets,
         accounts: state.accounts,
         brokerageAccounts: state.brokerageAccounts,
+        cashAccounts: state.cashAccounts,
         prices: state.prices,
         customPrices: state.customPrices,
         transactions: state.transactions,

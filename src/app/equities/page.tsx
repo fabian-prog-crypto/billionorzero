@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { TrendingUp, ArrowUpDown, ChevronDown, ChevronUp } from 'lucide-react';
+import { TrendingUp, ArrowUpDown, ChevronDown, ChevronUp, Download } from 'lucide-react';
 import DonutChart from '@/components/charts/DonutChart';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import {
@@ -12,7 +12,6 @@ import {
 import { formatCurrency, formatNumber, formatPercent, getChangeColor } from '@/lib/utils';
 import { SUBCATEGORY_COLORS } from '@/lib/colors';
 import SearchInput from '@/components/ui/SearchInput';
-import EmptyState from '@/components/ui/EmptyState';
 import StockIcon from '@/components/ui/StockIcon';
 
 type SortField = 'symbol' | 'value' | 'amount' | 'price' | 'change';
@@ -83,13 +82,42 @@ export default function EquitiesPage() {
     }
   };
 
-  const SortIcon = ({ field }: { field: SortField }) => {
+  const renderSortIcon = (field: SortField) => {
     if (sortField !== field) return <ArrowUpDown className="w-3 h-3 opacity-50" />;
     return sortDirection === 'asc' ? (
       <ChevronUp className="w-3 h-3" />
     ) : (
       <ChevronDown className="w-3 h-3" />
     );
+  };
+
+  const exportCSV = () => {
+    const headers = ['Symbol', 'Name', 'Type', 'Amount', 'Price', 'Value', '24h Change', 'Allocation'];
+    const rows = filteredPositions.map((p) => {
+      const subCat = categoryService.getSubCategory(p.symbol, p.type);
+      return [
+        p.symbol.toUpperCase(),
+        p.name,
+        subCat === 'etfs' ? 'ETF' : 'Stock',
+        p.amount,
+        p.currentPrice,
+        p.value,
+        p.changePercent24h,
+        p.allocation,
+      ];
+    });
+    const escapeCsv = (val: unknown) => {
+      const str = String(val ?? '');
+      return str.includes(',') || str.includes('"') || str.includes('\n') ? `"${str.replace(/"/g, '""')}"` : str;
+    };
+    const csv = [headers, ...rows].map((row) => row.map(escapeCsv).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `equities-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   if (breakdownData.equityPositions.length === 0) {
@@ -179,6 +207,10 @@ export default function EquitiesPage() {
           onChange={setSearchQuery}
           placeholder="Search..."
         />
+
+        <button onClick={exportCSV} className="btn btn-secondary p-2" title="Export CSV">
+          <Download className="w-4 h-4" />
+        </button>
       </div>
 
       {/* Positions Table */}
@@ -191,7 +223,7 @@ export default function EquitiesPage() {
                   onClick={() => handleSort('symbol')}
                   className="flex items-center gap-1 hover:text-[var(--foreground)] transition-colors"
                 >
-                  Asset <SortIcon field="symbol" />
+                  Asset {renderSortIcon('symbol')}
                 </button>
               </th>
               <th className="table-header text-left pb-3">Type</th>
@@ -200,7 +232,7 @@ export default function EquitiesPage() {
                   onClick={() => handleSort('amount')}
                   className="flex items-center gap-1 ml-auto hover:text-[var(--foreground)] transition-colors"
                 >
-                  Amount <SortIcon field="amount" />
+                  Amount {renderSortIcon('amount')}
                 </button>
               </th>
               <th className="table-header text-right pb-3">
@@ -208,7 +240,7 @@ export default function EquitiesPage() {
                   onClick={() => handleSort('price')}
                   className="flex items-center gap-1 ml-auto hover:text-[var(--foreground)] transition-colors"
                 >
-                  Price <SortIcon field="price" />
+                  Price {renderSortIcon('price')}
                 </button>
               </th>
               <th className="table-header text-right pb-3">
@@ -216,7 +248,7 @@ export default function EquitiesPage() {
                   onClick={() => handleSort('value')}
                   className="flex items-center gap-1 ml-auto hover:text-[var(--foreground)] transition-colors"
                 >
-                  Value <SortIcon field="value" />
+                  Value {renderSortIcon('value')}
                 </button>
               </th>
               <th className="table-header text-right pb-3">
@@ -224,7 +256,7 @@ export default function EquitiesPage() {
                   onClick={() => handleSort('change')}
                   className="flex items-center gap-1 ml-auto hover:text-[var(--foreground)] transition-colors"
                 >
-                  24h <SortIcon field="change" />
+                  24h {renderSortIcon('change')}
                 </button>
               </th>
               <th className="table-header text-right pb-3">%</th>

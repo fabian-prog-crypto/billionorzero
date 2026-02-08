@@ -13,3 +13,4 @@ export * from './performance-metrics';
 export * from './position-operations';
 export * from './action-resolver';
 export * from './prompt-builder';
+export * from './cash-account-service';

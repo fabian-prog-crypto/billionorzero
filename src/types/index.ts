@@ -24,6 +24,14 @@ export interface BrokerageAccount {
   addedAt: string;
 }
 
+export interface CashAccount {
+  id: string;
+  slug: string;        // Normalized internal name for matching (e.g., "revolut"). Never changes after creation.
+  name: string;        // User-editable display name (e.g., "My European Account")
+  isActive: boolean;
+  addedAt: string;
+}
+
 export interface Position {
   id: string;
   type: AssetType;
