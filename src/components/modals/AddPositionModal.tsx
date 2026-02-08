@@ -1,12 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { X, Search, Loader2 } from 'lucide-react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { X, Search, Loader2, Plus } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
-import { searchCoins, getTopCoins, searchStocks } from '@/services';
+import { searchCoins, searchStocks, extractCurrencyCode, isCashAccountSlugTaken } from '@/services';
 import StockIcon from '@/components/ui/StockIcon';
 import { useRefresh } from '@/components/PortfolioProvider';
 import { AssetType } from '@/types';
+import { FIAT_CURRENCIES, COMMON_CURRENCY_CODES, FIAT_CURRENCY_MAP } from '@/lib/currencies';
+import { formatNumber } from '@/lib/utils';
 
 interface AddPositionModalProps {
   isOpen: boolean;
@@ -34,12 +36,19 @@ export default function AddPositionModal({
   const [manualSymbol, setManualSymbol] = useState('');
   const [manualName, setManualName] = useState('');
   const [manualPrice, setManualPrice] = useState('');
-  const [cashAccountName, setCashAccountName] = useState('');
   const [cashCurrency, setCashCurrency] = useState('USD');
   const [cashBalance, setCashBalance] = useState('');
   const [selectedBrokerageId, setSelectedBrokerageId] = useState('');
 
-  const { addPosition, updatePrice, brokerageAccounts } = usePortfolioStore();
+  // Cash account state
+  const [selectedCashAccountId, setSelectedCashAccountId] = useState('');
+  const [newCashAccountName, setNewCashAccountName] = useState('');
+  const [isCreatingNewAccount, setIsCreatingNewAccount] = useState(false);
+  const [currencySearch, setCurrencySearch] = useState('');
+  const [isCurrencyPickerOpen, setIsCurrencyPickerOpen] = useState(false);
+  const currencyPickerRef = useRef<HTMLDivElement>(null);
+
+  const { addPosition, updatePrice, brokerageAccounts, cashAccounts, addCashAccount, positions } = usePortfolioStore();
   const { refresh } = useRefresh();
 
   // Reset form when modal opens
@@ -56,12 +65,29 @@ export default function AddPositionModal({
       setManualSymbol('');
       setManualName('');
       setManualPrice('');
-      setCashAccountName('');
       setCashCurrency('USD');
       setCashBalance('');
       setSelectedBrokerageId(brokerageAccounts.length === 1 ? brokerageAccounts[0].id : '');
+      setSelectedCashAccountId(cashAccounts.length === 1 ? cashAccounts[0].id : '');
+      setNewCashAccountName('');
+      setIsCreatingNewAccount(cashAccounts.length === 0);
+      setCurrencySearch('');
+      setIsCurrencyPickerOpen(false);
     }
-  }, [isOpen, defaultTab, brokerageAccounts]);
+  }, [isOpen, defaultTab, brokerageAccounts, cashAccounts]);
+
+  // Close currency picker on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (currencyPickerRef.current && !currencyPickerRef.current.contains(e.target as Node)) {
+        setIsCurrencyPickerOpen(false);
+      }
+    }
+    if (isCurrencyPickerOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [isCurrencyPickerOpen]);
 
   // Search debounce
   useEffect(() => {
@@ -90,22 +116,74 @@ export default function AddPositionModal({
     return () => clearTimeout(timer);
   }, [searchQuery, tab]);
 
+  // Filtered currency list for picker
+  const filteredCurrencies = useMemo(() => {
+    const query = currencySearch.toLowerCase();
+    const filtered = FIAT_CURRENCIES.filter(
+      (c) => c.code.toLowerCase().includes(query) || c.name.toLowerCase().includes(query)
+    );
+    if (!currencySearch) return filtered;
+    return filtered;
+  }, [currencySearch]);
+
+  // Currencies already held by the selected account
+  const heldCurrencies = useMemo(() => {
+    if (!selectedCashAccountId) return new Set<string>();
+    const accountPositions = positions.filter(
+      (p) => p.type === 'cash' && p.protocol === `cash-account:${selectedCashAccountId}`
+    );
+    return new Set(accountPositions.map((p) => extractCurrencyCode(p.symbol)));
+  }, [selectedCashAccountId, positions]);
+
+  // Existing position for context banner
+  const existingPosition = useMemo(() => {
+    if (!selectedCashAccountId || !cashCurrency) return null;
+    return positions.find(
+      (p) =>
+        p.type === 'cash' &&
+        p.protocol === `cash-account:${selectedCashAccountId}` &&
+        extractCurrencyCode(p.symbol) === cashCurrency
+    );
+  }, [selectedCashAccountId, cashCurrency, positions]);
+
+  // Check if new account name duplicates existing (by slug)
+  const isDuplicateAccountName = useMemo(() => {
+    if (!newCashAccountName.trim()) return false;
+    return isCashAccountSlugTaken(newCashAccountName.trim(), cashAccounts);
+  }, [newCashAccountName, cashAccounts]);
+
+  const selectedCurrencyInfo = FIAT_CURRENCY_MAP[cashCurrency];
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
     if (tab === 'cash') {
-      if (!cashAccountName || !cashBalance) return;
+      let accountId = selectedCashAccountId;
+      let accountName: string;
+
+      if (isCreatingNewAccount) {
+        if (!newCashAccountName.trim() || isDuplicateAccountName) return;
+        accountId = addCashAccount({ name: newCashAccountName.trim(), isActive: true });
+        accountName = newCashAccountName.trim();
+      } else {
+        if (!accountId) return;
+        const account = cashAccounts.find((a) => a.id === accountId);
+        if (!account) return;
+        accountName = account.name;
+      }
+
+      if (!cashBalance || !cashCurrency) return;
 
       const symbol = `CASH_${cashCurrency}_${Date.now()}`;
       addPosition({
         type: 'cash',
         symbol,
-        name: `${cashAccountName} (${cashCurrency})`,
+        name: `${accountName} (${cashCurrency})`,
         amount: parseFloat(cashBalance),
-        costBasis: parseFloat(cashBalance), // Cost basis equals balance for cash
+        costBasis: parseFloat(cashBalance),
+        protocol: `cash-account:${accountId}`,
       });
 
-      // Cash price is always 1 (1 USD = 1 USD)
       updatePrice(symbol.toLowerCase(), {
         symbol: cashCurrency,
         price: 1,
@@ -125,7 +203,6 @@ export default function AddPositionModal({
         purchaseDate: purchaseDate || undefined,
       });
 
-      // Set price for manual asset
       updatePrice(manualSymbol.toLowerCase(), {
         symbol: manualSymbol.toUpperCase(),
         price: parseFloat(manualPrice),
@@ -137,12 +214,10 @@ export default function AddPositionModal({
       if (!selectedAsset || !amount) return;
       if (tab === 'stock' && brokerageAccounts.length > 1 && !selectedBrokerageId) return;
 
-      // For stock tab, use the equityType (stock or etf)
       const type: AssetType = tab === 'stock' ? equityType : tab;
       const symbol = selectedAsset.symbol;
       const name = tab === 'crypto' ? selectedAsset.name : selectedAsset.description;
 
-      // Determine brokerage protocol for equities
       const brokerageProtocol = tab === 'stock' && brokerageAccounts.length > 0
         ? brokerageAccounts.length === 1
           ? `brokerage:${brokerageAccounts[0].id}`
@@ -161,12 +236,16 @@ export default function AddPositionModal({
         ...(brokerageProtocol ? { protocol: brokerageProtocol } : {}),
       });
 
-      // Trigger refresh to fetch price for the new position
       refresh();
     }
 
     onClose();
   };
+
+  const isCashSubmitDisabled =
+    !cashBalance ||
+    !cashCurrency ||
+    (isCreatingNewAccount ? !newCashAccountName.trim() || isDuplicateAccountName : !selectedCashAccountId);
 
   if (!isOpen) return null;
 
@@ -256,48 +335,205 @@ export default function AddPositionModal({
 
           {tab === 'cash' ? (
             <>
-              {/* Cash account inputs */}
+              {/* Account selector */}
               <div>
-                <label className="block text-sm font-medium mb-1">Account Name</label>
+                <label className="block text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">Account</label>
+                <div className="flex flex-wrap gap-2">
+                  {cashAccounts.map((a) => (
+                    <button
+                      key={a.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedCashAccountId(a.id);
+                        setIsCreatingNewAccount(false);
+                      }}
+                      className={`px-3 py-1.5 text-[13px] font-medium transition-colors ${
+                        !isCreatingNewAccount && selectedCashAccountId === a.id
+                          ? 'bg-[var(--accent-primary)] text-white'
+                          : 'bg-[var(--tag-bg)] text-[var(--tag-text)] hover:bg-[var(--border)]'
+                      }`}
+                    >
+                      {a.name}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCreatingNewAccount(true);
+                      setSelectedCashAccountId('');
+                    }}
+                    className={`px-3 py-1.5 text-[13px] font-medium transition-colors flex items-center gap-1 ${
+                      isCreatingNewAccount
+                        ? 'bg-[var(--accent-primary)] text-white'
+                        : 'bg-[var(--tag-bg)] text-[var(--tag-text)] hover:bg-[var(--border)]'
+                    }`}
+                  >
+                    <Plus className="w-3 h-3" />
+                    New
+                  </button>
+                </div>
+
+                {/* New account name input */}
+                {isCreatingNewAccount && (
+                  <div className="mt-2">
+                    <input
+                      type="text"
+                      placeholder="Account name (e.g., Revolut, Wise)"
+                      value={newCashAccountName}
+                      onChange={(e) => setNewCashAccountName(e.target.value)}
+                      className="form-input w-full"
+                      autoFocus
+                    />
+                    {isDuplicateAccountName && (
+                      <p className="text-[11px] text-[var(--negative)] mt-1">
+                        Account &quot;{newCashAccountName.trim()}&quot; already exists
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Currency picker */}
+              <div ref={currencyPickerRef}>
+                <label className="block text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">Currency</label>
+                <button
+                  type="button"
+                  onClick={() => setIsCurrencyPickerOpen(!isCurrencyPickerOpen)}
+                  className="form-input w-full text-left flex items-center gap-2"
+                >
+                  {selectedCurrencyInfo && (
+                    <span className="text-base">{selectedCurrencyInfo.flag}</span>
+                  )}
+                  <span className="font-medium text-sm">{cashCurrency}</span>
+                  {selectedCurrencyInfo && (
+                    <span className="text-[var(--foreground-muted)] text-xs">
+                      {selectedCurrencyInfo.name}
+                    </span>
+                  )}
+                </button>
+
+                {isCurrencyPickerOpen && (
+                  <div className="mt-1 border border-[var(--border)] bg-[var(--card-bg)]">
+                    {/* Search input */}
+                    <div className="relative p-2 border-b border-[var(--border)]">
+                      <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--foreground-muted)]" />
+                      <input
+                        type="text"
+                        placeholder="Search currencies..."
+                        value={currencySearch}
+                        onChange={(e) => setCurrencySearch(e.target.value)}
+                        className="form-input w-full pl-8 text-sm"
+                        autoFocus
+                      />
+                    </div>
+
+                    {/* Currency list */}
+                    <div className="max-h-48 overflow-y-auto">
+                      {!currencySearch && (
+                        <>
+                          {/* Common currencies */}
+                          {FIAT_CURRENCIES.filter((c) => COMMON_CURRENCY_CODES.includes(c.code)).map((c) => {
+                            const isHeld = heldCurrencies.has(c.code);
+                            return (
+                              <button
+                                key={c.code}
+                                type="button"
+                                onClick={() => {
+                                  setCashCurrency(c.code);
+                                  setIsCurrencyPickerOpen(false);
+                                  setCurrencySearch('');
+                                }}
+                                className="w-full px-3 py-2 text-left hover:bg-[var(--background-secondary)] flex items-center gap-2 transition-colors text-sm"
+                              >
+                                <span className="text-base w-5 text-center">{c.flag}</span>
+                                <span className="font-medium">{c.code}</span>
+                                <span className="text-[var(--foreground-muted)] text-xs flex-1">{c.name}</span>
+                                {isHeld && (
+                                  <span className="text-[10px] text-[var(--foreground-subtle)]">held</span>
+                                )}
+                              </button>
+                            );
+                          })}
+                          <div className="border-t border-[var(--border)]" />
+                          {/* Remaining currencies */}
+                          {FIAT_CURRENCIES.filter((c) => !COMMON_CURRENCY_CODES.includes(c.code)).map((c) => {
+                            const isHeld = heldCurrencies.has(c.code);
+                            return (
+                              <button
+                                key={c.code}
+                                type="button"
+                                onClick={() => {
+                                  setCashCurrency(c.code);
+                                  setIsCurrencyPickerOpen(false);
+                                  setCurrencySearch('');
+                                }}
+                                className="w-full px-3 py-2 text-left hover:bg-[var(--background-secondary)] flex items-center gap-2 transition-colors text-sm"
+                              >
+                                <span className="text-base w-5 text-center">{c.flag}</span>
+                                <span className="font-medium">{c.code}</span>
+                                <span className="text-[var(--foreground-muted)] text-xs flex-1">{c.name}</span>
+                                {isHeld && (
+                                  <span className="text-[10px] text-[var(--foreground-subtle)]">held</span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </>
+                      )}
+
+                      {/* Filtered results */}
+                      {currencySearch && filteredCurrencies.map((c) => {
+                        const isHeld = heldCurrencies.has(c.code);
+                        return (
+                          <button
+                            key={c.code}
+                            type="button"
+                            onClick={() => {
+                              setCashCurrency(c.code);
+                              setIsCurrencyPickerOpen(false);
+                              setCurrencySearch('');
+                            }}
+                            className="w-full px-3 py-2 text-left hover:bg-[var(--background-secondary)] flex items-center gap-2 transition-colors text-sm"
+                          >
+                            <span className="text-base w-5 text-center">{c.flag}</span>
+                            <span className="font-medium">{c.code}</span>
+                            <span className="text-[var(--foreground-muted)] text-xs flex-1">{c.name}</span>
+                            {isHeld && (
+                              <span className="text-[10px] text-[var(--foreground-subtle)]">held</span>
+                            )}
+                          </button>
+                        );
+                      })}
+
+                      {currencySearch && filteredCurrencies.length === 0 && (
+                        <p className="px-3 py-2 text-xs text-[var(--foreground-muted)]">No currencies match</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Balance input */}
+              <div>
+                <label className="block text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">Balance</label>
                 <input
-                  type="text"
-                  placeholder="e.g., Revolut, Chase Savings"
-                  value={cashAccountName}
-                  onChange={(e) => setCashAccountName(e.target.value)}
+                  type="number"
+                  step="any"
+                  placeholder="0.00"
+                  value={cashBalance}
+                  onChange={(e) => setCashBalance(e.target.value)}
                   className="form-input w-full"
                   required
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Currency</label>
-                  <select
-                    value={cashCurrency}
-                    onChange={(e) => setCashCurrency(e.target.value)}
-                    className="form-input w-full"
-                  >
-                    <option value="USD">USD ($)</option>
-                    <option value="EUR">EUR (€)</option>
-                    <option value="GBP">GBP (£)</option>
-                    <option value="CHF">CHF</option>
-                    <option value="JPY">JPY (¥)</option>
-                    <option value="CAD">CAD</option>
-                    <option value="AUD">AUD</option>
-                  </select>
+
+              {/* Context banner for existing position */}
+              {existingPosition && (
+                <div className="px-3 py-2 bg-[var(--background-secondary)] text-[12px] text-[var(--foreground-muted)]">
+                  Existing: {formatNumber(existingPosition.amount)} {cashCurrency} at{' '}
+                  {cashAccounts.find((a) => a.id === selectedCashAccountId)?.name}. This will add a new entry.
                 </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Balance</label>
-                  <input
-                    type="number"
-                    step="any"
-                    placeholder="0.00"
-                    value={cashBalance}
-                    onChange={(e) => setCashBalance(e.target.value)}
-                    className="form-input w-full"
-                    required
-                  />
-                </div>
-              </div>
+              )}
             </>
           ) : tab !== 'manual' ? (
             <>
@@ -487,7 +723,7 @@ export default function AddPositionModal({
               className="btn btn-primary flex-1"
               disabled={
                 tab === 'cash'
-                  ? !cashAccountName || !cashBalance
+                  ? isCashSubmitDisabled
                   : tab === 'manual'
                   ? !manualSymbol || !manualName || !amount || !manualPrice
                   : !selectedAsset || !amount || (tab === 'stock' && brokerageAccounts.length > 1 && !selectedBrokerageId)

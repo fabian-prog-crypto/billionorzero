@@ -11,3 +11,4 @@ export * from './category-service';
 export * from './perp-exchange-service';
 export * from './performance-metrics';
 export * from './position-operations';
+export * from './cash-account-service';
