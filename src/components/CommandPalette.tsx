@@ -1,15 +1,21 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { MessageSquare, X, AlertCircle, Settings } from 'lucide-react';
+import { MessageSquare, X, AlertCircle, Settings, Check, CornerDownLeft } from 'lucide-react';
 import Link from 'next/link';
-import { ParsedPositionAction, Position } from '@/types';
+import { ParsedPositionAction, Position, AssetWithPrice } from '@/types';
+import { usePortfolioStore } from '@/store/portfolioStore';
+import { canInlineConfirm, executeAction } from '@/services/domain/action-executor';
+import { useCommandHistory } from '@/hooks/useCommandHistory';
+import { formatDistanceToNow } from 'date-fns';
+import InlineConfirmation from '@/components/InlineConfirmation';
 
 interface CommandPaletteProps {
   isOpen: boolean;
   onClose: () => void;
   onParsed: (action: ParsedPositionAction) => void;
   positions: Position[];
+  positionsWithPrices: AssetWithPrice[];
 }
 
 const EXAMPLE_GROUPS = [
@@ -40,13 +46,22 @@ export default function CommandPalette({
   onClose,
   onParsed,
   positions,
+  positionsWithPrices,
 }: CommandPaletteProps) {
   const [text, setText] = useState('');
+  const [loadingText, setLoadingText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
+  const [inlineAction, setInlineAction] = useState<ParsedPositionAction | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const errorTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const successTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const { recentCommands, addCommand } = useCommandHistory();
+  const { hideBalances, updatePosition, removePosition, addPosition, addTransaction, updatePrice, setCustomPrice } =
+    usePortfolioStore();
 
   const animateClose = useCallback(() => {
     setClosing(true);
@@ -60,9 +75,12 @@ export default function CommandPalette({
   useEffect(() => {
     if (isOpen) {
       setText('');
+      setLoadingText('');
       setError(null);
       setIsLoading(false);
       setClosing(false);
+      setInlineAction(null);
+      setSuccessMessage(null);
       // Small delay to ensure DOM is ready
       setTimeout(() => inputRef.current?.focus(), 50);
     }
@@ -74,12 +92,17 @@ export default function CommandPalette({
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        animateClose();
+        if (inlineAction) {
+          setInlineAction(null);
+          inputRef.current?.focus();
+        } else {
+          animateClose();
+        }
       }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [isOpen, animateClose]);
+  }, [isOpen, animateClose, inlineAction]);
 
   // Auto-dismiss error after 5s
   useEffect(() => {
@@ -92,13 +115,22 @@ export default function CommandPalette({
     };
   }, [error]);
 
+  // Cleanup success timer
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    };
+  }, []);
+
   if (!isOpen) return null;
 
   const handleSubmit = async () => {
     if (!text.trim() || isLoading) return;
 
     setIsLoading(true);
+    setLoadingText(text.trim());
     setError(null);
+    setInlineAction(null);
 
     try {
       const ollamaUrl =
@@ -120,14 +152,23 @@ export default function CommandPalette({
         return true;
       });
 
-      const positionContext = deduplicatedPositions.map((p) => ({
-        id: p.id,
-        symbol: p.symbol,
-        name: p.name,
-        type: p.type,
-        amount: p.amount,
-        costBasis: p.costBasis,
-      }));
+      const positionContext = deduplicatedPositions.map((p) => {
+        // Extract account name from cash position names like "N26 (EUR)"
+        let accountName: string | undefined;
+        if (p.type === 'cash') {
+          const acctMatch = p.name.match(/^(.+?)\s*\(/);
+          if (acctMatch) accountName = acctMatch[1].trim();
+        }
+        return {
+          id: p.id,
+          symbol: p.symbol,
+          name: p.name,
+          type: p.type,
+          amount: p.amount,
+          costBasis: p.costBasis,
+          accountName,
+        };
+      });
 
       const response = await fetch('/api/parse-position', {
         method: 'POST',
@@ -146,8 +187,20 @@ export default function CommandPalette({
         throw new Error(data.error || 'Failed to parse command');
       }
 
-      onParsed(data as ParsedPositionAction);
-      setText('');
+      const parsed = data as ParsedPositionAction;
+      addCommand(text.trim());
+
+      // Check if action qualifies for inline confirmation
+      if (canInlineConfirm(parsed)) {
+        setInlineAction(parsed);
+        setIsLoading(false);
+        setLoadingText('');
+      } else {
+        // Complex action → full modal
+        onParsed(parsed);
+        setText('');
+        setLoadingText('');
+      }
     } catch (err) {
       const message =
         err instanceof Error ? err.message : 'Failed to parse command';
@@ -163,6 +216,38 @@ export default function CommandPalette({
     }
   };
 
+  const handleInlineConfirm = () => {
+    if (!inlineAction) return;
+
+    const result = executeAction(inlineAction, {
+      updatePosition,
+      removePosition,
+      addPosition,
+      addTransaction,
+      updatePrice,
+      setCustomPrice,
+      positions,
+      positionsWithPrices,
+    });
+
+    if (result.success) {
+      setInlineAction(null);
+      setSuccessMessage(result.summary || 'Done');
+      // Auto-close after 1.2s
+      successTimerRef.current = setTimeout(() => {
+        animateClose();
+      }, 1200);
+    } else {
+      setError(result.error || 'Operation failed');
+      setInlineAction(null);
+    }
+  };
+
+  const handleInlineCancel = () => {
+    setInlineAction(null);
+    inputRef.current?.focus();
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -174,7 +259,7 @@ export default function CommandPalette({
     if (!isLoading) animateClose();
   };
 
-  const showExamples = !text && !isLoading;
+  const showExamples = !text && !isLoading && !inlineAction && !successMessage;
 
   return (
     <>
@@ -190,104 +275,161 @@ export default function CommandPalette({
           className={`command-palette-panel ${closing ? 'closing' : ''}`}
           onClick={(e) => e.stopPropagation()}
         >
-          {/* Input row */}
-          <div className="relative">
-            <MessageSquare
-              className={`absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 transition-colors ${
-                text ? 'text-[var(--foreground-muted)]' : 'text-[var(--foreground-subtle)]'
-              }`}
-            />
-            <input
-              ref={inputRef}
-              type="text"
-              value={isLoading ? '' : text}
-              onChange={(e) => {
-                setText(e.target.value);
-                if (error) setError(null);
-              }}
-              onKeyDown={handleKeyDown}
-              placeholder={isLoading ? 'Parsing...' : 'Record a trade...'}
-              className="command-palette-input"
-              disabled={isLoading}
-            />
-            {/* Right side: shortcut badge or clear button */}
-            {text && !isLoading ? (
-              <button
-                onClick={() => {
-                  setText('');
-                  setError(null);
-                  inputRef.current?.focus();
-                }}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-[var(--background-secondary)] transition-colors"
-              >
-                <X className="w-4 h-4 text-[var(--foreground-muted)]" />
-              </button>
-            ) : !isLoading ? (
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-[var(--foreground-subtle)] px-1.5 py-0.5 border border-[var(--border)]">
-                {typeof navigator !== 'undefined' && /Mac/i.test(navigator.userAgent) ? '⌘' : 'Ctrl+'}K
-              </span>
-            ) : null}
-          </div>
-
-          {/* Loading shimmer */}
-          {isLoading && (
-            <div className="command-palette-shimmer">
-              <div className="command-palette-shimmer-bar" />
+          {/* Success state */}
+          {successMessage ? (
+            <div className="command-palette-success px-4 py-4 flex items-center gap-3">
+              <div className="w-5 h-5 flex items-center justify-center">
+                <Check className="w-5 h-5 text-[var(--positive)]" />
+              </div>
+              <span className="text-sm text-[var(--positive)]">{successMessage}</span>
             </div>
-          )}
-
-          {/* Error bar */}
-          {error && (
-            <div className="px-4 py-3 bg-[var(--negative-light)] border-t border-[rgba(201,123,123,0.2)] flex items-start gap-2 text-[13px] text-[var(--negative)]">
-              <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-              <div className="flex-1">
-                <span>{error}</span>
-                {error.includes('Ollama') && (
-                  <Link
-                    href="/settings"
-                    onClick={animateClose}
-                    className="ml-2 inline-flex items-center gap-1 text-[var(--accent-primary)] hover:underline"
+          ) : (
+            <>
+              {/* Input row */}
+              <div className="relative">
+                <MessageSquare
+                  className={`absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 transition-colors ${
+                    text ? 'text-[var(--foreground-muted)]' : 'text-[var(--foreground-subtle)]'
+                  }`}
+                />
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={text}
+                  onChange={(e) => {
+                    setText(e.target.value);
+                    if (error) setError(null);
+                    if (inlineAction) setInlineAction(null);
+                  }}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Record a trade..."
+                  className={`command-palette-input ${isLoading ? 'opacity-50' : ''}`}
+                  disabled={isLoading || !!inlineAction}
+                />
+                {/* Right side: shortcut badge or clear button */}
+                {text && !isLoading && !inlineAction ? (
+                  <button
+                    onClick={() => {
+                      setText('');
+                      setError(null);
+                      inputRef.current?.focus();
+                    }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-[var(--background-secondary)] transition-colors"
                   >
-                    <Settings className="w-3 h-3" />
-                    Settings
-                  </Link>
-                )}
+                    <X className="w-4 h-4 text-[var(--foreground-muted)]" />
+                  </button>
+                ) : !isLoading && !inlineAction ? (
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-[var(--foreground-subtle)] px-1.5 py-0.5 border border-[var(--border)]">
+                    {typeof navigator !== 'undefined' && /Mac/i.test(navigator.userAgent) ? '\u2318' : 'Ctrl+'}K
+                  </span>
+                ) : null}
               </div>
-              <button
-                onClick={() => setError(null)}
-                className="p-0.5 hover:bg-[var(--background-secondary)] transition-colors"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </div>
-          )}
 
-          {/* Examples section */}
-          {showExamples && (
-            <div className="border-t border-[var(--border)] px-4 py-3">
-              <div className="space-y-3">
-                {EXAMPLE_GROUPS.map((group) => (
-                  <div key={group.label}>
-                    <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">{group.label}</p>
-                    <div className="space-y-1">
-                      {group.examples.map((example) => (
-                        <button
-                          key={example}
-                          onClick={() => {
-                            setText(example);
-                            inputRef.current?.focus();
-                          }}
-                          className="flex items-center gap-2 w-full text-left text-[13px] text-[var(--foreground-muted)] hover:text-[var(--foreground)] transition-colors py-0.5"
-                        >
-                          <span className="text-[var(--foreground-subtle)]">·</span>
-                          <span>&ldquo;{example}&rdquo;</span>
-                        </button>
-                      ))}
-                    </div>
+              {/* Loading shimmer + command echo */}
+              {isLoading && (
+                <>
+                  <div className="command-palette-shimmer">
+                    <div className="command-palette-shimmer-bar" />
                   </div>
-                ))}
-              </div>
-            </div>
+                  {loadingText && (
+                    <div className="px-4 py-2 text-[13px] text-[var(--foreground-muted)] italic">
+                      &ldquo;{loadingText}&rdquo;
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Inline confirmation */}
+              {inlineAction && (
+                <InlineConfirmation
+                  action={inlineAction}
+                  positions={positions}
+                  positionsWithPrices={positionsWithPrices}
+                  hideBalances={hideBalances}
+                  onConfirm={handleInlineConfirm}
+                  onCancel={handleInlineCancel}
+                />
+              )}
+
+              {/* Error bar */}
+              {error && (
+                <div className="px-4 py-3 bg-[var(--negative-light)] border-t border-[rgba(201,123,123,0.2)] flex items-start gap-2 text-[13px] text-[var(--negative)]">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <span>{error}</span>
+                    {error.includes('Ollama') && (
+                      <Link
+                        href="/settings"
+                        onClick={animateClose}
+                        className="ml-2 inline-flex items-center gap-1 text-[var(--accent-primary)] hover:underline"
+                      >
+                        <Settings className="w-3 h-3" />
+                        Settings
+                      </Link>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => setError(null)}
+                    className="p-0.5 hover:bg-[var(--background-secondary)] transition-colors"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
+
+              {/* Examples section (with recent commands) */}
+              {showExamples && (
+                <div className="border-t border-[var(--border)] px-4 py-3">
+                  <div className="space-y-3">
+                    {/* Recent commands */}
+                    {recentCommands.length > 0 && (
+                      <div>
+                        <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">RECENT</p>
+                        <div className="space-y-1">
+                          {recentCommands.map((entry) => (
+                            <button
+                              key={entry.timestamp}
+                              onClick={() => {
+                                setText(entry.text);
+                                inputRef.current?.focus();
+                              }}
+                              className="flex items-center gap-2 w-full text-left text-[13px] text-[var(--foreground-muted)] hover:text-[var(--foreground)] transition-colors py-0.5"
+                            >
+                              <CornerDownLeft className="w-3 h-3 text-[var(--foreground-subtle)]" />
+                              <span className="flex-1 truncate">&ldquo;{entry.text}&rdquo;</span>
+                              <span className="text-[11px] text-[var(--foreground-subtle)] flex-shrink-0">
+                                {formatDistanceToNow(new Date(entry.timestamp), { addSuffix: false })}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {EXAMPLE_GROUPS.map((group) => (
+                      <div key={group.label}>
+                        <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">{group.label}</p>
+                        <div className="space-y-1">
+                          {group.examples.map((example) => (
+                            <button
+                              key={example}
+                              onClick={() => {
+                                setText(example);
+                                inputRef.current?.focus();
+                              }}
+                              className="flex items-center gap-2 w-full text-left text-[13px] text-[var(--foreground-muted)] hover:text-[var(--foreground)] transition-colors py-0.5"
+                            >
+                              <span className="text-[var(--foreground-subtle)]">&middot;</span>
+                              <span>&ldquo;{example}&rdquo;</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

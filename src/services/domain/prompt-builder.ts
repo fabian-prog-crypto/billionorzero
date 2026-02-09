@@ -7,6 +7,7 @@ export interface PositionContext {
   type: string;
   amount: number;
   costBasis?: number;
+  accountName?: string;
 }
 
 export function buildSystemPrompt(positions: PositionContext[], today: string): string {
@@ -19,6 +20,28 @@ export function buildSystemPrompt(positions: PositionContext[], today: string): 
         return `${p.symbol} | ${p.name} | ${p.amount} | ${p.type} | ${p.id} | ${costBasisStr}`;
       }).join('\n')
     : '(no positions)';
+
+  // Build CASH ACCOUNTS section for better cash command resolution
+  const cashPositions = positions.filter(p => p.type === 'cash' && p.accountName);
+  const cashAccountsSection = cashPositions.length > 0
+    ? `CASH ACCOUNTS (for add_cash / update_cash):
+Account | Currency | Balance | Position ID
+--------|----------|---------|------------
+${cashPositions.map(p => {
+  const currMatch = p.symbol.match(/CASH_([A-Z]{3})/);
+  const currency = currMatch ? currMatch[1] : '?';
+  return `${p.accountName} | ${currency} | ${p.amount} | ${p.id}`;
+}).join('\n')}
+
+CASH DISAMBIGUATION:
+- When updating cash, ALWAYS set matchedPositionId to the position ID from CASH ACCOUNTS
+- "{account} {FIAT} to {num}" -> update_cash (when account exists above)
+- "{account} total {FIAT} balance to {num}" -> update_cash (e.g., "N26 total EUR balance to 4811")
+- "{account} {FIAT} balance to {num}" -> update_cash (e.g., "Revolut EUR balance to 52k")
+- "update/set {account} {FIAT} to {num}" -> update_cash
+- "{num} {FIAT} to {account}" -> add_cash
+- "balance" and "total" are noise words in cash commands — focus on account name, currency, and amount`
+    : '';
 
   return `You are a financial position parser. Given a natural language command about buying, selling, updating, or managing a financial position, extract structured data as JSON.
 
@@ -113,5 +136,6 @@ Symbol | Name | Amount | Type | ID | Cost Basis
 -------|------|--------|------|----|-----------
 ${positionsTable}
 
+${cashAccountsSection}
 Respond with valid JSON matching the provided schema.`;
 }

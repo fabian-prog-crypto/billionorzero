@@ -420,6 +420,7 @@ export default function AppShell({ children }: AppShellProps) {
           setShowNlConfirm(true);
         }}
         positions={positions}
+        positionsWithPrices={allPositionsWithPrices}
       />
       {nlAction && (
         <ConfirmPositionActionModal

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { buildSystemPrompt, PositionContext } from '@/services/domain/prompt-builder';
-import { resolveAction } from '@/services/domain/action-resolver';
+import { PositionContext } from '@/services/domain/actions/types';
+import { getActionCatalog } from '@/services/domain/actions/action-catalog';
+import { buildMenuPrompt, buildMenuJsonSchema } from '@/services/domain/actions/menu-prompt-builder';
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,44 +22,11 @@ export async function POST(request: NextRequest) {
 
     const baseUrl = ollamaUrl || 'http://localhost:11434';
     const model = ollamaModel || 'llama3.2';
-    const today = new Date().toISOString().split('T')[0];
 
-    const systemPrompt = buildSystemPrompt(positions, today);
-
-    const jsonSchema = {
-      type: 'object',
-      properties: {
-        action: {
-          type: 'string',
-          enum: ['buy', 'sell_partial', 'sell_all', 'update', 'add_cash', 'remove', 'update_cash', 'set_price'],
-        },
-        symbol: { type: 'string' },
-        name: { type: 'string' },
-        assetType: {
-          type: 'string',
-          enum: ['crypto', 'stock', 'etf', 'cash', 'manual'],
-        },
-        amount: { type: 'number' },
-        pricePerUnit: { type: 'number' },
-        totalCost: { type: 'number' },
-        sellAmount: { type: 'number' },
-        sellPercent: { type: 'number' },
-        sellPrice: { type: 'number' },
-        totalProceeds: { type: 'number' },
-        date: { type: 'string' },
-        matchedPositionId: { type: 'string' },
-        missingFields: {
-          type: 'array',
-          items: { type: 'string' },
-        },
-        confidence: { type: 'number' },
-        summary: { type: 'string' },
-        currency: { type: 'string' },
-        accountName: { type: 'string' },
-        newPrice: { type: 'number' },
-      },
-      required: ['action', 'symbol', 'assetType', 'confidence', 'summary'],
-    };
+    const catalog = getActionCatalog();
+    const menu = catalog.generateFilteredMenu(positions, text);
+    const systemPrompt = buildMenuPrompt(menu);
+    const jsonSchema = buildMenuJsonSchema(menu);
 
     const response = await fetch(`${baseUrl}/api/chat`, {
       method: 'POST',
@@ -99,7 +67,7 @@ export async function POST(request: NextRequest) {
     }
 
     const parsed = JSON.parse(content);
-    const resolved = resolveAction(parsed, text, positions);
+    const resolved = catalog.resolve(parsed, positions);
 
     return NextResponse.json(resolved);
   } catch (error) {

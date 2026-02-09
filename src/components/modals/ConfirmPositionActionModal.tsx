@@ -202,7 +202,7 @@ export default function ConfirmPositionActionModal({
   if (isBuy && numPricePerUnit <= 0) missingFields.push('pricePerUnit');
   if (isAddCash && numAmount <= 0) missingFields.push('amount');
   if (isAddCash && !cashCurrency) missingFields.push('currency');
-  if (isAddCash && !accountName.trim()) missingFields.push('accountName');
+  if (isAddCash && !matchedPositionId && !accountName.trim()) missingFields.push('accountName');
   if (isUpdateCash && numAmount <= 0) missingFields.push('amount');
   if (isSetPrice && numNewPrice <= 0) missingFields.push('newPrice');
 
@@ -275,9 +275,9 @@ export default function ConfirmPositionActionModal({
     ? (realizedPnL / costBasisAtExecution) * 100
     : null;
 
-  // For add_cash: find existing cash positions matching same currency
-  const existingCashPositions = isAddCash
-    ? positions.filter(p => p.type === 'cash' && p.symbol.toUpperCase().includes(`CASH_${cashCurrency}`))
+  // For add_cash: find all existing cash positions for account dropdown
+  const allCashPositions = isAddCash
+    ? positions.filter(p => p.type === 'cash')
     : [];
 
   // For update_cash: find matching cash positions
@@ -422,9 +422,9 @@ export default function ConfirmPositionActionModal({
         const warned = handleCashSideEffect(-result.transaction.totalValue, effectiveBrokerageId ?? null);
         if (warned) return;
       } else if (isAddCash) {
-        // Add cash: create a new cash position (or add to existing)
-        const existingMatch = addToExisting && existingCashPositions.length > 0
-          ? existingCashPositions[0]
+        // Add cash: add to existing position or create new
+        const existingMatch = matchedPositionId
+          ? positions.find(p => p.id === matchedPositionId)
           : null;
 
         if (existingMatch) {
@@ -828,6 +828,52 @@ export default function ConfirmPositionActionModal({
           {/* ===== ADD CASH FIELDS ===== */}
           {isAddCash && (
             <>
+              {/* Account selector: dropdown of existing accounts + New account */}
+              {allCashPositions.length > 0 && (
+                <div>
+                  <label className="block text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">
+                    Account
+                  </label>
+                  <select
+                    value={matchedPositionId || '__new__'}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === '__new__') {
+                        setMatchedPositionId('');
+                        setAccountName('');
+                        setCashCurrency(parsedAction.currency || 'USD');
+                      } else {
+                        const pos = allCashPositions.find(p => p.id === val);
+                        if (pos) {
+                          setMatchedPositionId(pos.id);
+                          const currMatch = pos.symbol.match(/CASH_([A-Z]{3})/);
+                          setCashCurrency(currMatch ? currMatch[1] : 'USD');
+                          const acct = (pos as Position & { accountName?: string }).accountName
+                            || pos.name.match(/^(.+?)\s*\(/)?.[1]
+                            || pos.name;
+                          setAccountName(acct);
+                        }
+                      }
+                    }}
+                    className="w-full"
+                  >
+                    {allCashPositions.map((p) => {
+                      const currMatch = p.symbol.match(/CASH_([A-Z]{3})/);
+                      const cur = currMatch ? currMatch[1] : 'USD';
+                      const acct = (p as Position & { accountName?: string }).accountName
+                        || p.name.match(/^(.+?)\s*\(/)?.[1]
+                        || p.name;
+                      return (
+                        <option key={p.id} value={p.id}>
+                          {acct} ({cur}) — {formatNumber(p.amount)} {cur}
+                        </option>
+                      );
+                    })}
+                    <option value="__new__">+ New account</option>
+                  </select>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="flex items-center text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">
@@ -868,6 +914,7 @@ export default function ConfirmPositionActionModal({
                     value={cashCurrency}
                     onChange={(e) => setCashCurrency(e.target.value)}
                     className="w-full"
+                    disabled={!!matchedPositionId}
                   >
                     {FIAT_CURRENCIES.map((c) => (
                       <option key={c} value={c}>{c}</option>
@@ -875,60 +922,31 @@ export default function ConfirmPositionActionModal({
                   </select>
                 </div>
               </div>
-              <div>
-                <label className="flex items-center text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">
-                  Account Name
-                  {missingFields.includes('accountName') && (
-                    <>
-                      <MissingDot />
-                      <span className="text-[10px] uppercase text-[var(--negative)] ml-1">Required</span>
-                    </>
-                  )}
-                </label>
-                <input
-                  ref={missingFields[0] === 'accountName' ? firstMissingRef : undefined}
-                  type="text"
-                  placeholder="e.g., Revolut, IBKR"
-                  value={accountName}
-                  onChange={(e) => setAccountName(e.target.value)}
-                  className={`w-full ${
-                    missingFields.includes('accountName')
-                      ? 'border-[var(--negative)] bg-[var(--negative-light)]'
-                      : ''
-                  }`}
-                />
-              </div>
 
-              {/* Existing cash position: add-to or create separate */}
-              {existingCashPositions.length > 0 && (
-                <div className="p-3 bg-[var(--background-secondary)]">
-                  <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">
-                    Existing {cashCurrency} cash: {formatNumber(existingCashPositions[0].amount)} ({existingCashPositions[0].name})
-                  </p>
-                  <div className="bg-[var(--background-secondary)] p-1 flex gap-1">
-                    <button
-                      type="button"
-                      onClick={() => setAddToExisting(true)}
-                      className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-                        addToExisting
-                          ? 'bg-[var(--card-bg)] shadow-sm'
-                          : 'text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
-                      }`}
-                    >
-                      Add to existing
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setAddToExisting(false)}
-                      className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-                        !addToExisting
-                          ? 'bg-[var(--card-bg)] shadow-sm'
-                          : 'text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
-                      }`}
-                    >
-                      Create separate
-                    </button>
-                  </div>
+              {/* Account name: only shown for new accounts (no matchedPositionId) */}
+              {!matchedPositionId && (
+                <div>
+                  <label className="flex items-center text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">
+                    Account Name
+                    {missingFields.includes('accountName') && (
+                      <>
+                        <MissingDot />
+                        <span className="text-[10px] uppercase text-[var(--negative)] ml-1">Required</span>
+                      </>
+                    )}
+                  </label>
+                  <input
+                    ref={missingFields[0] === 'accountName' ? firstMissingRef : undefined}
+                    type="text"
+                    placeholder="e.g., Revolut, IBKR"
+                    value={accountName}
+                    onChange={(e) => setAccountName(e.target.value)}
+                    className={`w-full ${
+                      missingFields.includes('accountName')
+                        ? 'border-[var(--negative)] bg-[var(--negative-light)]'
+                        : ''
+                    }`}
+                  />
                 </div>
               )}
             </>
@@ -1325,22 +1343,25 @@ export default function ConfirmPositionActionModal({
         )}
 
         {/* Add Cash preview */}
-        {isAddCash && numAmount > 0 && existingCashPositions.length > 0 && addToExisting && (
-          <div className="mt-4 bg-[var(--card-bg)] border border-[var(--card-border)] p-4">
-            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-3">
-              Preview
-            </p>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-[var(--foreground-muted)]">{cashCurrency} Balance</span>
-              <div className="font-mono text-xs">
-                <span>{formatNumber(existingCashPositions[0].amount)}</span>
-                <span className="text-[var(--foreground-muted)] mx-2">→</span>
-                <span>{formatNumber(existingCashPositions[0].amount + numAmount)}</span>
-                <span className="text-[var(--positive)] ml-2">+{formatNumber(numAmount)}</span>
+        {isAddCash && numAmount > 0 && matchedPositionId && (() => {
+          const previewPos = positions.find(p => p.id === matchedPositionId);
+          return previewPos ? (
+            <div className="mt-4 bg-[var(--card-bg)] border border-[var(--card-border)] p-4">
+              <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-3">
+                Preview
+              </p>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-[var(--foreground-muted)]">{previewPos.name}</span>
+                <div className="font-mono text-xs">
+                  <span>{formatNumber(previewPos.amount)}</span>
+                  <span className="text-[var(--foreground-muted)] mx-2">→</span>
+                  <span>{formatNumber(previewPos.amount + numAmount)}</span>
+                  <span className="text-[var(--positive)] ml-2">+{formatNumber(numAmount)}</span>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          ) : null;
+        })()}
 
         {/* Error */}
         {error && (

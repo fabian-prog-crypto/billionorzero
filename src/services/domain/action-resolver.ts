@@ -110,9 +110,67 @@ function correctActionType(w: WorkingAction, originalText: string, positions: Po
     w.action = 'add_cash';
   }
 
-  // "{account} {FIAT} is now/= {num}" → must be update_cash
+  // "{account} {FIAT} to {num}" → update_cash (when account matches existing cash position)
+  const acctFiatToMatch = trimmed.match(
+    /^(.+?)\s+([a-zA-Z]{3})\s+to\s+(\d+(?:[.,]\d+)?[kmb]?)$/i
+  );
+  if (acctFiatToMatch && fiatCurrencies.has(acctFiatToMatch[2].toLowerCase())) {
+    // Check if the account name matches an existing cash position
+    const acctName = acctFiatToMatch[1].toLowerCase().replace(/^(?:set|update|total|new)\s+/i, '');
+    const hasCashPos = positions.some(p => {
+      if (p.type !== 'cash') return false;
+      const posAcct = (p.accountName || p.name.match(/^(.+?)\s*\(/)?.[1] || '').toLowerCase();
+      return posAcct === acctName || posAcct.includes(acctName) || acctName.includes(posAcct);
+    });
+    if (hasCashPos) {
+      w.action = 'update_cash';
+    }
+  }
+
+  // "set/update {account} {FIAT} (balance)? to {num}" → update_cash
+  const verbUpdateCashMatch = trimmed.match(
+    /^(?:set|update)\s+(.+?)\s+([a-zA-Z]{3})\s+(?:balance\s+)?(?:to\s+)?(\d+(?:[.,]\d+)?[kmb]?)$/i
+  );
+  if (verbUpdateCashMatch && fiatCurrencies.has(verbUpdateCashMatch[2].toLowerCase())) {
+    w.action = 'update_cash';
+  }
+
+  // "total/new {FIAT} balance {account} to {num}" → update_cash
+  const reversedUpdateCashMatch = trimmed.match(
+    /^(?:total|new)\s+([a-zA-Z]{3})\s+balance\s+(.+?)\s+(?:to\s+)?(\d+(?:[.,]\d+)?[kmb]?)$/i
+  );
+  if (reversedUpdateCashMatch && fiatCurrencies.has(reversedUpdateCashMatch[1].toLowerCase())) {
+    w.action = 'update_cash';
+  }
+
+  // "{account} {FIAT} {num}" (bare, when account exists) → update_cash
+  const bareCashMatch = trimmed.match(
+    /^(.+?)\s+([a-zA-Z]{3})\s+(\d+(?:[.,]\d+)?[kmb]?)$/i
+  );
+  if (bareCashMatch && fiatCurrencies.has(bareCashMatch[2].toLowerCase())) {
+    const bareAcctName = bareCashMatch[1].toLowerCase().replace(/\b(?:total|new|current)\b/gi, '').trim();
+    // Only trigger if it matches an existing cash position (not a verb like "buy")
+    const bareHasCashPos = positions.some(p => {
+      if (p.type !== 'cash') return false;
+      const posAcct = (p.accountName || p.name.match(/^(.+?)\s*\(/)?.[1] || '').toLowerCase();
+      return posAcct === bareAcctName || posAcct.includes(bareAcctName) || bareAcctName.includes(posAcct);
+    });
+    if (bareHasCashPos) {
+      w.action = 'update_cash';
+    }
+  }
+
+  // "{account} (total/new)? {FIAT} balance (to/is/=)? {num}" — noise-word-tolerant
+  const noisyCashMatch = trimmed.match(
+    /^(.+?)\s+(?:total|new)?\s*([a-zA-Z]{3})\s+(?:balance\s+(?:to|is|=)\s*|balance\s+)(\d+(?:[.,]\d+)?[kmb]?)$/i
+  );
+  if (noisyCashMatch && fiatCurrencies.has(noisyCashMatch[2].toLowerCase())) {
+    w.action = 'update_cash';
+  }
+
+  // "{account} {FIAT} is now/=/balance to/balance/to {num}" → must be update_cash
   const updateCashMatch = trimmed.match(
-    /^(.+?)\s+([a-zA-Z]{3})\s+(?:is\s+now|now|=|balance)\s+(\d+(?:[.,]\d+)?[kmb]?)$/i
+    /^(.+?)\s+([a-zA-Z]{3})\s+(?:is\s+now|now|=|balance\s+to|balance|to)\s+(\d+(?:[.,]\d+)?[kmb]?)$/i
   );
   if (updateCashMatch && fiatCurrencies.has(updateCashMatch[2].toLowerCase())) {
     w.action = 'update_cash';
@@ -233,20 +291,90 @@ function fillMissingFields(w: WorkingAction, originalText: string): WorkingActio
     }
   }
 
-  // For update_cash: extract currency, accountName, amount from "{account} {FIAT} is now {num}"
+  // For update_cash: extract currency, accountName, amount from various patterns
   if (w.action === 'update_cash') {
-    const updateCashMatch = trimmed.match(
-      /^(.+?)\s+([a-zA-Z]{3})\s+(?:is\s+now|now|=|balance)\s+(\d+(?:[.,]\d+)?[kmb]?)$/i
+    // Pattern 0: "{account} (total/new)? {FIAT} balance (to/is/=)? {num}" — noise-word-tolerant
+    const updateMatch0 = trimmed.match(
+      /^(.+?)\s+(?:total|new)?\s*([a-zA-Z]{3})\s+(?:balance\s+(?:to|is|=)\s*|balance\s+)(\d+(?:[.,]\d+)?[kmb]?)$/i
     );
-    if (updateCashMatch && fiatCurrencies.has(updateCashMatch[2].toLowerCase())) {
-      if (!w.currency) w.currency = updateCashMatch[2].toUpperCase();
-      if (!w.accountName) w.accountName = updateCashMatch[1].trim();
+    if (updateMatch0 && fiatCurrencies.has(updateMatch0[2].toLowerCase())) {
+      if (!w.currency) w.currency = updateMatch0[2].toUpperCase();
+      if (!w.accountName) {
+        w.accountName = updateMatch0[1].trim().replace(/\s+(?:total|new|current|balance)\s*$/i, '').trim();
+      }
       if (!w.amount) {
-        const amt = parseAbbreviatedNumber(updateCashMatch[3].replace(',', '.'));
+        const amt = parseAbbreviatedNumber(updateMatch0[3].replace(',', '.'));
         if (amt !== null) w.amount = amt;
       }
     }
-    // Also try extracting last number as amount if still missing
+
+    // Pattern 1: "{account} {FIAT} is now/=/balance to/balance/to {num}"
+    const updateMatch1 = trimmed.match(
+      /^(.+?)\s+([a-zA-Z]{3})\s+(?:is\s+now|now|=|balance\s+to|balance|to)\s+(\d+(?:[.,]\d+)?[kmb]?)$/i
+    );
+    if (updateMatch1 && fiatCurrencies.has(updateMatch1[2].toLowerCase())) {
+      if (!w.currency) w.currency = updateMatch1[2].toUpperCase();
+      if (!w.accountName) w.accountName = updateMatch1[1].trim();
+      if (!w.amount) {
+        const amt = parseAbbreviatedNumber(updateMatch1[3].replace(',', '.'));
+        if (amt !== null) w.amount = amt;
+      }
+    }
+
+    // Pattern 2: "set/update {account} {FIAT} (balance)? to {num}"
+    if (!w.amount || !w.accountName) {
+      const updateMatch2 = trimmed.match(
+        /^(?:set|update)\s+(.+?)\s+([a-zA-Z]{3})\s+(?:balance\s+)?(?:to\s+)?(\d+(?:[.,]\d+)?[kmb]?)$/i
+      );
+      if (updateMatch2 && fiatCurrencies.has(updateMatch2[2].toLowerCase())) {
+        if (!w.currency) w.currency = updateMatch2[2].toUpperCase();
+        if (!w.accountName) w.accountName = updateMatch2[1].trim();
+        if (!w.amount) {
+          const amt = parseAbbreviatedNumber(updateMatch2[3].replace(',', '.'));
+          if (amt !== null) w.amount = amt;
+        }
+      }
+    }
+
+    // Pattern 3: "total/new {FIAT} balance {account} to {num}"
+    if (!w.amount || !w.accountName) {
+      const updateMatch3 = trimmed.match(
+        /^(?:total|new)\s+([a-zA-Z]{3})\s+balance\s+(.+?)\s+(?:to\s+)?(\d+(?:[.,]\d+)?[kmb]?)$/i
+      );
+      if (updateMatch3 && fiatCurrencies.has(updateMatch3[1].toLowerCase())) {
+        if (!w.currency) w.currency = updateMatch3[1].toUpperCase();
+        if (!w.accountName) w.accountName = updateMatch3[2].trim();
+        if (!w.amount) {
+          const amt = parseAbbreviatedNumber(updateMatch3[3].replace(',', '.'));
+          if (amt !== null) w.amount = amt;
+        }
+      }
+    }
+
+    // Pattern 4: "{account} {FIAT} {num}" (bare)
+    if (!w.amount || !w.accountName) {
+      const updateMatch4 = trimmed.match(
+        /^(.+?)\s+([a-zA-Z]{3})\s+(\d+(?:[.,]\d+)?[kmb]?)$/i
+      );
+      if (updateMatch4 && fiatCurrencies.has(updateMatch4[2].toLowerCase())) {
+        if (!w.currency) w.currency = updateMatch4[2].toUpperCase();
+        if (!w.accountName) w.accountName = updateMatch4[1].trim();
+        if (!w.amount) {
+          const amt = parseAbbreviatedNumber(updateMatch4[3].replace(',', '.'));
+          if (amt !== null) w.amount = amt;
+        }
+      }
+    }
+
+    // Strip noise words from extracted accountName (e.g., "N26 total" → "N26", "set N26" → "N26")
+    if (w.accountName) {
+      w.accountName = w.accountName
+        .replace(/^(?:set|update|change|modify)\s+/i, '')
+        .replace(/\s+(?:total|new|current|balance)\s*$/i, '')
+        .trim();
+    }
+
+    // Fallback: extract last number as amount if still missing
     if (!w.amount) {
       const numbers = [...originalText.matchAll(/(\d+(?:[.,]\d+)?[kmb]?)/gi)];
       if (numbers.length > 0) {
@@ -290,6 +418,32 @@ function matchToPosition(w: WorkingAction, positions: PositionContext[]): Workin
       w.assetType = w.assetType || matches[0].type;
     }
   }
+
+  // Second pass: for cash actions, match by account name + currency
+  if (!w.matchedPositionId && (w.action === 'update_cash' || w.action === 'add_cash') && w.accountName) {
+    const acctLower = w.accountName.toLowerCase();
+    const currUpper = w.currency?.toUpperCase() || '';
+    const candidates = positions.filter(p => {
+      if (p.type !== 'cash') return false;
+      const posAcct = (p.accountName || p.name.match(/^(.+?)\s*\(/)?.[1] || '').toLowerCase();
+      const nameMatch = posAcct.includes(acctLower) || acctLower.includes(posAcct);
+      if (currUpper) {
+        const posCurr = p.symbol.match(/CASH_([A-Z]{3})/)?.[1] || '';
+        return nameMatch && posCurr === currUpper;
+      }
+      return nameMatch;
+    });
+    if (candidates.length === 1) {
+      w.matchedPositionId = candidates[0].id;
+      w.name = w.name || candidates[0].name;
+      w.assetType = 'cash';
+      if (!w.currency) {
+        const m = candidates[0].symbol.match(/CASH_([A-Z]{3})/);
+        if (m) w.currency = m[1];
+      }
+    }
+  }
+
   return w;
 }
 
@@ -382,10 +536,6 @@ function computeMissingFields(w: WorkingAction): WorkingAction {
     w.missingFields = [];
     if (!w.newPrice) w.missingFields.push('newPrice');
   }
-  if (w.action === 'update') {
-    w.missingFields = [];
-    if (!w.amount && !w.pricePerUnit) w.missingFields.push('amount');
-  }
   if (w.action === 'remove') {
     w.missingFields = [];
   }
@@ -433,11 +583,6 @@ function buildSummary(w: WorkingAction, positions: PositionContext[]): WorkingAc
   } else if (w.action === 'update_cash') {
     const fmtAmt = w.amount ? w.amount.toLocaleString('en-US', { maximumFractionDigits: 2 }) : '?';
     w.summary = `Update ${w.accountName || '?'} ${w.currency || '?'} to ${fmtAmt}`;
-  } else if (w.action === 'update') {
-    const parts: string[] = [`Update ${w.symbol}`];
-    if (w.amount) parts.push(`amount to ${w.amount}`);
-    if (w.pricePerUnit) parts.push(`price to ${fmtPrice(w.pricePerUnit)}`);
-    w.summary = parts.join(' ');
   } else if (w.action === 'set_price') {
     w.summary = `Set ${w.symbol} price to ${w.newPrice ? fmtPrice(w.newPrice) : '?'}`;
   } else if (w.action === 'remove') {
@@ -480,12 +625,13 @@ export function resolveAction(
   };
 
   // Pipeline: each step mutates and returns the working copy
-  // Order: correctActionType before fillMissingFields so action-gated
-  // field extraction works regardless of whether LLM or correction set the action.
+  // Order: correctActionType → fillMissingFields → matchToPosition
+  // fillMissingFields runs before matchToPosition so accountName/currency are
+  // populated when cash matching happens in matchToPosition.
   w = normalizeSymbol(w);
   w = correctActionType(w, originalText, positions);
-  w = matchToPosition(w, positions);
   w = fillMissingFields(w, originalText);
+  w = matchToPosition(w, positions);
   w = deriveComputedFields(w, positions);
   w = validateDate(w);
   w = computeMissingFields(w);
