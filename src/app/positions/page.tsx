@@ -340,7 +340,7 @@ export default function PositionsPage() {
       {/* NAV Summary */}
       <div className="flex items-start justify-between mb-6">
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">NET ASSET VALUE</p>
+          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">NET ASSET VALUE</p>
           <h2 className="text-2xl font-semibold mb-1">{hideBalances ? '••••••••' : formatCurrency(totalNAV)}</h2>
           <div className="flex items-center gap-2">
             <span className={getChangeColor(totalChangePercent)}>
@@ -568,7 +568,7 @@ export default function PositionsPage() {
                             )}
                             {position.detailTypes?.includes('vesting') && (
                               <div className="group relative inline-flex items-center">
-                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-semibold bg-gradient-to-r from-purple-500 to-indigo-500 text-white">
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-semibold bg-[var(--accent-primary)] text-white">
                                   <Clock className="w-2.5 h-2.5" />
                                   VESTING
                                 </span>

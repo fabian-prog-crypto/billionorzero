@@ -313,7 +313,7 @@ export default function AppShell({ children }: AppShellProps) {
                   fontSize: '28px',
                   lineHeight: '1.2',
                   fontWeight: activeSubTab === tab.id ? 500 : 400,
-                  color: activeSubTab === tab.id ? 'var(--foreground)' : '#B5B5B5',
+                  color: activeSubTab === tab.id ? 'var(--foreground)' : 'var(--foreground-muted)',
                 }}
                 onClick={() => handleSubTabClick(tab.id)}
               >

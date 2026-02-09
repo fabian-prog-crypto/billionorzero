@@ -96,7 +96,7 @@ export default function PerformancePage() {
   const losers = assetPerformance.filter((a) => a.changePercent24h < 0).sort((a, b) => a.changePercent24h - b.changePercent24h);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Time period selector */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1 p-1 bg-[var(--background-secondary)] ">
@@ -126,7 +126,7 @@ export default function PerformancePage() {
       <div>
         <div className="flex items-start justify-between mb-6">
           <div>
-            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">PORTFOLIO VALUE</p>
+            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">PORTFOLIO VALUE</p>
             <h2 className="text-2xl font-semibold">{hideBalances ? '••••••••' : formatCurrency(summary.totalValue)}</h2>
             <div className="flex items-center gap-2 mt-1">
               <span className={getChangeColor(performanceMetrics.changePercent)}>
@@ -174,7 +174,7 @@ export default function PerformancePage() {
                 <TrendingUp className="w-4 h-4 text-[var(--foreground-muted)]" />
                 <span className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)]">CAGR</span>
                 {professionalMetrics.dataQuality.cagrWarning && (
-                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                  <AlertTriangle className="w-3.5 h-3.5 text-[var(--warning)]" />
                 )}
               </div>
               <div className={`text-xl font-semibold ${getChangeColor(professionalMetrics.cagr)}`}>
@@ -196,7 +196,7 @@ export default function PerformancePage() {
                 <Target className="w-4 h-4 text-[var(--foreground-muted)]" />
                 <span className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)]">SHARPE RATIO</span>
                 {professionalMetrics.dataQuality.sharpeWarning && (
-                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                  <AlertTriangle className="w-3.5 h-3.5 text-[var(--warning)]" />
                 )}
               </div>
               <div className="text-xl font-semibold" style={{ color: sharpeInterp.color }}>
@@ -208,7 +208,7 @@ export default function PerformancePage() {
               <div className="tooltip whitespace-normal max-w-[200px]">
                 <div>Risk-free rate: {(professionalMetrics.riskFreeRateUsed * 100).toFixed(1)}%</div>
                 {professionalMetrics.dataQuality.sharpeWarning && (
-                  <div className="mt-1 text-amber-400">{professionalMetrics.dataQuality.sharpeWarning}</div>
+                  <div className="mt-1 text-[var(--warning)]">{professionalMetrics.dataQuality.sharpeWarning}</div>
                 )}
               </div>
             </div>
@@ -236,7 +236,7 @@ export default function PerformancePage() {
                 <Activity className="w-4 h-4 text-[var(--foreground-muted)]" />
                 <span className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)]">VOLATILITY</span>
                 {professionalMetrics.dataQuality.volatilityWarning && (
-                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                  <AlertTriangle className="w-3.5 h-3.5 text-[var(--warning)]" />
                 )}
               </div>
               <div className="text-xl font-semibold">

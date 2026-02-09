@@ -132,7 +132,7 @@ export default function LoginScreen() {
     <div className="fixed inset-0 landing-bg grid-bg overflow-hidden">
       {/* Ambient glow elements */}
       <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-[var(--accent-primary)] opacity-[0.03]  blur-3xl" />
-      <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-purple-500 opacity-[0.03]  blur-3xl" />
+      <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-[var(--accent-primary)] opacity-[0.03] blur-3xl" />
 
       <div className="relative z-10 min-h-screen flex flex-col items-center justify-center p-6">
         {/* Main content */}
@@ -181,7 +181,7 @@ export default function LoginScreen() {
             ) : hasPasskey ? (
               <div className="text-center">
                 <div className="relative inline-flex mb-6">
-                  <div className="w-20 h-20  bg-gradient-to-br from-[var(--accent-primary)]/20 to-purple-600/20 flex items-center justify-center">
+                  <div className="w-20 h-20  bg-[var(--accent-glow)] flex items-center justify-center">
                     <Fingerprint className="w-10 h-10 text-[var(--accent-primary)]" />
                   </div>
                   <div className="absolute inset-0  animate-glow-pulse opacity-30" />
@@ -218,7 +218,7 @@ export default function LoginScreen() {
             ) : (
               <div className="text-center">
                 <div className="relative inline-flex mb-6">
-                  <div className="w-20 h-20  bg-gradient-to-br from-[var(--accent-primary)]/20 to-purple-600/20 flex items-center justify-center">
+                  <div className="w-20 h-20  bg-[var(--accent-glow)] flex items-center justify-center">
                     <KeyRound className="w-10 h-10 text-[var(--accent-primary)]" />
                   </div>
                 </div>

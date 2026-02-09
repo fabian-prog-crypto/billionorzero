@@ -287,7 +287,7 @@ export default function WalletsPage() {
 
       {/* Info note */}
       <div>
-        <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">About Wallet Tracking</p>
+        <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">About Wallet Tracking</p>
         <p className="text-[11px] text-[var(--foreground-muted)]">
           Wallets are tracked using the DeBank API. For perp exchange positions (Hyperliquid, Lighter, Ethereal),
           click on a wallet to enable specific exchanges. Only enabled exchanges will be queried for positions.
