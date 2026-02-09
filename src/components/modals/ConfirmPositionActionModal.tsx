@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { X, AlertCircle, TrendingUp, TrendingDown, DollarSign, Trash2, RefreshCw, Tag } from 'lucide-react';
+import { X, AlertCircle, TrendingUp, TrendingDown, DollarSign, Trash2, RefreshCw, Tag, Edit2 } from 'lucide-react';
 import { ParsedPositionAction, Position, AssetWithPrice } from '@/types';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import {
@@ -62,6 +62,8 @@ export default function ConfirmPositionActionModal({
   const [cashCurrency, setCashCurrency] = useState(parsedAction.currency || 'USD');
   const [accountName, setAccountName] = useState(parsedAction.accountName || '');
   const [newPrice, setNewPrice] = useState(parsedAction.newPrice?.toString() || '');
+  const [editCostBasis, setEditCostBasis] = useState(parsedAction.costBasis?.toString() || '');
+  const [editPurchaseDate, setEditPurchaseDate] = useState(parsedAction.date || '');
 
   const firstMissingRef = useRef<HTMLInputElement>(null);
 
@@ -82,6 +84,8 @@ export default function ConfirmPositionActionModal({
       setCashCurrency(parsedAction.currency || 'USD');
       setAccountName(parsedAction.accountName || '');
       setNewPrice(parsedAction.newPrice?.toString() || '');
+      setEditCostBasis(parsedAction.costBasis?.toString() || '');
+      setEditPurchaseDate(parsedAction.date || '');
 
       // Auto-fill price from current market price when missing
       const matched = parsedAction.matchedPositionId
@@ -109,8 +113,18 @@ export default function ConfirmPositionActionModal({
       } else {
         setPricePerUnit(parsedAction.pricePerUnit?.toString() || '');
       }
+
+      // Pre-fill update_position fields from the matched position
+      if (parsedAction.action === 'update_position' && parsedAction.matchedPositionId) {
+        const pos = positions.find(p => p.id === parsedAction.matchedPositionId);
+        if (pos) {
+          setAmount(parsedAction.amount?.toString() || pos.amount.toString());
+          setEditCostBasis(parsedAction.costBasis?.toString() || pos.costBasis?.toString() || '');
+          setEditPurchaseDate(parsedAction.date || pos.purchaseDate || '');
+        }
+      }
     }
-  }, [isOpen, parsedAction, positionsWithPrices]);
+  }, [isOpen, parsedAction, positionsWithPrices, positions]);
 
   // Auto-focus first missing field
   useEffect(() => {
@@ -127,6 +141,7 @@ export default function ConfirmPositionActionModal({
   const isRemove = action === 'remove';
   const isUpdateCash = action === 'update_cash';
   const isSetPrice = action === 'set_price';
+  const isUpdatePosition = action === 'update_position';
 
   // Find matched position
   const matchedPosition = matchedPositionId
@@ -205,6 +220,15 @@ export default function ConfirmPositionActionModal({
   if (isAddCash && !matchedPositionId && !accountName.trim()) missingFields.push('accountName');
   if (isUpdateCash && numAmount <= 0) missingFields.push('amount');
   if (isSetPrice && numNewPrice <= 0) missingFields.push('newPrice');
+  if (isUpdatePosition) {
+    const numEditCB = parseFloat(editCostBasis);
+    const hasAmountChange = amount && numAmount > 0;
+    const hasCostBasisChange = editCostBasis && !isNaN(numEditCB);
+    const hasDateChange = !!editPurchaseDate;
+    if (!hasAmountChange && !hasCostBasisChange && !hasDateChange) {
+      missingFields.push('at least one field');
+    }
+  }
 
   const canConfirm = missingFields.length === 0;
 
@@ -484,6 +508,26 @@ export default function ConfirmPositionActionModal({
           return;
         }
         setCustomPrice(symbol.toLowerCase(), numNewPrice, 'Set via command palette');
+      } else if (isUpdatePosition) {
+        // Update manual position fields
+        if (!matchedPosition) {
+          setError('No matching position found to update');
+          return;
+        }
+        if (matchedPosition.walletAddress) {
+          setError('Cannot edit wallet-synced positions');
+          return;
+        }
+        const updates: Partial<typeof matchedPosition> = {};
+        if (amount && numAmount > 0) updates.amount = numAmount;
+        const numEditCostBasis = parseFloat(editCostBasis);
+        if (editCostBasis && !isNaN(numEditCostBasis)) updates.costBasis = numEditCostBasis;
+        if (editPurchaseDate) updates.purchaseDate = editPurchaseDate;
+        if (Object.keys(updates).length === 0) {
+          setError('No fields changed');
+          return;
+        }
+        updatePosition(matchedPosition.id, updates);
       }
 
       onClose();
@@ -495,7 +539,7 @@ export default function ConfirmPositionActionModal({
   };
 
   // Action label and confirm button
-  const actionLabel = isSell ? 'Sell' : isBuy ? 'Buy' : isAddCash ? 'Add Cash' : isRemove ? 'Remove' : isUpdateCash ? 'Update Cash' : isSetPrice ? 'Set Price' : 'Update';
+  const actionLabel = isSell ? 'Sell' : isBuy ? 'Buy' : isAddCash ? 'Add Cash' : isRemove ? 'Remove' : isUpdateCash ? 'Update Cash' : isSetPrice ? 'Set Price' : isUpdatePosition ? 'Edit Position' : 'Update';
 
   const fmtAmount = numAmount > 0
     ? numAmount.toLocaleString('en-US', { maximumFractionDigits: 2 })
@@ -515,6 +559,8 @@ export default function ConfirmPositionActionModal({
     ? `Update to ${fmtAmount} ${cashCurrency}`
     : isSetPrice
     ? `Set Price to ${numNewPrice > 0 ? formatCurrency(numNewPrice) : '?'}`
+    : isUpdatePosition
+    ? `Update ${symbol}`
     : actionLabel;
 
   // Header accent color
@@ -542,6 +588,7 @@ export default function ConfirmPositionActionModal({
     : isRemove ? Trash2
     : isUpdateCash ? RefreshCw
     : isSetPrice ? Tag
+    : isUpdatePosition ? Edit2
     : isSell ? TrendingDown
     : TrendingUp;
 
@@ -1134,6 +1181,62 @@ export default function ConfirmPositionActionModal({
                   </p>
                 </div>
               )}
+            </>
+          )}
+
+          {/* ===== UPDATE POSITION FIELDS ===== */}
+          {isUpdatePosition && matchedPosition && (
+            <>
+              <div>
+                <label className="block text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">
+                  Amount
+                </label>
+                <input
+                  ref={firstMissingRef}
+                  type="number"
+                  step="any"
+                  min="0"
+                  placeholder="0"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  className="w-full"
+                />
+                <p className="text-xs text-[var(--foreground-muted)] mt-1">
+                  Current: {formatNumber(matchedPosition.amount)}
+                </p>
+              </div>
+              <div>
+                <label className="block text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">
+                  Cost Basis ($)
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  min="0"
+                  placeholder="0.00"
+                  value={editCostBasis}
+                  onChange={(e) => setEditCostBasis(e.target.value)}
+                  className="w-full"
+                />
+                <p className="text-xs text-[var(--foreground-muted)] mt-1">
+                  Current: {matchedPosition.costBasis != null ? formatCurrency(matchedPosition.costBasis) : 'Not set'}
+                </p>
+              </div>
+              <div>
+                <label className="block text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">
+                  Purchase Date
+                </label>
+                <input
+                  type="date"
+                  value={editPurchaseDate}
+                  onChange={(e) => setEditPurchaseDate(e.target.value)}
+                  className="w-full"
+                  max={new Date().toISOString().split('T')[0]}
+                />
+                <p className="text-xs text-[var(--foreground-muted)] mt-1">
+                  Current: {matchedPosition.purchaseDate || 'Not set'}
+                </p>
+              </div>
             </>
           )}
 

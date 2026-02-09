@@ -6,6 +6,7 @@ import { sellPartialHandler } from './sell-partial.handler';
 import { sellAllHandler } from './sell-all.handler';
 import { removeHandler } from './remove.handler';
 import { setPriceHandler } from './set-price.handler';
+import { updatePositionHandler } from './update-position.handler';
 
 export const ALL_HANDLERS: ActionHandler[] = [
   updateCashHandler,
@@ -15,4 +16,5 @@ export const ALL_HANDLERS: ActionHandler[] = [
   sellAllHandler,
   removeHandler,
   setPriceHandler,
+  updatePositionHandler,
 ];

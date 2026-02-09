@@ -22,10 +22,11 @@ const POSITIONS: PositionContext[] = [
   { id: 'n26-eur', symbol: 'CASH_EUR_123', name: 'N26 (EUR)', type: 'cash', amount: 9868, accountName: 'N26' },
   { id: 'revolut-eur', symbol: 'CASH_EUR_456', name: 'Revolut (EUR)', type: 'cash', amount: 5000, accountName: 'Revolut' },
   { id: 'wise-usd', symbol: 'CASH_USD_789', name: 'Wise (USD)', type: 'cash', amount: 31733, accountName: 'Wise' },
-  { id: 'btc-1', symbol: 'BTC', name: 'Bitcoin', type: 'crypto', amount: 0.5 },
+  { id: 'btc-1', symbol: 'BTC', name: 'Bitcoin', type: 'crypto', amount: 0.5, costBasis: 47500, purchaseDate: '2024-01-15' },
   { id: 'eth-1', symbol: 'ETH', name: 'Ethereum', type: 'crypto', amount: 10 },
   { id: 'aapl-1', symbol: 'AAPL', name: 'Apple Inc', type: 'stock', amount: 50, costBasis: 9250 },
   { id: 'doge-1', symbol: 'DOGE', name: 'Dogecoin', type: 'crypto', amount: 10000 },
+  { id: 'eth-wallet', symbol: 'ETH', name: 'Ethereum', type: 'crypto', amount: 5, walletAddress: '0x1234567890abcdef' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -53,6 +54,7 @@ function simulateLLM(
     if (/^closed?\s+/i.test(userText) && item._handler === 'sell-all') score += 5;
     if ((/^(?:sold|sell)\s+/i.test(userText) && !/\ball\b/i.test(userText)) && item._handler === 'sell-partial') score += 5;
     if (/^(?:bought|buy|purchased)\s+/i.test(userText) && item._handler === 'buy') score += 3;
+    if (/^(?:update|edit|set)\s+\w+\s+(?:amount|cost\s*basis|date|purchase)/i.test(userText) && item._handler === 'update-position') score += 8;
 
     // Implicit buy: "{num} {SYMBOL} at {price}" or "{num} {SYMBOL} for {total}"
     // Only match if the symbol is NOT a fiat currency
@@ -268,6 +270,28 @@ function extractValues(userText: string, item: MenuItem): Record<string, string>
     return values;
   }
 
+  // For update-position: extract amount, costBasis, date
+  if (item._handler === 'update-position') {
+    // Amount: "amount to 0.6"
+    const amountMatch = userText.match(/amount\s+(?:to\s+)?(\d+(?:\.\d+)?[kmb]?)/i);
+    if (amountMatch) {
+      const v = parseAbbreviatedNumber(amountMatch[1]);
+      if (v != null) values.amount = String(v);
+    }
+    // Cost basis: "cost basis to 10000"
+    const costMatch = userText.match(/cost\s*basis\s+(?:to\s+)?\$?(\d+(?:\.\d+)?[kmb]?)/i);
+    if (costMatch) {
+      const v = parseAbbreviatedNumber(costMatch[1]);
+      if (v != null) values.costBasis = String(v);
+    }
+    // Date: "date to 2024-06-15" or "purchase date to 2024-06-15"
+    const dateMatch = userText.match(/(?:purchase\s+)?date\s+(?:to\s+)?(\d{4}-\d{2}-\d{2})/i);
+    if (dateMatch) {
+      values.date = dateMatch[1];
+    }
+    return values;
+  }
+
   // For remove: no values needed
   return values;
 }
@@ -287,7 +311,9 @@ interface TestCase {
     matchedPositionId?: string;
     symbol?: string;
     newPrice?: number;
+    costBasis?: number;
     pricePerUnit?: number;
+    date?: string;
     sellPercent?: number;
     sellPrice?: number;
     totalCost?: number;
@@ -389,6 +415,13 @@ const TEST_CASES: TestCase[] = [
   { id: 55, input: 'ETH price 3.5k', expected: { action: 'set_price', symbol: 'ETH', newPrice: 3500 } },
   { id: 56, input: '100 SOL at 150', expected: { action: 'buy', symbol: 'SOL', amount: 100, pricePerUnit: 150 } },
   { id: 57, input: 'Revolut EUR balance to 6500', expected: { action: 'update_cash', amount: 6500, currency: 'EUR', accountName: 'Revolut', matchedPositionId: 'revolut-eur' } },
+
+  // =========================================================================
+  // UPDATE POSITION — cases 60-63
+  // =========================================================================
+  { id: 60, input: 'update BTC amount to 0.6', expected: { action: 'update_position', matchedPositionId: 'btc-1', amount: 0.6 } },
+  { id: 61, input: 'edit AAPL cost basis to 10000', expected: { action: 'update_position', matchedPositionId: 'aapl-1', costBasis: 10000 } },
+  { id: 62, input: 'set BTC purchase date to 2024-06-15', expected: { action: 'update_position', matchedPositionId: 'btc-1', date: '2024-06-15' } },
 ];
 
 // ---------------------------------------------------------------------------
@@ -456,6 +489,12 @@ for (const tc of TEST_CASES) {
   if (tc.expected.totalCost !== undefined && result.totalCost !== tc.expected.totalCost) {
     errors.push(`totalCost: got ${result.totalCost}, expected ${tc.expected.totalCost}`);
   }
+  if (tc.expected.costBasis !== undefined && result.costBasis !== tc.expected.costBasis) {
+    errors.push(`costBasis: got ${result.costBasis}, expected ${tc.expected.costBasis}`);
+  }
+  if (tc.expected.date !== undefined && result.date !== tc.expected.date) {
+    errors.push(`date: got "${result.date}", expected "${tc.expected.date}"`);
+  }
 
   if (errors.length === 0) {
     passed++;
@@ -475,7 +514,7 @@ for (const tc of TEST_CASES) {
 console.log('\n--- Section 2: Handler → Executor Contract ---');
 
 // The valid executor action types (cases in executeAction switch)
-const EXECUTOR_ACTIONS = new Set(['sell_all', 'sell_partial', 'buy', 'add_cash', 'update_cash', 'remove', 'set_price']);
+const EXECUTOR_ACTIONS = new Set(['sell_all', 'sell_partial', 'buy', 'add_cash', 'update_cash', 'remove', 'set_price', 'update_position']);
 
 // 2a: Every handler's actionType maps to a valid executor case
 {
@@ -648,6 +687,49 @@ const EXECUTOR_ACTIONS = new Set(['sell_all', 'sell_partial', 'buy', 'add_cash',
   assert(!actionTypes.includes('update' as any),
     'No handler produces "update" actionType (dead handler removed)');
   console.log(`  \u2713 No handler produces "update" actionType`);
+}
+
+// 2j: update_position handler sets required executor fields
+{
+  const menu = catalog.generateMenu(POSITIONS);
+  const updateItem = menu.find(i => i._handler === 'update-position' && i.id.includes('btc'));
+  if (updateItem) {
+    const handler = ALL_HANDLERS.find(h => h.id === 'update-position')!;
+    const result = handler.resolve(updateItem, { amount: '0.6' }, POSITIONS);
+    assert(typeof result.matchedPositionId === 'string' && result.matchedPositionId.length > 0,
+      'update_position: matchedPositionId is set');
+    assert(result.amount === 0.6, 'update_position: amount is set');
+    assert(result.action === 'update_position', 'update_position: action type is correct');
+    console.log(`  \u2713 update_position handler sets matchedPositionId, amount`);
+
+    // Without any values → missingFields
+    const noValues = handler.resolve(updateItem, {}, POSITIONS);
+    assert(Array.isArray(noValues.missingFields) && noValues.missingFields.length > 0,
+      'update_position: missingFields when no values provided');
+    console.log(`  \u2713 update_position handler reports missing fields when empty`);
+  }
+}
+
+// 2k: update_position does NOT generate items for wallet positions
+{
+  const menu = catalog.generateMenu(POSITIONS);
+  const walletUpdateItems = menu.filter(i =>
+    i._handler === 'update-position' && (i._context.positionId as string) === 'eth-wallet'
+  );
+  assert(walletUpdateItems.length === 0,
+    'update_position: no menu items for wallet positions');
+  console.log(`  \u2713 update_position does NOT generate items for wallet positions`);
+}
+
+// 2l: update_position does NOT generate items for cash positions
+{
+  const menu = catalog.generateMenu(POSITIONS);
+  const cashUpdateItems = menu.filter(i =>
+    i._handler === 'update-position' && (i._context.positionId as string).includes('eur')
+  );
+  assert(cashUpdateItems.length === 0,
+    'update_position: no menu items for cash positions');
+  console.log(`  \u2713 update_position does NOT generate items for cash positions`);
 }
 
 // ---------------------------------------------------------------------------

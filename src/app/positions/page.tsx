@@ -24,7 +24,8 @@ import {
   formatAddress,
 } from '@/lib/utils';
 import { MainCategory, getCategoryLabel, isPerpProtocol, getCategoryService, AssetCategory, getPerpProtocolsWithPositions, ExposureCategoryType } from '@/services';
-import { AssetWithPrice } from '@/types';
+import { AssetWithPrice, ParsedPositionAction } from '@/types';
+import ConfirmPositionActionModal from '@/components/modals/ConfirmPositionActionModal';
 
 type ViewMode = 'positions' | 'assets';
 type CategoryFilter = MainCategory | AssetCategory | ExposureCategoryType | 'all';
@@ -85,6 +86,9 @@ export default function PositionsPage() {
     isOpen: boolean;
     asset: AssetWithPrice | null;
   }>({ isOpen: false, asset: null });
+
+  // Edit position modal state
+  const [editAction, setEditAction] = useState<ParsedPositionAction | null>(null);
 
   const { positions, prices, customPrices, removePosition, wallets, hideBalances, toggleHideBalances, hideDust, toggleHideDust } = usePortfolioStore();
   const { refresh, isRefreshing } = useRefresh();
@@ -287,6 +291,21 @@ export default function PositionsPage() {
     if (confirm('Are you sure you want to remove this position?')) {
       removePosition(id);
     }
+  };
+
+  const handleEdit = (position: AssetWithPrice) => {
+    setEditAction({
+      action: 'update_position',
+      symbol: position.symbol,
+      name: position.name,
+      assetType: position.type,
+      amount: position.amount,
+      costBasis: position.costBasis,
+      date: position.purchaseDate,
+      matchedPositionId: position.id,
+      confidence: 1,
+      summary: `Edit ${position.symbol} position`,
+    });
   };
 
   const toggleSort = (field: SortField) => {
@@ -697,18 +716,29 @@ export default function PositionsPage() {
                         {position.allocation.toFixed(1)}%
                       </td>
                       <td className="py-2 text-right">
-                        <button
-                          onClick={() => handleDelete(position.id, isWalletPosition)}
-                          className={`p-2  transition-colors ${
-                            isWalletPosition
-                              ? 'text-[var(--foreground-muted)] cursor-not-allowed opacity-50'
-                              : 'hover:bg-[var(--negative-light)] text-[var(--negative)]'
-                          }`}
-                          disabled={isWalletPosition}
-                          title={isWalletPosition ? 'Remove wallet to delete these positions' : 'Delete position'}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center justify-end gap-1">
+                          {!isWalletPosition && (
+                            <button
+                              onClick={() => handleEdit(position)}
+                              className="p-2 hover:bg-[var(--background-tertiary)] text-[var(--foreground-muted)] transition-colors"
+                              title="Edit position"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleDelete(position.id, isWalletPosition)}
+                            className={`p-2 transition-colors ${
+                              isWalletPosition
+                                ? 'text-[var(--foreground-muted)] cursor-not-allowed opacity-50'
+                                : 'hover:bg-[var(--negative-light)] text-[var(--negative)]'
+                            }`}
+                            disabled={isWalletPosition}
+                            title={isWalletPosition ? 'Remove wallet to delete these positions' : 'Delete position'}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -844,6 +874,16 @@ export default function PositionsPage() {
           }
           currentCustomPrice={customPrices[customPriceModal.asset.symbol.toLowerCase()]?.price}
           currentNote={customPrices[customPriceModal.asset.symbol.toLowerCase()]?.note}
+        />
+      )}
+
+      {editAction && (
+        <ConfirmPositionActionModal
+          isOpen={!!editAction}
+          onClose={() => setEditAction(null)}
+          parsedAction={editAction}
+          positions={positions}
+          positionsWithPrices={allPositionsWithPrices}
         />
       )}
     </div>

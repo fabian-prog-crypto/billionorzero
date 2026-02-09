@@ -11,7 +11,9 @@ export interface PositionContext {
   type: string;
   amount: number;
   costBasis?: number;
+  purchaseDate?: string;
   accountName?: string;
+  walletAddress?: string;
 }
 
 /** A field the LLM needs to extract for this menu item. */

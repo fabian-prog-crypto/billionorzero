@@ -23,6 +23,10 @@ ABBREVIATED NUMBERS:
 
 FIAT CURRENCIES: ${fiatList}
 
+UPDATE POSITION RULES:
+- "update/edit {SYMBOL} amount/cost basis/date to {VALUE}" → always update_position
+- This applies to non-cash asset edits (crypto, stocks, equities)
+
 CASH PATTERN RULES (apply BEFORE looking at the menu):
 - "{NUM} {FIAT_CURRENCY} to/in/into {account}" → ALWAYS add_cash (adding to balance), NEVER update_cash or buy
   Examples: "5000 EUR to Revolut", "50k USD to IBKR", "3000 GBP in Wise"
