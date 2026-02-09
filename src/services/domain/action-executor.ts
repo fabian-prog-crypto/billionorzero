@@ -141,6 +141,18 @@ export function executeAction(
         return { success: true, summary: `Set ${action.symbol} price to $${newPrice.toLocaleString()}` };
       }
 
+      case 'update_position': {
+        if (!matchedPosition) return { success: false, error: 'No matching position found to update' };
+        if (matchedPosition.walletAddress) return { success: false, error: 'Cannot edit wallet-synced positions' };
+        const updates: Partial<Position> = {};
+        if (action.amount != null) updates.amount = action.amount;
+        if (action.costBasis != null) updates.costBasis = action.costBasis;
+        if (action.date) updates.purchaseDate = action.date;
+        if (Object.keys(updates).length === 0) return { success: false, error: 'No fields to update' };
+        updatePosition(matchedPosition.id, updates);
+        return { success: true, summary: `Updated ${matchedPosition.symbol} position` };
+      }
+
       default:
         return { success: false, error: `Unknown action: ${action.action}` };
     }
@@ -155,5 +167,5 @@ export function executeAction(
 export function canInlineConfirm(action: ParsedPositionAction): boolean {
   const missing = action.missingFields ?? [];
   if (missing.length > 0) return false;
-  return action.action === 'update_cash' || action.action === 'set_price' || action.action === 'remove';
+  return action.action === 'update_cash' || action.action === 'set_price' || action.action === 'remove' || action.action === 'update_position';
 }

@@ -140,6 +140,58 @@ export default function InlineConfirmation({
     );
   }
 
+  if (action.action === 'update_position' && matchedPosition) {
+    const changes: { label: string; before: string; after: string }[] = [];
+    if (action.amount != null) {
+      changes.push({
+        label: 'Amount',
+        before: formatNumber(matchedPosition.amount),
+        after: formatNumber(action.amount),
+      });
+    }
+    if (action.costBasis != null) {
+      changes.push({
+        label: 'Cost Basis',
+        before: matchedPosition.costBasis != null ? formatCurrency(matchedPosition.costBasis) : '-',
+        after: formatCurrency(action.costBasis),
+      });
+    }
+    if (action.date) {
+      changes.push({
+        label: 'Purchase Date',
+        before: matchedPosition.purchaseDate || '-',
+        after: action.date,
+      });
+    }
+
+    return (
+      <div className="border-t border-[var(--border)] px-4 py-3 space-y-3">
+        <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)]">
+          UPDATE POSITION
+        </p>
+        <div className="text-sm font-medium">{matchedPosition.symbol.toUpperCase()}</div>
+        {changes.map((c) => (
+          <div key={c.label} className="flex items-center justify-between text-sm">
+            <span className="text-[var(--foreground-muted)]">{c.label}</span>
+            <div className="font-mono text-sm">
+              <span>{mask(c.before)}</span>
+              <span className="text-[var(--foreground-muted)] mx-2">&rarr;</span>
+              <span>{mask(c.after)}</span>
+            </div>
+          </div>
+        ))}
+        <div className="flex gap-2">
+          <button onClick={onCancel} className="btn btn-secondary flex-1 text-[13px]">
+            Cancel
+          </button>
+          <button onClick={onConfirm} className="btn btn-primary flex-1 text-[13px]">
+            Update {matchedPosition.symbol}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // Fallback (shouldn't reach here for inline-eligible actions)
   return null;
 }

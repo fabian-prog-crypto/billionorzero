@@ -36,7 +36,7 @@ const EXAMPLE_GROUPS = [
     label: 'MANAGE',
     examples: [
       'Remove DOGE',
-      'BTC price 95000',
+      'Update BTC amount to 0.6',
     ],
   },
 ];
@@ -166,7 +166,9 @@ export default function CommandPalette({
           type: p.type,
           amount: p.amount,
           costBasis: p.costBasis,
+          purchaseDate: p.purchaseDate,
           accountName,
+          walletAddress: p.walletAddress,
         };
       });
 
