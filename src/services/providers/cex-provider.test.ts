@@ -1,0 +1,243 @@
+import { fetchCexAccountPositions, fetchAllCexPositions } from './cex-provider';
+import type { CexAccount } from '@/types';
+
+// Mock uuid to return deterministic IDs
+vi.mock('uuid', () => ({
+  v4: vi.fn(() => 'test-uuid-1234'),
+}));
+
+function makeAccount(overrides: Partial<CexAccount> = {}): CexAccount {
+  return {
+    id: 'acc-1',
+    exchange: 'binance',
+    name: 'My Binance',
+    apiKey: 'api-key-123',
+    apiSecret: 'api-secret-456',
+    isActive: true,
+    addedAt: new Date().toISOString(),
+    ...overrides,
+  };
+}
+
+function makeBinanceResponse(balances: { asset: string; free: string; locked: string }[]) {
+  return {
+    balances,
+    canTrade: true,
+    accountType: 'SPOT',
+  };
+}
+
+describe('CEX Provider', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+  });
+
+  // ─── fetchCexAccountPositions ─────────────────────────────────────
+
+  describe('fetchCexAccountPositions', () => {
+    it('returns empty array for inactive accounts', async () => {
+      const result = await fetchCexAccountPositions(makeAccount({ isActive: false }));
+
+      expect(result).toEqual([]);
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('fetches Binance balances and creates positions', async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(makeBinanceResponse([
+          { asset: 'BTC', free: '0.5', locked: '0.1' },
+          { asset: 'ETH', free: '10', locked: '0' },
+        ])),
+      } as Response);
+
+      const result = await fetchCexAccountPositions(makeAccount());
+
+      expect(result).toHaveLength(2);
+
+      const btcPos = result.find(p => p.symbol === 'btc');
+      expect(btcPos).toBeDefined();
+      expect(btcPos!.amount).toBe(0.6); // 0.5 free + 0.1 locked
+      expect(btcPos!.name).toBe('Bitcoin');
+      expect(btcPos!.type).toBe('crypto');
+      expect(btcPos!.chain).toBe('binance');
+      expect(btcPos!.protocol).toBe('cex:binance:acc-1');
+
+      const ethPos = result.find(p => p.symbol === 'eth');
+      expect(ethPos).toBeDefined();
+      expect(ethPos!.amount).toBe(10);
+      expect(ethPos!.name).toBe('Ethereum');
+    });
+
+    it('filters out zero balance assets', async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(makeBinanceResponse([
+          { asset: 'BTC', free: '0.5', locked: '0' },
+          { asset: 'DOGE', free: '0', locked: '0' },
+          { asset: 'ADA', free: '0.00', locked: '0.00' },
+        ])),
+      } as Response);
+
+      const result = await fetchCexAccountPositions(makeAccount());
+
+      expect(result).toHaveLength(1);
+      expect(result[0].symbol).toBe('btc');
+    });
+
+    it('maps common asset names correctly', async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(makeBinanceResponse([
+          { asset: 'BTC', free: '1', locked: '0' },
+          { asset: 'SOL', free: '100', locked: '0' },
+          { asset: 'LINK', free: '50', locked: '0' },
+        ])),
+      } as Response);
+
+      const result = await fetchCexAccountPositions(makeAccount());
+
+      expect(result.find(p => p.symbol === 'btc')!.name).toBe('Bitcoin');
+      expect(result.find(p => p.symbol === 'sol')!.name).toBe('Solana');
+      expect(result.find(p => p.symbol === 'link')!.name).toBe('Chainlink');
+    });
+
+    it('uses symbol as name for unmapped assets', async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(makeBinanceResponse([
+          { asset: 'OBSCURECOIN', free: '999', locked: '0' },
+        ])),
+      } as Response);
+
+      const result = await fetchCexAccountPositions(makeAccount());
+
+      expect(result[0].name).toBe('OBSCURECOIN');
+      expect(result[0].symbol).toBe('obscurecoin');
+    });
+
+    it('sends POST request with correct body', async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(makeBinanceResponse([])),
+      } as Response);
+
+      const account = makeAccount({ apiKey: 'my-key', apiSecret: 'my-secret' });
+      await fetchCexAccountPositions(account);
+
+      expect(fetch).toHaveBeenCalledWith('/api/cex/binance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apiKey: 'my-key',
+          apiSecret: 'my-secret',
+          endpoint: 'account',
+        }),
+      });
+    });
+
+    it('throws on Binance API error', async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: false,
+        json: () => Promise.resolve({ error: 'Invalid API key' }),
+      } as unknown as Response);
+
+      await expect(fetchCexAccountPositions(makeAccount())).rejects.toThrow('Invalid API key');
+    });
+
+    it('returns empty for unimplemented exchanges (coinbase, kraken, okx)', async () => {
+      for (const exchange of ['coinbase', 'kraken', 'okx'] as const) {
+        const result = await fetchCexAccountPositions(makeAccount({ exchange }));
+        expect(result).toEqual([]);
+      }
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('sets protocol field to cex:<exchange>:<id>', async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(makeBinanceResponse([
+          { asset: 'BTC', free: '1', locked: '0' },
+        ])),
+      } as Response);
+
+      const result = await fetchCexAccountPositions(makeAccount({ id: 'acc-42', exchange: 'binance' }));
+
+      expect(result[0].protocol).toBe('cex:binance:acc-42');
+    });
+  });
+
+  // ─── fetchAllCexPositions ─────────────────────────────────────────
+
+  describe('fetchAllCexPositions', () => {
+    it('returns empty for no accounts', async () => {
+      const result = await fetchAllCexPositions([]);
+      expect(result).toEqual([]);
+    });
+
+    it('skips inactive accounts', async () => {
+      const result = await fetchAllCexPositions([
+        makeAccount({ isActive: false }),
+      ]);
+
+      expect(result).toEqual([]);
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('aggregates positions from multiple accounts', async () => {
+      vi.mocked(fetch).mockImplementation((_url: string | URL | Request, init?: RequestInit) => {
+        const body = JSON.parse(init?.body as string);
+        if (body.apiKey === 'key-1') {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve(makeBinanceResponse([
+              { asset: 'BTC', free: '1', locked: '0' },
+            ])),
+          } as Response);
+        }
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve(makeBinanceResponse([
+            { asset: 'ETH', free: '5', locked: '0' },
+          ])),
+        } as Response);
+      });
+
+      const result = await fetchAllCexPositions([
+        makeAccount({ id: 'a1', apiKey: 'key-1' }),
+        makeAccount({ id: 'a2', apiKey: 'key-2' }),
+      ]);
+
+      expect(result).toHaveLength(2);
+      expect(result.map(p => p.symbol).sort()).toEqual(['btc', 'eth']);
+    });
+
+    it('isolates errors -- one account failure does not block others', async () => {
+      let callCount = 0;
+      vi.mocked(fetch).mockImplementation(() => {
+        callCount++;
+        if (callCount === 1) {
+          return Promise.resolve({
+            ok: false,
+            json: () => Promise.resolve({ error: 'first account fails' }),
+          } as unknown as Response);
+        }
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve(makeBinanceResponse([
+            { asset: 'SOL', free: '100', locked: '0' },
+          ])),
+        } as Response);
+      });
+
+      const result = await fetchAllCexPositions([
+        makeAccount({ id: 'fail', apiKey: 'bad' }),
+        makeAccount({ id: 'ok', apiKey: 'good' }),
+      ]);
+
+      // Second account still returns its positions
+      expect(result).toHaveLength(1);
+      expect(result[0].symbol).toBe('sol');
+    });
+  });
+});
