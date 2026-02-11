@@ -188,6 +188,36 @@ Defined in `src/types/index.ts`:
 ### Perp exchanges: `'hyperliquid' | 'lighter' | 'ethereal'`
 ### CEX exchanges: `'binance' | 'coinbase' | 'kraken' | 'okx'`
 
+## Account Types & Asset Classes
+
+Account type (how you connect) and asset class (what you hold) are **orthogonal concepts**. An account connects to a data source; the assets inside it have their own classification.
+
+### Account types
+
+| Account type | Connection | Data source | How positions sync |
+|---|---|---|---|
+| **Crypto Wallet** | `WalletConnection` | `debank`, `helius` | Auto-synced from on-chain data |
+| **CEX Account** | `CexConnection` | `binance`, `coinbase`, `kraken`, `okx` | Auto-synced via exchange API |
+| **Brokerage Account** | `ManualConnection` | `manual` | Manually entered |
+| **Bank Account** | `ManualConnection` | `manual` | Manually entered |
+
+### What each account type can hold
+
+| Account type | Crypto | Equities (stocks/ETFs) | Cash (fiat & stablecoins) |
+|---|:---:|:---:|:---:|
+| **Crypto Wallet** | Yes | — | Yes (stablecoins) |
+| **CEX Account** | Yes | — | Yes (stablecoins) |
+| **Brokerage Account** | — | Yes | Yes (cash balance) |
+| **Bank Account** | — | — | Yes |
+
+### Key rules
+
+- A **bank account** holds only cash (fiat currencies like USD, EUR, CHF).
+- A **brokerage account** holds equities and cash, never crypto.
+- A **crypto wallet** primarily holds crypto but can also hold stablecoins (classified as cash) and tokenized equities.
+- A **CEX account** holds crypto and stablecoins, similar to a wallet but synced via exchange API.
+- The `AssetClass` on each `Position` (`'crypto' | 'equity' | 'cash' | 'other'`) is independent of the account it sits in.
+
 ## Asset Classification System
 
 The classification logic in `portfolio-calculator.ts` (`classifyAssetExposure()`) is the single source of truth for how assets are categorized for exposure calculations:

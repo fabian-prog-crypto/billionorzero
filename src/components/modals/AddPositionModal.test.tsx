@@ -16,6 +16,7 @@ vi.mock('@/services', () => ({
     return match ? match[1] : symbol
   }),
   isCashAccountSlugTaken: vi.fn().mockReturnValue(false),
+  toSlug: vi.fn((name: string) => name.toLowerCase().replace(/\s+/g, '-')),
 }))
 
 // Mock currencies
@@ -49,14 +50,18 @@ vi.mock('@/components/ui/StockIcon', () => ({
 // Mock store state
 const mockAddPosition = vi.fn()
 const mockUpdatePrice = vi.fn()
-const mockAddCashAccount = vi.fn().mockReturnValue('new-account-id')
+const mockAddAccount = vi.fn().mockReturnValue('new-account-id')
+
+let _accounts: { id: string; name: string; isActive: boolean; connection: { dataSource: string }; slug?: string; addedAt?: string }[] = []
 
 const mockStoreState = {
   addPosition: mockAddPosition,
   updatePrice: mockUpdatePrice,
-  brokerageAccounts: [] as unknown[],
-  cashAccounts: [] as unknown[],
-  addCashAccount: mockAddCashAccount,
+  addAccount: mockAddAccount,
+  manualAccounts: () => _accounts.filter(a => a.connection.dataSource === 'manual'),
+  brokerageAccounts: () => _accounts.filter(a => a.connection.dataSource === 'manual' && !a.slug),
+  cashAccounts: () => _accounts.filter(a => a.connection.dataSource === 'manual' && a.slug),
+  accounts: _accounts,
   positions: [] as unknown[],
 }
 
@@ -88,10 +93,10 @@ describe('AddPositionModal', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    mockStoreState.brokerageAccounts = []
-    mockStoreState.cashAccounts = []
+    _accounts = []
+    mockStoreState.accounts = _accounts
     mockStoreState.positions = []
-    mockAddCashAccount.mockReturnValue('new-account-id')
+    mockAddAccount.mockReturnValue('new-account-id')
   })
 
   it('does not render when isOpen is false', () => {
@@ -231,7 +236,8 @@ describe('AddPositionModal', () => {
   })
 
   it('submits cash position without calling refresh', async () => {
-    mockStoreState.cashAccounts = [{ id: 'ca1', name: 'Revolut', slug: 'revolut', isActive: true }]
+    _accounts = [{ id: 'ca1', name: 'Revolut', slug: 'revolut', isActive: true, connection: { dataSource: 'manual' } }]
+    mockStoreState.accounts = _accounts
 
     const user = userEvent.setup()
     render(<AddPositionModal isOpen={true} onClose={mockOnClose} defaultTab="cash" />)
@@ -248,7 +254,7 @@ describe('AddPositionModal', () => {
         type: 'cash',
         amount: 5000,
         costBasis: 5000,
-        protocol: 'cash-account:ca1',
+        accountId: 'ca1',
       })
     )
     expect(mockUpdatePrice).toHaveBeenCalled()

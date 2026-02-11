@@ -3,10 +3,10 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { X, Search, Loader2, Plus } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
-import { searchCoins, searchStocks, extractCurrencyCode, isCashAccountSlugTaken } from '@/services';
+import { searchCoins, searchStocks, extractCurrencyCode, isCashAccountSlugTaken, toSlug } from '@/services';
 import StockIcon from '@/components/ui/StockIcon';
 import { useRefresh } from '@/components/PortfolioProvider';
-import { AssetType } from '@/types';
+import { AssetType, assetClassFromType } from '@/types';
 import { FIAT_CURRENCIES, COMMON_CURRENCY_CODES, FIAT_CURRENCY_MAP } from '@/lib/currencies';
 import { formatNumber } from '@/lib/utils';
 
@@ -48,8 +48,13 @@ export default function AddPositionModal({
   const [isCurrencyPickerOpen, setIsCurrencyPickerOpen] = useState(false);
   const currencyPickerRef = useRef<HTMLDivElement>(null);
 
-  const { addPosition, updatePrice, brokerageAccounts, cashAccounts, addCashAccount, positions } = usePortfolioStore();
+  const store = usePortfolioStore();
+  const { addPosition, updatePrice, addAccount, positions, accounts } = store;
   const { refresh } = useRefresh();
+
+  // Get accounts using new API - memoize to avoid infinite useEffect loops
+  const brokerageAccounts = useMemo(() => store.brokerageAccounts(), [accounts]);
+  const cashAccounts = useMemo(() => store.cashAccounts(), [accounts]);
 
   // Reset form when modal opens
   useEffect(() => {
@@ -130,7 +135,7 @@ export default function AddPositionModal({
   const heldCurrencies = useMemo(() => {
     if (!selectedCashAccountId) return new Set<string>();
     const accountPositions = positions.filter(
-      (p) => p.type === 'cash' && p.protocol === `cash-account:${selectedCashAccountId}`
+      (p) => p.type === 'cash' && p.accountId === selectedCashAccountId
     );
     return new Set(accountPositions.map((p) => extractCurrencyCode(p.symbol)));
   }, [selectedCashAccountId, positions]);
@@ -141,7 +146,7 @@ export default function AddPositionModal({
     return positions.find(
       (p) =>
         p.type === 'cash' &&
-        p.protocol === `cash-account:${selectedCashAccountId}` &&
+        p.accountId === selectedCashAccountId &&
         extractCurrencyCode(p.symbol) === cashCurrency
     );
   }, [selectedCashAccountId, cashCurrency, positions]);
@@ -163,7 +168,7 @@ export default function AddPositionModal({
 
       if (isCreatingNewAccount) {
         if (!newCashAccountName.trim() || isDuplicateAccountName) return;
-        accountId = addCashAccount({ name: newCashAccountName.trim(), isActive: true });
+        accountId = addAccount({ name: newCashAccountName.trim(), isActive: true, connection: { dataSource: 'manual' }, slug: toSlug(newCashAccountName.trim()) });
         accountName = newCashAccountName.trim();
       } else {
         if (!accountId) return;
@@ -176,12 +181,13 @@ export default function AddPositionModal({
 
       const symbol = `CASH_${cashCurrency}_${Date.now()}`;
       addPosition({
+        assetClass: 'cash',
         type: 'cash',
         symbol,
         name: `${accountName} (${cashCurrency})`,
         amount: parseFloat(cashBalance),
         costBasis: parseFloat(cashBalance),
-        protocol: `cash-account:${accountId}`,
+        accountId: accountId,
       });
 
       updatePrice(symbol.toLowerCase(), {
@@ -195,6 +201,7 @@ export default function AddPositionModal({
       if (!manualSymbol || !manualName || !amount || !manualPrice) return;
 
       addPosition({
+        assetClass: 'other',
         type: 'manual',
         symbol: manualSymbol.toUpperCase(),
         name: manualName,
@@ -218,22 +225,21 @@ export default function AddPositionModal({
       const symbol = selectedAsset.symbol;
       const name = tab === 'crypto' ? selectedAsset.name : selectedAsset.description;
 
-      const brokerageProtocol = tab === 'stock' && brokerageAccounts.length > 0
+      const brokerageAccountId = tab === 'stock' && brokerageAccounts.length > 0
         ? brokerageAccounts.length === 1
-          ? `brokerage:${brokerageAccounts[0].id}`
-          : selectedBrokerageId
-            ? `brokerage:${selectedBrokerageId}`
-            : undefined
+          ? brokerageAccounts[0].id
+          : selectedBrokerageId || undefined
         : undefined;
 
       addPosition({
+        assetClass: assetClassFromType(type),
         type,
         symbol,
         name,
         amount: parseFloat(amount),
         costBasis: costBasis ? parseFloat(costBasis) : undefined,
         purchaseDate: purchaseDate || undefined,
-        ...(brokerageProtocol ? { protocol: brokerageProtocol } : {}),
+        ...(brokerageAccountId ? { accountId: brokerageAccountId } : {}),
       });
 
       refresh();

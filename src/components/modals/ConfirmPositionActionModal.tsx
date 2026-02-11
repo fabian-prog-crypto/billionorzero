@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { X, AlertCircle, TrendingUp, TrendingDown, DollarSign, Trash2, RefreshCw, Tag, Edit2 } from 'lucide-react';
-import { ParsedPositionAction, Position, AssetWithPrice } from '@/types';
+import { ParsedPositionAction, Position, AssetWithPrice, WalletConnection } from '@/types';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import {
   executePartialSell,
@@ -28,8 +28,9 @@ export default function ConfirmPositionActionModal({
   positions,
   positionsWithPrices,
 }: ConfirmPositionActionModalProps) {
-  const { updatePosition, removePosition, addPosition, addTransaction, updatePrice, setCustomPrice, brokerageAccounts } =
-    usePortfolioStore();
+  const store = usePortfolioStore();
+  const { updatePosition, removePosition, addPosition, addTransaction, updatePrice, setCustomPrice } = store;
+  const brokerageAccounts = store.brokerageAccounts();
 
   // Editable fields
   const [action, setAction] = useState(parsedAction.action);
@@ -243,9 +244,9 @@ export default function ConfirmPositionActionModal({
     }
   };
 
-  // Determine brokerage account ID from the matched position's protocol
-  const brokerageAccountId = matchedPosition?.protocol?.startsWith('brokerage:')
-    ? matchedPosition.protocol.replace('brokerage:', '')
+  // Determine brokerage account ID from the matched position's accountId
+  const brokerageAccountId = matchedPosition?.accountId
+    ? (brokerageAccounts.some(a => a.id === matchedPosition.accountId) ? matchedPosition.accountId : null)
     : null;
 
   // For buys of equities, we can infer brokerage context even without a matched position
@@ -259,15 +260,15 @@ export default function ConfirmPositionActionModal({
   const previewBrokerageId: string | null = isSell
     ? brokerageAccountId
     : isBuy
-      ? (addToExisting && matchedPosition?.protocol?.startsWith('brokerage:')
-        ? matchedPosition.protocol.replace('brokerage:', '')
+      ? (addToExisting && matchedPosition?.accountId && brokerageAccounts.some(a => a.id === matchedPosition.accountId)
+        ? matchedPosition.accountId
         : (parsedAction.assetType === 'stock' || parsedAction.assetType === 'etf') && brokerageAccounts.length > 0
           ? brokerageAccounts[0].id
           : null)
       : null;
 
   const previewCashPosition = previewBrokerageId
-    ? positions.find(p => p.type === 'cash' && p.protocol === `brokerage:${previewBrokerageId}`)
+    ? positions.find(p => p.type === 'cash' && p.accountId === previewBrokerageId)
     : null;
   const currentCashBalance = previewCashPosition?.amount ?? null;
 
@@ -319,12 +320,11 @@ export default function ConfirmPositionActionModal({
 
   // Cash side-effect: update or create cash position in the same brokerage account.
   // Returns true if a warning was shown (caller should NOT close the modal).
-  const handleCashSideEffect = (cashDelta: number, accountId: string | null): boolean => {
-    if (!accountId) return false;
+  const handleCashSideEffect = (cashDelta: number, brokerageId: string | null): boolean => {
+    if (!brokerageId) return false;
 
-    const protocol = `brokerage:${accountId}`;
     const existingCash = positions.find(
-      (p) => p.type === 'cash' && p.protocol === protocol
+      (p) => p.type === 'cash' && p.accountId === brokerageId
     );
 
     if (existingCash) {
@@ -342,12 +342,13 @@ export default function ConfirmPositionActionModal({
       // Sell proceeds — create new cash position
       const cashSymbol = `CASH_USD_${Date.now()}`;
       addPosition({
+        assetClass: 'cash',
         type: 'cash',
         symbol: cashSymbol,
         name: 'Cash (USD)',
         amount: cashDelta,
         costBasis: cashDelta,
-        protocol,
+        accountId: brokerageId,
       });
       updatePrice(cashSymbol.toLowerCase(), {
         symbol: 'USD',
@@ -411,11 +412,11 @@ export default function ConfirmPositionActionModal({
         const existingPos =
           addToExisting && matchedPosition ? matchedPosition : null;
 
-        // Determine brokerage protocol for new buys
-        const buyBrokerageProtocol = existingPos?.protocol?.startsWith('brokerage:')
-          ? existingPos.protocol
+        // Determine brokerage accountId for new buys
+        const buyBrokerageAccountId = existingPos?.accountId && brokerageAccounts.some(a => a.id === existingPos.accountId)
+          ? existingPos.accountId
           : (parsedAction.assetType === 'stock' || parsedAction.assetType === 'etf') && brokerageAccounts.length > 0
-          ? `brokerage:${brokerageAccounts[0].id}`
+          ? brokerageAccounts[0].id
           : undefined;
 
         const actionData: ParsedPositionAction = {
@@ -434,14 +435,14 @@ export default function ConfirmPositionActionModal({
         } else if (result.newPosition) {
           addPosition({
             ...result.newPosition,
-            ...(buyBrokerageProtocol ? { protocol: buyBrokerageProtocol } : {}),
+            ...(buyBrokerageAccountId ? { accountId: buyBrokerageAccountId } : {}),
           });
         }
 
         // Cash side-effect: deduct cost
-        const effectiveBrokerageId = existingPos?.protocol?.startsWith('brokerage:')
-          ? existingPos.protocol.replace('brokerage:', '')
-          : buyBrokerageProtocol?.replace('brokerage:', '');
+        const effectiveBrokerageId = existingPos?.accountId && brokerageAccounts.some(a => a.id === existingPos.accountId)
+          ? existingPos.accountId
+          : buyBrokerageAccountId;
 
         const warned = handleCashSideEffect(-result.transaction.totalValue, effectiveBrokerageId ?? null);
         if (warned) return;
@@ -462,6 +463,7 @@ export default function ConfirmPositionActionModal({
           // Create new cash position
           const cashSymbol = `CASH_${cashCurrency}_${Date.now()}`;
           addPosition({
+            assetClass: 'cash',
             type: 'cash',
             symbol: cashSymbol,
             name: accountName.trim() ? `${accountName.trim()} (${cashCurrency})` : `Cash (${cashCurrency})`,
@@ -514,9 +516,13 @@ export default function ConfirmPositionActionModal({
           setError('No matching position found to update');
           return;
         }
-        if (matchedPosition.walletAddress) {
-          setError('Cannot edit wallet-synced positions');
-          return;
+        if (matchedPosition.accountId) {
+          // Check if this is a wallet-synced position (can't edit those)
+          const account = store.accounts.find(a => a.id === matchedPosition.accountId);
+          if (account && (account.connection.dataSource === 'debank' || account.connection.dataSource === 'helius')) {
+            setError('Cannot edit wallet-synced positions');
+            return;
+          }
         }
         const updates: Partial<typeof matchedPosition> = {};
         if (amount && numAmount > 0) updates.amount = numAmount;
@@ -644,16 +650,19 @@ export default function ConfirmPositionActionModal({
               onChange={(e) => setMatchedPositionId(e.target.value)}
               className="w-full"
             >
-              {symbolMatches.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.symbol.toUpperCase()} — {formatNumber(p.amount)} units
-                  {p.walletAddress
-                    ? ` (wallet: ${p.walletAddress.slice(0, 6)}...)`
-                    : p.protocol
-                    ? ` (${p.protocol})`
-                    : ' (manual)'}
-                </option>
-              ))}
+              {symbolMatches.map((p) => {
+                const acct = p.accountId ? store.accounts.find(a => a.id === p.accountId) : null;
+                const label = acct
+                  ? (acct.connection.dataSource === 'debank' || acct.connection.dataSource === 'helius')
+                    ? ` (wallet: ${(acct.connection as WalletConnection).address.slice(0, 6)}...)`
+                    : ` (${acct.name})`
+                  : p.protocol ? ` (${p.protocol})` : ' (manual)';
+                return (
+                  <option key={p.id} value={p.id}>
+                    {p.symbol.toUpperCase()} — {formatNumber(p.amount)} units{label}
+                  </option>
+                );
+              })}
             </select>
           </div>
         )}

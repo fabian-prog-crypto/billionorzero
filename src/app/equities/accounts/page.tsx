@@ -7,32 +7,33 @@ import { calculateAllPositionsWithPrices } from '@/services';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 
 export default function BrokerageAccountsPage() {
+  const store = usePortfolioStore();
   const {
-    brokerageAccounts,
     positions,
     prices,
     customPrices,
-    addBrokerageAccount,
-    removeBrokerageAccount,
+    addAccount,
+    removeAccount,
     hideBalances,
     toggleHideBalances,
-  } = usePortfolioStore();
+  } = store;
+  const brokerageAccounts = store.brokerageAccounts();
   const [showAddModal, setShowAddModal] = useState(false);
 
   // Calculate brokerage positions with prices
+  const brokerageAccountIds = useMemo(() => new Set(brokerageAccounts.map(a => a.id)), [brokerageAccounts]);
   const brokeragePositions = useMemo(() => {
-    const filtered = positions.filter((p) => p.protocol?.startsWith('brokerage:'));
+    const filtered = positions.filter((p) => p.accountId && brokerageAccountIds.has(p.accountId));
     return calculateAllPositionsWithPrices(filtered, prices, customPrices);
-  }, [positions, prices, customPrices]);
+  }, [positions, prices, customPrices, brokerageAccountIds]);
 
   // Group positions by account
   const positionsByAccount = useMemo(() => {
     const grouped: Record<string, typeof brokeragePositions> = {};
     brokeragePositions.forEach((p) => {
-      const accountId = p.protocol?.replace('brokerage:', '');
-      if (accountId) {
-        if (!grouped[accountId]) grouped[accountId] = [];
-        grouped[accountId].push(p);
+      if (p.accountId) {
+        if (!grouped[p.accountId]) grouped[p.accountId] = [];
+        grouped[p.accountId].push(p);
       }
     });
     return grouped;
@@ -45,7 +46,7 @@ export default function BrokerageAccountsPage() {
 
   const handleRemoveAccount = (id: string) => {
     if (confirm('Are you sure you want to remove this account? All positions from this account will be removed.')) {
-      removeBrokerageAccount(id);
+      removeAccount(id);
     }
   };
 
@@ -187,7 +188,9 @@ export default function BrokerageAccountsPage() {
 }
 
 function AddBrokerageAccountModal({ onClose }: { onClose: () => void }) {
-  const { addBrokerageAccount, brokerageAccounts } = usePortfolioStore();
+  const brokerageStore = usePortfolioStore();
+  const { addAccount } = brokerageStore;
+  const brokerageAccounts = brokerageStore.brokerageAccounts();
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -205,9 +208,10 @@ function AddBrokerageAccountModal({ onClose }: { onClose: () => void }) {
       return;
     }
 
-    addBrokerageAccount({
+    addAccount({
       name: name.trim(),
       isActive: true,
+      connection: { dataSource: 'manual' },
     });
 
     onClose();
