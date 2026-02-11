@@ -5,7 +5,7 @@
  * but real domain logic (calculateAllPositionsWithPrices, etc.)
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import type { Position, Wallet } from '@/types'
+import type { Position, Account } from '@/types'
 import {
   makeCryptoPosition,
   makeStockPosition,
@@ -89,7 +89,7 @@ beforeEach(() => {
 describe('PortfolioService integration', () => {
   describe('refreshPortfolio end-to-end', () => {
     it('merges wallet positions, prices, and FX rates into a single result', async () => {
-      const walletPos: Position = makeCryptoPosition({ symbol: 'ETH', amount: 5, walletAddress: '0xabc' })
+      const walletPos: Position = makeCryptoPosition({ symbol: 'ETH', amount: 5, accountId: 'w1' })
       mockWalletProvider.fetchAllWalletPositions.mockResolvedValue({
         positions: [walletPos],
         prices: { 'eth': { price: 3100, symbol: 'ETH' } },
@@ -106,7 +106,7 @@ describe('PortfolioService integration', () => {
       const service = new PortfolioService()
       const result = await service.refreshPortfolio(
         [manualPos],
-        [{ id: 'w1', address: '0xabc', name: 'test', chains: ['eth'] }]
+        [{ id: 'w1', name: 'test', isActive: true, connection: { dataSource: 'debank', address: '0xabc', chains: ['eth'] }, addedAt: '2024-01-01T00:00:00Z' }]
       )
 
       expect(result.walletPositions).toHaveLength(1)
@@ -147,7 +147,7 @@ describe('PortfolioService integration', () => {
   describe('price merge priority', () => {
     it('DeBank prices override CoinGecko prices for same token', async () => {
       mockWalletProvider.fetchAllWalletPositions.mockResolvedValue({
-        positions: [makeCryptoPosition({ symbol: 'ETH', amount: 1, walletAddress: '0xabc' })],
+        positions: [makeCryptoPosition({ symbol: 'ETH', amount: 1, accountId: 'w1' })],
         prices: { 'eth': { price: 3200, symbol: 'ETH' } },
       })
       // CoinGecko has a different price
@@ -157,7 +157,7 @@ describe('PortfolioService integration', () => {
       mockPriceProvider.getPricesForPositions.mockResolvedValue({ prices: {}, isDemo: false })
 
       const service = new PortfolioService()
-      const result = await service.refreshPortfolio([], [{ id: 'w1', address: '0xabc', name: 'test', chains: ['eth'] }])
+      const result = await service.refreshPortfolio([], [{ id: 'w1', name: 'test', isActive: true, connection: { dataSource: 'debank', address: '0xabc', chains: ['eth'] }, addedAt: '2024-01-01T00:00:00Z' }])
 
       // DeBank price (3200) wins because debankPrices are merged last
       expect(result.prices['eth'].price).toBe(3200)
@@ -168,7 +168,7 @@ describe('PortfolioService integration', () => {
 
     it('CoinGecko prices serve as fallback for tokens DeBank does not price', async () => {
       mockWalletProvider.fetchAllWalletPositions.mockResolvedValue({
-        positions: [makeCryptoPosition({ symbol: 'SYRUP', amount: 100, walletAddress: '0xabc' })],
+        positions: [makeCryptoPosition({ symbol: 'SYRUP', amount: 100, accountId: 'w1' })],
         prices: {}, // DeBank has NO price for SYRUP
       })
       mockPriceProvider.getCoinId.mockImplementation((s: string) => s === 'syrup' ? 'maple-finance' : s.toLowerCase())
@@ -178,7 +178,7 @@ describe('PortfolioService integration', () => {
       mockPriceProvider.getPricesForPositions.mockResolvedValue({ prices: {}, isDemo: false })
 
       const service = new PortfolioService()
-      const result = await service.refreshPortfolio([], [{ id: 'w1', address: '0xabc', name: 'test', chains: ['eth'] }])
+      const result = await service.refreshPortfolio([], [{ id: 'w1', name: 'test', isActive: true, connection: { dataSource: 'debank', address: '0xabc', chains: ['eth'] }, addedAt: '2024-01-01T00:00:00Z' }])
 
       // CoinGecko price available as fallback via 'maple-finance' key
       expect(result.prices['maple-finance']).toBeDefined()
@@ -271,7 +271,7 @@ describe('PortfolioService integration', () => {
   describe('error resilience', () => {
     it('still returns results when getCryptoPrices fails', async () => {
       mockWalletProvider.fetchAllWalletPositions.mockResolvedValue({
-        positions: [makeCryptoPosition({ symbol: 'ETH', amount: 1, walletAddress: '0xabc' })],
+        positions: [makeCryptoPosition({ symbol: 'ETH', amount: 1, accountId: 'w1' })],
         prices: { 'eth': { price: 3000, symbol: 'ETH' } },
       })
       // CoinGecko fails
@@ -281,7 +281,7 @@ describe('PortfolioService integration', () => {
       // refreshPortfolio will throw because getCryptoPrices is awaited directly
       await expect(service.refreshPortfolio(
         [],
-        [{ id: 'w1', address: '0xabc', name: 'test', chains: ['eth'] }]
+        [{ id: 'w1', name: 'test', isActive: true, connection: { dataSource: 'debank' as const, address: '0xabc', chains: ['eth'] }, addedAt: '2024-01-01T00:00:00Z' }]
       )).rejects.toThrow('CoinGecko rate limited')
     })
 
@@ -291,7 +291,7 @@ describe('PortfolioService integration', () => {
       const service = new PortfolioService()
       await expect(service.refreshPortfolio(
         [],
-        [{ id: 'w1', address: '0xabc', name: 'test', chains: ['eth'] }]
+        [{ id: 'w1', name: 'test', isActive: true, connection: { dataSource: 'debank' as const, address: '0xabc', chains: ['eth'] }, addedAt: '2024-01-01T00:00:00Z' }]
       )).rejects.toThrow('DeBank down')
     })
   })
@@ -300,14 +300,14 @@ describe('PortfolioService integration', () => {
 
   describe('multiple wallets', () => {
     it('passes all wallets to fetchAllWalletPositions', async () => {
-      const wallets: Wallet[] = [
-        { id: 'w1', address: '0xaaa', name: 'Wallet 1', chains: ['eth'] },
-        { id: 'w2', address: '0xbbb', name: 'Wallet 2', chains: ['eth', 'arb'] },
+      const wallets: Account[] = [
+        { id: 'w1', name: 'Wallet 1', isActive: true, connection: { dataSource: 'debank', address: '0xaaa', chains: ['eth'] }, addedAt: '2024-01-01T00:00:00Z' },
+        { id: 'w2', name: 'Wallet 2', isActive: true, connection: { dataSource: 'debank', address: '0xbbb', chains: ['eth', 'arb'] }, addedAt: '2024-01-01T00:00:00Z' },
       ]
       mockWalletProvider.fetchAllWalletPositions.mockResolvedValue({
         positions: [
-          makeCryptoPosition({ symbol: 'ETH', amount: 5, walletAddress: '0xaaa' }),
-          makeCryptoPosition({ symbol: 'BTC', amount: 1, walletAddress: '0xbbb' }),
+          makeCryptoPosition({ symbol: 'ETH', amount: 5, accountId: 'w1' }),
+          makeCryptoPosition({ symbol: 'BTC', amount: 1, accountId: 'w2' }),
         ],
         prices: {
           'eth': { price: 3000, symbol: 'ETH' },
@@ -349,7 +349,7 @@ describe('PortfolioService integration', () => {
         positions: [],
         prices: {},
       })
-      const wallets: Wallet[] = [{ id: 'w1', address: '0xabc', name: 'test', chains: ['eth'] }]
+      const wallets: Account[] = [{ id: 'w1', name: 'test', isActive: true, connection: { dataSource: 'debank', address: '0xabc', chains: ['eth'] }, addedAt: '2024-01-01T00:00:00Z' }]
 
       const service = new PortfolioService()
       await service.refreshPortfolio([], wallets, true)

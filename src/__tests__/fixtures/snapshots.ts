@@ -8,8 +8,10 @@ export function makeSnapshot(overrides: Partial<NetWorthSnapshot> = {}): NetWort
     date: '2024-01-01',
     totalValue: 100000,
     cryptoValue: 60000,
-    stockValue: 30000,
+    equityValue: 30000,
     cashValue: 8000,
+    otherValue: 2000,
+    stockValue: 30000,
     manualValue: 2000,
     ...overrides,
   }
@@ -28,8 +30,10 @@ export function makeSnapshotSeries(
     date: start.toISOString().split('T')[0],
     totalValue: currentValue,
     cryptoValue: currentValue * 0.6,
-    stockValue: currentValue * 0.3,
+    equityValue: currentValue * 0.3,
     cashValue: currentValue * 0.08,
+    otherValue: currentValue * 0.02,
+    stockValue: currentValue * 0.3,
     manualValue: currentValue * 0.02,
   }))
 
@@ -41,8 +45,10 @@ export function makeSnapshotSeries(
       date: date.toISOString().split('T')[0],
       totalValue: currentValue,
       cryptoValue: currentValue * 0.6,
-      stockValue: currentValue * 0.3,
+      equityValue: currentValue * 0.3,
       cashValue: currentValue * 0.08,
+      otherValue: currentValue * 0.02,
+      stockValue: currentValue * 0.3,
       manualValue: currentValue * 0.02,
     }))
   }

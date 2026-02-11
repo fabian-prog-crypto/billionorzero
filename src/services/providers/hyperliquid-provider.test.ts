@@ -84,7 +84,7 @@ describe('HyperliquidProvider', () => {
       expect(btcPos!.type).toBe('crypto');
       expect(btcPos!.amount).toBe(0.1);
       expect(btcPos!.chain).toBe('hyperliquid');
-      expect(btcPos!.walletAddress).toBe('0xabc');
+      expect(btcPos!.accountId).toBe('wallet-1');
       expect(btcPos!.id).toContain('hyperliquid-perp-BTC-long');
     });
 

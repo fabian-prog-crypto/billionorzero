@@ -6,14 +6,65 @@ import {
   makeStockPosition,
   resetPositionCounter,
 } from '@/__tests__/fixtures'
+import type { Account, PerpExchange } from '@/types'
+
+// Helper to make Account objects for tests
+function makeWalletAccount(overrides: Partial<Account> & { address: string; chains?: string[]; perpExchanges?: PerpExchange[] }): Account {
+  return {
+    id: overrides.id || 'w1',
+    name: overrides.name || 'Wallet',
+    isActive: true,
+    connection: {
+      dataSource: 'debank',
+      address: overrides.address,
+      chains: overrides.chains || ['eth'],
+      perpExchanges: overrides.perpExchanges,
+    },
+    addedAt: overrides.addedAt || '2024-01-01T00:00:00Z',
+    ...('slug' in overrides ? { slug: overrides.slug } : {}),
+  }
+}
+
+function makeCexAccount(overrides: Partial<Account> & { exchange?: string; apiKey?: string; apiSecret?: string }): Account {
+  return {
+    id: overrides.id || 'a1',
+    name: overrides.name || 'CEX',
+    isActive: overrides.isActive ?? true,
+    connection: {
+      dataSource: (overrides.exchange || 'binance') as 'binance',
+      apiKey: overrides.apiKey || 'k',
+      apiSecret: overrides.apiSecret || 's',
+    },
+    addedAt: overrides.addedAt || '2024-01-01T00:00:00Z',
+  }
+}
+
+function makeManualAccount(overrides: Partial<Account> = {}): Account {
+  return {
+    id: overrides.id || 'b1',
+    name: overrides.name || 'Brokerage',
+    isActive: overrides.isActive ?? true,
+    connection: { dataSource: 'manual' },
+    addedAt: overrides.addedAt || '2024-01-01T00:00:00Z',
+    ...('slug' in overrides ? { slug: overrides.slug } : {}),
+  }
+}
+
+function makeCashAccountObj(overrides: Partial<Account> & { slug?: string } = {}): Account {
+  return {
+    id: overrides.id || 'c1',
+    name: overrides.name || 'Revolut',
+    isActive: overrides.isActive ?? true,
+    connection: { dataSource: 'manual' },
+    slug: overrides.slug || 'revolut',
+    addedAt: overrides.addedAt || '2024-01-01T00:00:00Z',
+  }
+}
 
 // Helper to get a clean initial state snapshot for resetting between tests
 const getInitialState = () => ({
   positions: [],
-  wallets: [],
   accounts: [],
-  brokerageAccounts: [],
-  cashAccounts: [],
   prices: {},
   customPrices: {},
   fxRates: {},
@@ -37,7 +88,7 @@ beforeEach(() => {
 describe('Position CRUD', () => {
   it('addPosition generates id and timestamps automatically', () => {
     const { addPosition } = usePortfolioStore.getState()
-    addPosition({ type: 'crypto', symbol: 'BTC', name: 'Bitcoin', amount: 1 })
+    addPosition({ assetClass: 'crypto', type: 'crypto', symbol: 'BTC', name: 'Bitcoin', amount: 1 })
 
     const positions = usePortfolioStore.getState().positions
     expect(positions).toHaveLength(1)
@@ -50,7 +101,7 @@ describe('Position CRUD', () => {
 
   it('addPosition respects explicit id when provided', () => {
     const { addPosition } = usePortfolioStore.getState()
-    addPosition({ id: 'my-custom-id', type: 'stock', symbol: 'AAPL', name: 'Apple', amount: 10 })
+    addPosition({ id: 'my-custom-id', assetClass: 'equity', type: 'stock', symbol: 'AAPL', name: 'Apple', amount: 10, equityType: 'stock' })
 
     const positions = usePortfolioStore.getState().positions
     expect(positions[0].id).toBe('my-custom-id')
@@ -87,9 +138,9 @@ describe('Position CRUD', () => {
 
   it('positions maintain insertion order', () => {
     const { addPosition } = usePortfolioStore.getState()
-    addPosition({ id: 'first', type: 'crypto', symbol: 'BTC', name: 'Bitcoin', amount: 1 })
-    addPosition({ id: 'second', type: 'crypto', symbol: 'ETH', name: 'Ethereum', amount: 2 })
-    addPosition({ id: 'third', type: 'stock', symbol: 'AAPL', name: 'Apple', amount: 3 })
+    addPosition({ id: 'first', assetClass: 'crypto', type: 'crypto', symbol: 'BTC', name: 'Bitcoin', amount: 1 })
+    addPosition({ id: 'second', assetClass: 'crypto', type: 'crypto', symbol: 'ETH', name: 'Ethereum', amount: 2 })
+    addPosition({ id: 'third', assetClass: 'equity', type: 'stock', symbol: 'AAPL', name: 'Apple', amount: 3, equityType: 'stock' })
 
     const ids = usePortfolioStore.getState().positions.map((p) => p.id)
     expect(ids).toEqual(['first', 'second', 'third'])
@@ -100,81 +151,84 @@ describe('Position CRUD', () => {
 // Wallet cascade (5 tests)
 // ---------------------------------------------------------------------------
 describe('Wallet cascade', () => {
-  it('addWallet adds with auto-generated id and addedAt', () => {
-    usePortfolioStore.getState().addWallet({
-      address: '0xabc',
+  it('addAccount adds wallet with auto-generated id and addedAt', () => {
+    usePortfolioStore.getState().addAccount({
       name: 'My Wallet',
-      chains: ['eth', 'bsc'],
+      isActive: true,
+      connection: {
+        dataSource: 'debank',
+        address: '0xabc',
+        chains: ['eth', 'bsc'],
+      },
     })
 
-    const wallets = usePortfolioStore.getState().wallets
+    const wallets = usePortfolioStore.getState().wallets()
     expect(wallets).toHaveLength(1)
     expect(wallets[0].id).toBeTruthy()
     expect(wallets[0].addedAt).toBeTruthy()
-    expect(wallets[0].address).toBe('0xabc')
-    expect(wallets[0].chains).toEqual(['eth', 'bsc'])
+    expect((wallets[0].connection as { address: string }).address).toBe('0xabc')
+    expect((wallets[0].connection as { chains: string[] }).chains).toEqual(['eth', 'bsc'])
   })
 
-  it('removeWallet cascades: deletes positions matching walletAddress', () => {
+  it('removeAccount cascades: deletes positions matching accountId', () => {
     usePortfolioStore.setState({
-      wallets: [{ id: 'w1', address: '0xabc', name: 'Wallet 1', chains: ['eth'], addedAt: '2024-01-01T00:00:00Z' }],
+      accounts: [makeWalletAccount({ id: 'w1', address: '0xabc', name: 'Wallet 1', chains: ['eth'] })],
       positions: [
-        makePosition({ id: 'p1', walletAddress: '0xabc' }),
-        makePosition({ id: 'p2', walletAddress: '0xdef' }),
+        makePosition({ id: 'p1', accountId: 'w1' }),
+        makePosition({ id: 'p2', accountId: 'w2' }),
       ],
     })
 
-    usePortfolioStore.getState().removeWallet('w1')
+    usePortfolioStore.getState().removeAccount('w1')
 
-    expect(usePortfolioStore.getState().wallets).toHaveLength(0)
+    expect(usePortfolioStore.getState().wallets()).toHaveLength(0)
     const ids = usePortfolioStore.getState().positions.map((p) => p.id)
     expect(ids).toEqual(['p2'])
   })
 
-  it('removeWallet preserves positions from other wallets', () => {
+  it('removeAccount preserves positions from other wallets', () => {
     usePortfolioStore.setState({
-      wallets: [
-        { id: 'w1', address: '0xaaa', name: 'W1', chains: ['eth'], addedAt: '2024-01-01T00:00:00Z' },
-        { id: 'w2', address: '0xbbb', name: 'W2', chains: ['eth'], addedAt: '2024-01-01T00:00:00Z' },
+      accounts: [
+        makeWalletAccount({ id: 'w1', address: '0xaaa', name: 'W1', chains: ['eth'] }),
+        makeWalletAccount({ id: 'w2', address: '0xbbb', name: 'W2', chains: ['eth'] }),
       ],
       positions: [
-        makePosition({ id: 'p1', walletAddress: '0xaaa' }),
-        makePosition({ id: 'p2', walletAddress: '0xbbb' }),
+        makePosition({ id: 'p1', accountId: 'w1' }),
+        makePosition({ id: 'p2', accountId: 'w2' }),
         makePosition({ id: 'p3' }), // manual, no wallet
       ],
     })
 
-    usePortfolioStore.getState().removeWallet('w1')
+    usePortfolioStore.getState().removeAccount('w1')
 
     const ids = usePortfolioStore.getState().positions.map((p) => p.id)
     expect(ids).toEqual(['p2', 'p3'])
-    expect(usePortfolioStore.getState().wallets).toHaveLength(1)
+    expect(usePortfolioStore.getState().wallets()).toHaveLength(1)
   })
 
-  it('updateWallet updates fields', () => {
+  it('updateAccount updates fields', () => {
     usePortfolioStore.setState({
-      wallets: [{ id: 'w1', address: '0xabc', name: 'Old', chains: ['eth'], addedAt: '2024-01-01T00:00:00Z' }],
+      accounts: [makeWalletAccount({ id: 'w1', address: '0xabc', name: 'Old', chains: ['eth'] })],
     })
 
-    usePortfolioStore.getState().updateWallet('w1', { name: 'New Name', chains: ['eth', 'arb'] })
+    usePortfolioStore.getState().updateAccount('w1', { name: 'New Name' })
 
-    const w = usePortfolioStore.getState().wallets[0]
+    const w = usePortfolioStore.getState().wallets()[0]
     expect(w.name).toBe('New Name')
-    expect(w.chains).toEqual(['eth', 'arb'])
   })
 
-  it('removeWallet with 3 linked positions removes all 3', () => {
+  it('removeAccount with 3 linked positions removes all 3', () => {
     usePortfolioStore.setState({
-      wallets: [{ id: 'w1', address: '0xabc', name: 'W1', chains: ['eth'], addedAt: '2024-01-01T00:00:00Z' }],
+      accounts: [makeWalletAccount({ id: 'w1', address: '0xabc', name: 'W1', chains: ['eth'] })],
       positions: [
-        makePosition({ id: 'wp1', walletAddress: '0xabc', symbol: 'ETH' }),
-        makePosition({ id: 'wp2', walletAddress: '0xabc', symbol: 'USDC' }),
-        makePosition({ id: 'wp3', walletAddress: '0xabc', symbol: 'LINK' }),
-        makePosition({ id: 'manual1' }), // no walletAddress
+        makePosition({ id: 'wp1', accountId: 'w1', symbol: 'ETH' }),
+        makePosition({ id: 'wp2', accountId: 'w1', symbol: 'USDC' }),
+        makePosition({ id: 'wp3', accountId: 'w1', symbol: 'LINK' }),
+        makePosition({ id: 'manual1' }), // no accountId
       ],
     })
 
-    usePortfolioStore.getState().removeWallet('w1')
+    usePortfolioStore.getState().removeAccount('w1')
 
     const positions = usePortfolioStore.getState().positions
     expect(positions).toHaveLength(1)
@@ -186,57 +240,51 @@ describe('Wallet cascade', () => {
 // CEX Account cascade (4 tests)
 // ---------------------------------------------------------------------------
 describe('CEX Account cascade', () => {
-  it('addAccount adds with auto-generated id', () => {
+  it('addAccount adds CEX account with auto-generated id', () => {
     usePortfolioStore.getState().addAccount({
-      exchange: 'binance',
       name: 'My Binance',
-      apiKey: 'key123',
-      apiSecret: 'secret123',
       isActive: true,
+      connection: {
+        dataSource: 'binance',
+        apiKey: 'key123',
+        apiSecret: 'secret123',
+      },
     })
 
-    const accounts = usePortfolioStore.getState().accounts
-    expect(accounts).toHaveLength(1)
-    expect(accounts[0].id).toBeTruthy()
-    expect(accounts[0].exchange).toBe('binance')
-    expect(accounts[0].addedAt).toBeTruthy()
+    const cexAccounts = usePortfolioStore.getState().cexAccounts()
+    expect(cexAccounts).toHaveLength(1)
+    expect(cexAccounts[0].id).toBeTruthy()
+    expect((cexAccounts[0].connection as { dataSource: string }).dataSource).toBe('binance')
+    expect(cexAccounts[0].addedAt).toBeTruthy()
   })
 
-  it('removeAccount cascades: deletes positions with matching cex protocol', () => {
+  it('removeAccount cascades: deletes positions with matching accountId', () => {
     const accId = 'cex-acc-1'
     usePortfolioStore.setState({
-      accounts: [{
-        id: accId,
-        exchange: 'binance' as const,
-        name: 'Binance',
-        apiKey: 'k',
-        apiSecret: 's',
-        isActive: true,
-        addedAt: '2024-01-01T00:00:00Z',
-      }],
+      accounts: [makeCexAccount({ id: accId, name: 'Binance', exchange: 'binance' })],
       positions: [
-        makePosition({ id: 'cp1', protocol: `cex:binance:${accId}` }),
-        makePosition({ id: 'cp2', protocol: `cex:binance:${accId}` }),
+        makePosition({ id: 'cp1', accountId: accId }),
+        makePosition({ id: 'cp2', accountId: accId }),
         makePosition({ id: 'manual1' }),
       ],
     })
 
     usePortfolioStore.getState().removeAccount(accId)
 
-    expect(usePortfolioStore.getState().accounts).toHaveLength(0)
+    expect(usePortfolioStore.getState().cexAccounts()).toHaveLength(0)
     const ids = usePortfolioStore.getState().positions.map((p) => p.id)
     expect(ids).toEqual(['manual1'])
   })
 
-  it('selective cascade: only removes matching protocol, preserves others', () => {
+  it('selective cascade: only removes matching accountId, preserves others', () => {
     usePortfolioStore.setState({
       accounts: [
-        { id: 'a1', exchange: 'binance' as const, name: 'B1', apiKey: 'k', apiSecret: 's', isActive: true, addedAt: '2024-01-01T00:00:00Z' },
-        { id: 'a2', exchange: 'coinbase' as const, name: 'C1', apiKey: 'k', apiSecret: 's', isActive: true, addedAt: '2024-01-01T00:00:00Z' },
+        makeCexAccount({ id: 'a1', name: 'B1', exchange: 'binance' }),
+        makeCexAccount({ id: 'a2', name: 'C1', exchange: 'coinbase' }),
       ],
       positions: [
-        makePosition({ id: 'p1', protocol: 'cex:binance:a1' }),
-        makePosition({ id: 'p2', protocol: 'cex:coinbase:a2' }),
+        makePosition({ id: 'p1', accountId: 'a1' }),
+        makePosition({ id: 'p2', accountId: 'a2' }),
         makePosition({ id: 'p3' }), // manual
       ],
     })
@@ -245,26 +293,18 @@ describe('CEX Account cascade', () => {
 
     const ids = usePortfolioStore.getState().positions.map((p) => p.id)
     expect(ids).toEqual(['p2', 'p3'])
-    expect(usePortfolioStore.getState().accounts).toHaveLength(1)
-    expect(usePortfolioStore.getState().accounts[0].id).toBe('a2')
+    expect(usePortfolioStore.getState().cexAccounts()).toHaveLength(1)
+    expect(usePortfolioStore.getState().cexAccounts()[0].id).toBe('a2')
   })
 
   it('updateAccount updates fields', () => {
     usePortfolioStore.setState({
-      accounts: [{
-        id: 'a1',
-        exchange: 'binance' as const,
-        name: 'Old Name',
-        apiKey: 'k',
-        apiSecret: 's',
-        isActive: true,
-        addedAt: '2024-01-01T00:00:00Z',
-      }],
+      accounts: [makeCexAccount({ id: 'a1', name: 'Old Name', exchange: 'binance' })],
     })
 
     usePortfolioStore.getState().updateAccount('a1', { name: 'New Name', isActive: false })
 
-    const acc = usePortfolioStore.getState().accounts[0]
+    const acc = usePortfolioStore.getState().cexAccounts()[0]
     expect(acc.name).toBe('New Name')
     expect(acc.isActive).toBe(false)
   })
@@ -274,52 +314,52 @@ describe('CEX Account cascade', () => {
 // Brokerage Account cascade (3 tests)
 // ---------------------------------------------------------------------------
 describe('Brokerage Account cascade', () => {
-  it('addBrokerageAccount adds with auto-generated id', () => {
-    usePortfolioStore.getState().addBrokerageAccount({ name: 'Revolut', isActive: true })
+  it('addAccount with manual connection adds with auto-generated id', () => {
+    usePortfolioStore.getState().addAccount({ name: 'Revolut', isActive: true, connection: { dataSource: 'manual' } })
 
-    const accounts = usePortfolioStore.getState().brokerageAccounts
+    const accounts = usePortfolioStore.getState().manualAccounts()
     expect(accounts).toHaveLength(1)
     expect(accounts[0].id).toBeTruthy()
     expect(accounts[0].name).toBe('Revolut')
     expect(accounts[0].addedAt).toBeTruthy()
   })
 
-  it('removeBrokerageAccount cascades: deletes positions with matching brokerage protocol', () => {
+  it('removeAccount cascades: deletes positions with matching accountId', () => {
     const brokerageId = 'brok-1'
     usePortfolioStore.setState({
-      brokerageAccounts: [{ id: brokerageId, name: 'IBKR', isActive: true, addedAt: '2024-01-01T00:00:00Z' }],
+      accounts: [makeManualAccount({ id: brokerageId, name: 'IBKR' })],
       positions: [
-        makeStockPosition({ id: 'bp1', protocol: `brokerage:${brokerageId}` }),
-        makeStockPosition({ id: 'bp2', protocol: `brokerage:${brokerageId}` }),
+        makeStockPosition({ id: 'bp1', accountId: brokerageId }),
+        makeStockPosition({ id: 'bp2', accountId: brokerageId }),
         makePosition({ id: 'manual1' }),
       ],
     })
 
-    usePortfolioStore.getState().removeBrokerageAccount(brokerageId)
+    usePortfolioStore.getState().removeAccount(brokerageId)
 
-    expect(usePortfolioStore.getState().brokerageAccounts).toHaveLength(0)
+    expect(usePortfolioStore.getState().manualAccounts()).toHaveLength(0)
     const ids = usePortfolioStore.getState().positions.map((p) => p.id)
     expect(ids).toEqual(['manual1'])
   })
 
   it('selective: only removes matching brokerage positions', () => {
     usePortfolioStore.setState({
-      brokerageAccounts: [
-        { id: 'b1', name: 'Revolut', isActive: true, addedAt: '2024-01-01T00:00:00Z' },
-        { id: 'b2', name: 'IBKR', isActive: true, addedAt: '2024-01-01T00:00:00Z' },
+      accounts: [
+        makeManualAccount({ id: 'b1', name: 'Revolut' }),
+        makeManualAccount({ id: 'b2', name: 'IBKR' }),
       ],
       positions: [
-        makeStockPosition({ id: 'p1', protocol: 'brokerage:b1' }),
-        makeStockPosition({ id: 'p2', protocol: 'brokerage:b2' }),
+        makeStockPosition({ id: 'p1', accountId: 'b1' }),
+        makeStockPosition({ id: 'p2', accountId: 'b2' }),
         makeCryptoPosition({ id: 'p3' }),
       ],
     })
 
-    usePortfolioStore.getState().removeBrokerageAccount('b1')
+    usePortfolioStore.getState().removeAccount('b1')
 
     const ids = usePortfolioStore.getState().positions.map((p) => p.id)
     expect(ids).toEqual(['p2', 'p3'])
-    expect(usePortfolioStore.getState().brokerageAccounts).toHaveLength(1)
+    expect(usePortfolioStore.getState().manualAccounts()).toHaveLength(1)
   })
 })
 
@@ -327,10 +367,10 @@ describe('Brokerage Account cascade', () => {
 // Cash Account (6 tests)
 // ---------------------------------------------------------------------------
 describe('Cash Account', () => {
-  it('addCashAccount generates auto-slug from name', () => {
-    const id = usePortfolioStore.getState().addCashAccount({ name: 'My Bank', isActive: true })
+  it('addAccount with slug generates auto-slug from name', () => {
+    const id = usePortfolioStore.getState().addAccount({ name: 'My Bank', isActive: true, connection: { dataSource: 'manual' }, slug: 'my-bank' })
 
-    const accounts = usePortfolioStore.getState().cashAccounts
+    const accounts = usePortfolioStore.getState().accounts.filter(a => a.slug)
     expect(accounts).toHaveLength(1)
     expect(accounts[0].slug).toBe('my-bank')
     expect(accounts[0].name).toBe('My Bank')
@@ -338,98 +378,100 @@ describe('Cash Account', () => {
     expect(accounts[0].addedAt).toBeTruthy()
   })
 
-  it('addCashAccount with duplicate slug returns existing id (merge)', () => {
-    const id1 = usePortfolioStore.getState().addCashAccount({ name: 'Revolut', isActive: true })
-    const id2 = usePortfolioStore.getState().addCashAccount({ name: 'revolut', isActive: true })
+  it('addAccount with duplicate slug returns existing id (merge)', () => {
+    const id1 = usePortfolioStore.getState().addAccount({ name: 'Revolut', isActive: true, connection: { dataSource: 'manual' }, slug: 'revolut' })
+    const id2 = usePortfolioStore.getState().addAccount({ name: 'revolut', isActive: true, connection: { dataSource: 'manual' }, slug: 'revolut' })
 
     expect(id1).toBe(id2)
-    expect(usePortfolioStore.getState().cashAccounts).toHaveLength(1)
+    expect(usePortfolioStore.getState().accounts.filter(a => a.slug)).toHaveLength(1)
   })
 
-  it('removeCashAccount cascades: deletes positions with matching cash-account protocol', () => {
+  it('removeAccount cascades: deletes positions with matching accountId', () => {
     const cashId = 'cash-1'
     usePortfolioStore.setState({
-      cashAccounts: [{ id: cashId, slug: 'revolut', name: 'Revolut', isActive: true, addedAt: '2024-01-01T00:00:00Z' }],
+      accounts: [makeCashAccountObj({ id: cashId, slug: 'revolut', name: 'Revolut' })],
       positions: [
-        makeCashPosition({ id: 'cp1', protocol: `cash-account:${cashId}` }),
-        makeCashPosition({ id: 'cp2', protocol: `cash-account:${cashId}` }),
+        makeCashPosition({ id: 'cp1', accountId: cashId }),
+        makeCashPosition({ id: 'cp2', accountId: cashId }),
         makePosition({ id: 'other1' }),
       ],
     })
 
-    usePortfolioStore.getState().removeCashAccount(cashId)
+    usePortfolioStore.getState().removeAccount(cashId)
 
-    expect(usePortfolioStore.getState().cashAccounts).toHaveLength(0)
+    expect(usePortfolioStore.getState().accounts.filter(a => a.slug)).toHaveLength(0)
     const ids = usePortfolioStore.getState().positions.map((p) => p.id)
     expect(ids).toEqual(['other1'])
   })
 
-  it('cash account slug is immutable via updateCashAccount', () => {
+  it('cash account slug is immutable via updateAccount', () => {
     usePortfolioStore.setState({
-      cashAccounts: [{ id: 'c1', slug: 'revolut', name: 'Revolut', isActive: true, addedAt: '2024-01-01T00:00:00Z' }],
+      accounts: [makeCashAccountObj({ id: 'c1', slug: 'revolut', name: 'Revolut' })],
     })
 
     // Attempt to change slug through update
-    usePortfolioStore.getState().updateCashAccount('c1', { slug: 'hacked-slug', name: 'Updated' } as never)
+    usePortfolioStore.getState().updateAccount('c1', { slug: 'hacked-slug', name: 'Updated' } as never)
 
-    const acc = usePortfolioStore.getState().cashAccounts[0]
+    const acc = usePortfolioStore.getState().accounts.find(a => a.slug)!
     expect(acc.slug).toBe('revolut') // slug unchanged
     expect(acc.name).toBe('Updated') // name changed
   })
 
   it('cash account name is updatable', () => {
     usePortfolioStore.setState({
-      cashAccounts: [{ id: 'c1', slug: 'revolut', name: 'Revolut', isActive: true, addedAt: '2024-01-01T00:00:00Z' }],
+      accounts: [makeCashAccountObj({ id: 'c1', slug: 'revolut', name: 'Revolut' })],
     })
 
-    usePortfolioStore.getState().updateCashAccount('c1', { name: 'Revolut EUR' })
+    usePortfolioStore.getState().updateAccount('c1', { name: 'Revolut EUR' })
 
-    expect(usePortfolioStore.getState().cashAccounts[0].name).toBe('Revolut EUR')
+    expect(usePortfolioStore.getState().accounts.find(a => a.slug)!.name).toBe('Revolut EUR')
   })
 
-  it('updateCashAccount applies partial updates', () => {
+  it('updateAccount applies partial updates', () => {
     usePortfolioStore.setState({
-      cashAccounts: [{ id: 'c1', slug: 'revolut', name: 'Revolut', isActive: true, addedAt: '2024-01-01T00:00:00Z' }],
+      accounts: [makeCashAccountObj({ id: 'c1', slug: 'revolut', name: 'Revolut' })],
     })
 
-    usePortfolioStore.getState().updateCashAccount('c1', { isActive: false })
+    usePortfolioStore.getState().updateAccount('c1', { isActive: false })
 
-    const acc = usePortfolioStore.getState().cashAccounts[0]
+    const acc = usePortfolioStore.getState().accounts.find(a => a.slug)!
     expect(acc.isActive).toBe(false)
     expect(acc.name).toBe('Revolut')
   })
 })
 
 // ---------------------------------------------------------------------------
-// setWalletPositions (4 tests)
+// setSyncedPositions for wallet accounts (4 tests)
 // ---------------------------------------------------------------------------
-describe('setWalletPositions', () => {
+describe('setSyncedPositions (wallet)', () => {
   it('replaces all wallet positions', () => {
     usePortfolioStore.setState({
+      accounts: [makeWalletAccount({ id: 'w1', address: '0xabc', name: 'W1', chains: ['eth'] })],
       positions: [
-        makePosition({ id: 'old-w', walletAddress: '0xabc', symbol: 'ETH' }),
+        makePosition({ id: 'old-w', accountId: 'w1', symbol: 'ETH' }),
       ],
     })
 
-    const newWalletPos = makePosition({ id: 'new-w', walletAddress: '0xabc', symbol: 'BTC' })
-    usePortfolioStore.getState().setWalletPositions([newWalletPos])
+    const newWalletPos = makePosition({ id: 'new-w', accountId: 'w1', symbol: 'BTC' })
+    usePortfolioStore.getState().setSyncedPositions(['w1'], [newWalletPos])
 
     const positions = usePortfolioStore.getState().positions
     expect(positions).toHaveLength(1)
     expect(positions[0].id).toBe('new-w')
   })
 
-  it('preserves manually-added positions (no walletAddress)', () => {
+  it('preserves manually-added positions (no accountId)', () => {
     const manual = makePosition({ id: 'manual', symbol: 'GOLD' })
     usePortfolioStore.setState({
+      accounts: [makeWalletAccount({ id: 'w1', address: '0xabc', name: 'W1', chains: ['eth'] })],
       positions: [
         manual,
-        makePosition({ id: 'wallet-pos', walletAddress: '0xabc' }),
+        makePosition({ id: 'wallet-pos', accountId: 'w1' }),
       ],
     })
 
-    const newWalletPos = makePosition({ id: 'new-w', walletAddress: '0xdef' })
-    usePortfolioStore.getState().setWalletPositions([newWalletPos])
+    const newWalletPos = makePosition({ id: 'new-w', accountId: 'w1' })
+    usePortfolioStore.getState().setSyncedPositions(['w1'], [newWalletPos])
 
     const ids = usePortfolioStore.getState().positions.map((p) => p.id)
     expect(ids).toContain('manual')
@@ -437,15 +479,19 @@ describe('setWalletPositions', () => {
     expect(ids).not.toContain('wallet-pos')
   })
 
-  it('preserves CEX positions (protocol starts with cex:)', () => {
+  it('preserves CEX positions (accountId linked to cex account)', () => {
     usePortfolioStore.setState({
+      accounts: [
+        makeWalletAccount({ id: 'w1', address: '0xabc', name: 'W1', chains: ['eth'] }),
+        makeCexAccount({ id: 'a1', name: 'Binance', exchange: 'binance' }),
+      ],
       positions: [
-        makePosition({ id: 'cex-pos', walletAddress: '0xabc', protocol: 'cex:binance:a1' }),
-        makePosition({ id: 'wallet-pos', walletAddress: '0xdef' }),
+        makePosition({ id: 'cex-pos', accountId: 'a1' }),
+        makePosition({ id: 'wallet-pos', accountId: 'w1' }),
       ],
     })
 
-    usePortfolioStore.getState().setWalletPositions([])
+    usePortfolioStore.getState().setSyncedPositions(['w1'], [])
 
     const ids = usePortfolioStore.getState().positions.map((p) => p.id)
     expect(ids).toContain('cex-pos')
@@ -454,17 +500,21 @@ describe('setWalletPositions', () => {
 
   it('adds new wallet positions alongside preserved ones', () => {
     usePortfolioStore.setState({
+      accounts: [
+        makeWalletAccount({ id: 'w1', address: '0xaaa', name: 'W1', chains: ['eth'] }),
+        makeCexAccount({ id: 'a1', name: 'Binance', exchange: 'binance' }),
+      ],
       positions: [
         makePosition({ id: 'manual', symbol: 'GOLD' }),
-        makePosition({ id: 'cex-pos', walletAddress: '0x1', protocol: 'cex:binance:a1' }),
+        makePosition({ id: 'cex-pos', accountId: 'a1' }),
       ],
     })
 
     const newPositions = [
-      makePosition({ id: 'w1', walletAddress: '0xaaa' }),
-      makePosition({ id: 'w2', walletAddress: '0xbbb' }),
+      makePosition({ id: 'w1', accountId: 'w1' }),
+      makePosition({ id: 'w2', accountId: 'w1' }),
     ]
-    usePortfolioStore.getState().setWalletPositions(newPositions)
+    usePortfolioStore.getState().setSyncedPositions(['w1'], newPositions)
 
     const ids = usePortfolioStore.getState().positions.map((p) => p.id)
     expect(ids).toEqual(['manual', 'cex-pos', 'w1', 'w2'])
@@ -472,18 +522,21 @@ describe('setWalletPositions', () => {
 })
 
 // ---------------------------------------------------------------------------
-// setAccountPositions (3 tests)
+// setSyncedPositions for CEX accounts (3 tests)
 // ---------------------------------------------------------------------------
-describe('setAccountPositions', () => {
+describe('setSyncedPositions (CEX)', () => {
   it('replaces CEX positions only', () => {
     usePortfolioStore.setState({
+      accounts: [
+        makeCexAccount({ id: 'a1', name: 'B1', exchange: 'binance' }),
+      ],
       positions: [
-        makePosition({ id: 'old-cex', protocol: 'cex:binance:a1' }),
+        makePosition({ id: 'old-cex', accountId: 'a1' }),
       ],
     })
 
-    const newCexPos = makePosition({ id: 'new-cex', protocol: 'cex:coinbase:a2' })
-    usePortfolioStore.getState().setAccountPositions([newCexPos])
+    const newCexPos = makePosition({ id: 'new-cex', accountId: 'a1' })
+    usePortfolioStore.getState().setSyncedPositions(['a1'], [newCexPos])
 
     const positions = usePortfolioStore.getState().positions
     expect(positions).toHaveLength(1)
@@ -492,13 +545,17 @@ describe('setAccountPositions', () => {
 
   it('preserves wallet positions', () => {
     usePortfolioStore.setState({
+      accounts: [
+        makeWalletAccount({ id: 'w1', address: '0xabc', name: 'W1', chains: ['eth'] }),
+        makeCexAccount({ id: 'a1', name: 'B1', exchange: 'binance' }),
+      ],
       positions: [
-        makePosition({ id: 'wallet-pos', walletAddress: '0xabc' }),
-        makePosition({ id: 'cex-pos', protocol: 'cex:binance:a1' }),
+        makePosition({ id: 'wallet-pos', accountId: 'w1' }),
+        makePosition({ id: 'cex-pos', accountId: 'a1' }),
       ],
     })
 
-    usePortfolioStore.getState().setAccountPositions([])
+    usePortfolioStore.getState().setSyncedPositions(['a1'], [])
 
     const ids = usePortfolioStore.getState().positions.map((p) => p.id)
     expect(ids).toEqual(['wallet-pos'])
@@ -506,14 +563,17 @@ describe('setAccountPositions', () => {
 
   it('preserves manual positions', () => {
     usePortfolioStore.setState({
+      accounts: [
+        makeCexAccount({ id: 'a1', name: 'B1', exchange: 'binance' }),
+      ],
       positions: [
         makePosition({ id: 'manual', symbol: 'GOLD' }),
-        makePosition({ id: 'cex-pos', protocol: 'cex:binance:a1' }),
+        makePosition({ id: 'cex-pos', accountId: 'a1' }),
       ],
     })
 
-    const newCex = makePosition({ id: 'new-cex', protocol: 'cex:kraken:a3' })
-    usePortfolioStore.getState().setAccountPositions([newCex])
+    const newCex = makePosition({ id: 'new-cex', accountId: 'a1' })
+    usePortfolioStore.getState().setSyncedPositions(['a1'], [newCex])
 
     const ids = usePortfolioStore.getState().positions.map((p) => p.id)
     expect(ids).toEqual(['manual', 'new-cex'])
@@ -582,17 +642,19 @@ describe('FX rates', () => {
 // clearAll (2 tests)
 // ---------------------------------------------------------------------------
 describe('clearAll', () => {
-  it('resets positions, wallets, accounts to empty', () => {
+  it('resets positions and accounts to empty', () => {
     // Populate store with data
     usePortfolioStore.setState({
       positions: [makePosition()],
-      wallets: [{ id: 'w1', address: '0x1', name: 'W', chains: ['eth'], addedAt: '2024-01-01T00:00:00Z' }],
-      accounts: [{ id: 'a1', exchange: 'binance' as const, name: 'B', apiKey: 'k', apiSecret: 's', isActive: true, addedAt: '2024-01-01T00:00:00Z' }],
-      brokerageAccounts: [{ id: 'b1', name: 'R', isActive: true, addedAt: '2024-01-01T00:00:00Z' }],
-      cashAccounts: [{ id: 'c1', slug: 'revolut', name: 'Revolut', isActive: true, addedAt: '2024-01-01T00:00:00Z' }],
+      accounts: [
+        makeWalletAccount({ id: 'w1', address: '0x1', name: 'W', chains: ['eth'] }),
+        makeCexAccount({ id: 'a1', name: 'B', exchange: 'binance' }),
+        makeManualAccount({ id: 'b1', name: 'R' }),
+        makeCashAccountObj({ id: 'c1', slug: 'revolut', name: 'Revolut' }),
+      ],
       customPrices: { btc: { price: 99000, setAt: '2024-01-01T00:00:00Z' } },
       transactions: [{ id: 'tx1', type: 'buy' as const, symbol: 'BTC', name: 'Bitcoin', assetType: 'crypto' as const, amount: 1, pricePerUnit: 50000, totalValue: 50000, positionId: 'p1', date: '2024-01-01', createdAt: '2024-01-01T00:00:00Z' }],
-      snapshots: [{ id: 's1', date: '2024-01-01', totalValue: 100000, cryptoValue: 60000, stockValue: 30000, cashValue: 8000, manualValue: 2000 }],
+      snapshots: [{ id: 's1', date: '2024-01-01', totalValue: 100000, cryptoValue: 60000, equityValue: 30000, cashValue: 8000, otherValue: 2000, stockValue: 30000, manualValue: 2000 }],
       lastRefresh: '2024-06-01T00:00:00Z',
       isRefreshing: true,
     })
@@ -601,10 +663,10 @@ describe('clearAll', () => {
 
     const state = usePortfolioStore.getState()
     expect(state.positions).toEqual([])
-    expect(state.wallets).toEqual([])
     expect(state.accounts).toEqual([])
-    expect(state.brokerageAccounts).toEqual([])
-    expect(state.cashAccounts).toEqual([])
+    expect(state.wallets()).toEqual([])
+    expect(state.manualAccounts()).toEqual([])
+    expect(state.cexAccounts()).toEqual([])
     expect(state.customPrices).toEqual({})
     expect(state.transactions).toEqual([])
     expect(state.snapshots).toEqual([])
@@ -668,8 +730,10 @@ describe('Snapshots', () => {
       date: '2024-06-01',
       totalValue: 150000,
       cryptoValue: 90000,
-      stockValue: 40000,
+      equityValue: 40000,
       cashValue: 15000,
+      otherValue: 5000,
+      stockValue: 40000,
       manualValue: 5000,
     })
 
@@ -766,15 +830,15 @@ describe('Transaction actions', () => {
   })
 })
 
-describe('Brokerage Account updateBrokerageAccount', () => {
+describe('Brokerage Account updateAccount', () => {
   it('updates brokerage account fields', () => {
     usePortfolioStore.setState({
-      brokerageAccounts: [{ id: 'b1', name: 'Revolut', isActive: true, addedAt: '2024-01-01T00:00:00Z' }],
+      accounts: [makeManualAccount({ id: 'b1', name: 'Revolut' })],
     })
 
-    usePortfolioStore.getState().updateBrokerageAccount('b1', { name: 'IBKR', isActive: false })
+    usePortfolioStore.getState().updateAccount('b1', { name: 'IBKR', isActive: false })
 
-    const acc = usePortfolioStore.getState().brokerageAccounts[0]
+    const acc = usePortfolioStore.getState().manualAccounts()[0]
     expect(acc.name).toBe('IBKR')
     expect(acc.isActive).toBe(false)
   })

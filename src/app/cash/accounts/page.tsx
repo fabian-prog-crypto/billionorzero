@@ -38,21 +38,22 @@ function getInstitutionColor(name: string): string {
 }
 
 export default function CashAccountsPage() {
+  const store = usePortfolioStore();
   const {
     positions,
     prices,
     customPrices,
     fxRates,
     hideBalances,
-    cashAccounts,
-    addCashAccount,
-    removeCashAccount,
-    updateCashAccount,
+    addAccount,
+    removeAccount,
+    updateAccount,
     removePosition,
     updatePosition,
     addPosition,
     updatePrice,
-  } = usePortfolioStore();
+  } = store;
+  const cashAccounts = useMemo(() => store.cashAccounts(), [store.accounts]);
   const [includeStablecoins, setIncludeStablecoins] = useState(false);
   const [editingPositionId, setEditingPositionId] = useState<string | null>(null);
   const [editBalance, setEditBalance] = useState('');
@@ -103,8 +104,6 @@ export default function CashAccountsPage() {
     });
 
     cashPositions.forEach((p) => {
-      const protocol = p.protocol || '';
-      const match = protocol.match(/^cash-account:(.+)$/);
       const currency = extractCurrencyCode(p.symbol);
       const entry: PositionEntry = {
         positionId: p.id,
@@ -115,9 +114,8 @@ export default function CashAccountsPage() {
         logo: p.logo,
       };
 
-      if (match) {
-        const accountId = match[1];
-        const group = accountMap.get(accountId);
+      if (p.accountId) {
+        const group = accountMap.get(p.accountId);
         if (group) {
           group.totalValue += p.value;
           group.entries.push(entry);
@@ -126,7 +124,7 @@ export default function CashAccountsPage() {
           orphanGroup.entries.push(entry);
         }
       } else {
-        // Legacy position without cash-account protocol — match by slug
+        // Legacy position without accountId — match by slug
         const accountName = extractAccountName(p);
         const matchingAccount = cashAccounts.find(
           (a) => a.slug === toSlug(accountName)
@@ -187,12 +185,12 @@ export default function CashAccountsPage() {
 
   const saveRenameAccount = () => {
     if (renamingAccountId && renameValue.trim()) {
-      updateCashAccount(renamingAccountId, { name: renameValue.trim() });
+      updateAccount(renamingAccountId, { name: renameValue.trim() });
       // Also update position names that reference this account
       const account = cashAccounts.find((a) => a.id === renamingAccountId);
       if (account) {
         positions
-          .filter((p) => p.protocol === `cash-account:${renamingAccountId}`)
+          .filter((p) => p.accountId === renamingAccountId)
           .forEach((p) => {
             const currency = extractCurrencyCode(p.symbol);
             updatePosition(p.id, { name: `${renameValue.trim()} (${currency})` });
@@ -204,7 +202,7 @@ export default function CashAccountsPage() {
   };
 
   const handleDeleteAccount = (accountId: string) => {
-    removeCashAccount(accountId);
+    removeAccount(accountId);
     setConfirmDeleteAccountId(null);
   };
 
@@ -221,12 +219,13 @@ export default function CashAccountsPage() {
     const uniqueId = crypto.randomUUID().slice(0, 8);
     const symbol = `CASH_${newCurrencyCode}_${uniqueId}`;
     addPosition({
+      assetClass: 'cash',
       type: 'cash',
       symbol,
       name: `${account.name} (${newCurrencyCode})`,
       amount: parseFloat(newCurrencyBalance),
       costBasis: parseFloat(newCurrencyBalance),
-      protocol: `cash-account:${accountId}`,
+      accountId: accountId,
     });
 
     updatePrice(symbol.toLowerCase(), {
@@ -246,7 +245,7 @@ export default function CashAccountsPage() {
 
   const handleCreateAccount = () => {
     if (!newAccountName.trim()) return;
-    addCashAccount({ name: newAccountName.trim(), isActive: true });
+    addAccount({ name: newAccountName.trim(), isActive: true, connection: { dataSource: 'manual' }, slug: toSlug(newAccountName.trim()) });
     setAddingNewAccount(false);
     setNewAccountName('');
   };

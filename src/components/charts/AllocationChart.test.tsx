@@ -19,6 +19,7 @@ vi.mock('recharts', () => ({
 function makeAsset(symbol: string, value: number, allocation: number): AssetWithPrice {
   return {
     id: `pos-${symbol}`,
+    assetClass: 'crypto',
     type: 'crypto',
     symbol,
     name: symbol,

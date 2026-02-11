@@ -4,7 +4,7 @@
  * Prices are fetched via the centralized CoinGecko price provider
  */
 
-import { CexAccount, Position } from '@/types';
+import { Account, CexConnection, Position } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
 
 interface BinanceBalance {
@@ -76,14 +76,15 @@ const ASSET_NAME_MAP: Record<string, string> = {
 /**
  * Fetch balances from Binance account
  */
-async function fetchBinanceBalances(account: CexAccount): Promise<Position[]> {
+async function fetchBinanceBalances(account: Account): Promise<Position[]> {
+  const conn = account.connection as CexConnection;
   try {
     const response = await fetch('/api/cex/binance', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        apiKey: account.apiKey,
-        apiSecret: account.apiSecret,
+        apiKey: conn.apiKey,
+        apiSecret: conn.apiSecret,
         endpoint: 'account',
       }),
     });
@@ -112,11 +113,12 @@ async function fetchBinanceBalances(account: CexAccount): Promise<Position[]> {
 
       positions.push({
         id: uuidv4(),
-        type: 'crypto',
+        assetClass: 'crypto' as const,
+        type: 'crypto' as const,
         symbol: symbolLower,
         name,
         amount: total,
-        protocol: `cex:${account.exchange}:${account.id}`,
+        accountId: account.id,
         chain: 'binance',
         addedAt: now,
         updatedAt: now,
@@ -133,22 +135,23 @@ async function fetchBinanceBalances(account: CexAccount): Promise<Position[]> {
 /**
  * Fetch all positions from a CEX account
  */
-export async function fetchCexAccountPositions(account: CexAccount): Promise<Position[]> {
+export async function fetchCexAccountPositions(account: Account): Promise<Position[]> {
   if (!account.isActive) {
     return [];
   }
 
-  switch (account.exchange) {
+  const conn = account.connection as CexConnection;
+  switch (conn.dataSource) {
     case 'binance':
       return fetchBinanceBalances(account);
     case 'coinbase':
     case 'kraken':
     case 'okx':
       // Not yet implemented
-      console.warn(`${account.exchange} integration not yet implemented`);
+      console.warn(`${conn.dataSource} integration not yet implemented`);
       return [];
     default:
-      console.warn(`Unknown exchange: ${account.exchange}`);
+      console.warn(`Unknown exchange: ${conn.dataSource}`);
       return [];
   }
 }
@@ -156,7 +159,7 @@ export async function fetchCexAccountPositions(account: CexAccount): Promise<Pos
 /**
  * Fetch positions from all CEX accounts
  */
-export async function fetchAllCexPositions(accounts: CexAccount[]): Promise<Position[]> {
+export async function fetchAllCexPositions(accounts: Account[]): Promise<Position[]> {
   const activeAccounts = accounts.filter((a) => a.isActive);
 
   if (activeAccounts.length === 0) {

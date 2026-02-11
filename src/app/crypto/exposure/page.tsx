@@ -16,7 +16,7 @@ import DonutChart from '@/components/charts/DonutChart';
 import { Bitcoin } from 'lucide-react';
 
 export default function CryptoExposurePage() {
-  const { positions, prices, customPrices, hideBalances } = usePortfolioStore();
+  const { positions, prices, customPrices, hideBalances, accounts } = usePortfolioStore();
 
   const allAssetsWithPrices = useMemo(() => {
     return calculateAllPositionsWithPrices(positions, prices, customPrices);
@@ -39,8 +39,8 @@ export default function CryptoExposurePage() {
   }, [allAssetsWithPrices]);
 
   const custodyBreakdown = useMemo(() => {
-    return calculateCustodyBreakdown(allAssetsWithPrices);
-  }, [allAssetsWithPrices]);
+    return calculateCustodyBreakdown(allAssetsWithPrices, accounts);
+  }, [allAssetsWithPrices, accounts]);
 
   const cryptoAllocation = useMemo(() => {
     return calculateCryptoAllocation(allAssetsWithPrices);

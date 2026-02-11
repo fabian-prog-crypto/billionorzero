@@ -1,5 +1,5 @@
 import { PerpExchangeService } from './perp-exchange-service';
-import type { Wallet } from '@/types';
+import type { Account } from '@/types';
 
 // Mock the provider singletons (they are imported by perp-exchange-service)
 vi.mock('../providers/hyperliquid-provider', () => ({
@@ -12,14 +12,18 @@ vi.mock('../providers/ethereal-provider', () => ({
   getEtherealProvider: vi.fn(() => ({ fetchPositions: vi.fn() })),
 }));
 
-function makeWallet(overrides?: Partial<Wallet>): Wallet {
+function makeWallet(overrides?: Partial<Account> & { perpExchanges?: ('hyperliquid' | 'lighter' | 'ethereal')[] }): Account {
   return {
-    id: 'wallet-1',
-    address: '0xabc',
-    name: 'Test Wallet',
-    chains: ['eth'],
+    id: overrides?.id || 'wallet-1',
+    name: overrides?.name || 'Test Wallet',
+    isActive: true,
+    connection: {
+      dataSource: 'debank',
+      address: '0xabc',
+      chains: ['eth'],
+      perpExchanges: overrides?.perpExchanges,
+    },
     addedAt: '2024-01-01T00:00:00Z',
-    ...overrides,
   };
 }
 
@@ -106,7 +110,7 @@ describe('PerpExchangeService', () => {
 
     it('returns false when wallet has no perpExchanges field', () => {
       const wallet = makeWallet();
-      delete wallet.perpExchanges;
+      // makeWallet() without perpExchanges override leaves it undefined in connection
       expect(service.hasEnabledExchanges(wallet)).toBe(false);
     });
   });
@@ -119,7 +123,7 @@ describe('PerpExchangeService', () => {
 
     it('returns empty array when no perpExchanges set', () => {
       const wallet = makeWallet();
-      delete wallet.perpExchanges;
+      // makeWallet() without perpExchanges override leaves it undefined in connection
       expect(service.getWalletExchanges(wallet)).toEqual([]);
     });
   });

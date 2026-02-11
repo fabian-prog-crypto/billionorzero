@@ -413,9 +413,11 @@ export class CategoryService {
 
   /**
    * Get the main category for an asset
+   * Accepts both legacy AssetType ('crypto'|'stock'|'etf'|'cash'|'manual')
+   * and new AssetClass ('crypto'|'equity'|'cash'|'other') values.
    */
   getMainCategory(symbol: string, assetType?: string): MainCategory {
-    // Cash positions (explicit type)
+    // Cash positions (explicit type or class)
     if (assetType === 'cash') {
       return 'cash';
     }
@@ -425,8 +427,13 @@ export class CategoryService {
       return 'cash';
     }
 
-    // Stock/ETF positions (equities)
+    // Stock/ETF positions (equities) - legacy types
     if (assetType === 'stock' || assetType === 'etf') {
+      return 'equities';
+    }
+
+    // Equity positions (new AssetClass)
+    if (assetType === 'equity') {
       return 'equities';
     }
 
@@ -435,7 +442,12 @@ export class CategoryService {
       return 'crypto';
     }
 
-    // Manual/other positions - try to categorize by symbol
+    // Other positions (new AssetClass)
+    if (assetType === 'other') {
+      return 'other';
+    }
+
+    // Manual/untyped positions - try to categorize by symbol
     const normalizedSymbol = symbol.toLowerCase().trim();
 
     // Check if it's a fiat currency (for bank accounts)
@@ -461,6 +473,7 @@ export class CategoryService {
 
   /**
    * Get the sub-category for an asset (within its main category)
+   * Accepts both legacy AssetType and new AssetClass values.
    */
   getSubCategory(symbol: string, assetType?: string): SubCategory {
     const normalizedSymbol = symbol.toLowerCase().trim();
@@ -501,7 +514,8 @@ export class CategoryService {
 
     // Equities sub-categories (stocks vs ETFs)
     // Priority: explicit 'etf' assetType > known ETF symbols (overrides legacy 'stock' type) > default to stocks
-    if (assetType === 'stock' || assetType === 'etf' || this.getMainCategory(symbol, assetType) === 'equities') {
+    // Also handles new AssetClass 'equity'
+    if (assetType === 'stock' || assetType === 'etf' || assetType === 'equity' || this.getMainCategory(symbol, assetType) === 'equities') {
       if (assetType === 'etf') return 'etfs';
       // Check known ETF symbols - this overrides legacy positions that were added as 'stock' before ETF selection existed
       if (this.isKnownEtf(normalizedSymbol)) return 'etfs';

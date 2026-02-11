@@ -15,7 +15,7 @@ import {
   makeBasicPrices,
 } from '@/__tests__/fixtures'
 import { getCategoryService } from './category-service'
-import type { Position, AssetWithPrice, PriceData } from '@/types'
+import type { Position, AssetWithPrice, PriceData, Account } from '@/types'
 
 // Mock the providers module - getPriceProvider is used by getPriceKey and calculatePositionValue
 vi.mock('@/services/providers', () => ({
@@ -702,8 +702,8 @@ describe('aggregatePositionsBySymbol', () => {
 
   it('separates different types of same symbol', () => {
     const positions: AssetWithPrice[] = [
-      makeAssetWithPrice({ symbol: 'BTC', type: 'crypto', value: 50000, amount: 1 }),
-      makeAssetWithPrice({ symbol: 'BTC', type: 'manual', value: 25000, amount: 0.5 }),
+      makeAssetWithPrice({ symbol: 'BTC', assetClass: 'crypto', type: 'crypto', value: 50000, amount: 1 }),
+      makeAssetWithPrice({ symbol: 'BTC', assetClass: 'other', type: 'manual', value: 25000, amount: 0.5 }),
     ]
     const result = aggregatePositionsBySymbol(positions)
     // btc-crypto and btc-manual are different keys
@@ -1248,43 +1248,46 @@ describe('calculatePerpPageData', () => {
 
 describe('calculateCustodyBreakdown', () => {
   it('classifies wallet positions as Self-Custody', () => {
+    const accounts: Account[] = [{ id: 'wallet-1', name: 'My Wallet', isActive: true, connection: { dataSource: 'debank', address: '0xabc', chains: ['eth'] }, addedAt: '2024-01-01T00:00:00Z' }]
     const assets: AssetWithPrice[] = [
       makeAssetWithPrice({
         symbol: 'ETH',
         value: 3000,
-        walletAddress: '0x1234567890abcdef',
+        accountId: 'wallet-1',
         type: 'crypto',
       }),
     ]
-    const result = calculateCustodyBreakdown(assets)
+    const result = calculateCustodyBreakdown(assets, accounts)
     expect(result[0].label).toBe('Self-Custody')
     expect(result[0].value).toBe(3000)
   })
 
   it('classifies DeFi protocol positions', () => {
+    const accounts: Account[] = [{ id: 'wallet-1', name: 'My Wallet', isActive: true, connection: { dataSource: 'debank', address: '0xabc', chains: ['eth'] }, addedAt: '2024-01-01T00:00:00Z' }]
     const assets: AssetWithPrice[] = [
       makeAssetWithPrice({
         symbol: 'ETH',
         value: 3000,
-        walletAddress: '0x1234',
+        accountId: 'wallet-1',
         protocol: 'Morpho',
         type: 'crypto',
       }),
     ]
-    const result = calculateCustodyBreakdown(assets)
+    const result = calculateCustodyBreakdown(assets, accounts)
     expect(result[0].label).toBe('DeFi')
   })
 
   it('classifies CEX positions', () => {
+    const accounts: Account[] = [{ id: 'cex-1', name: 'My Binance', isActive: true, connection: { dataSource: 'binance', apiKey: 'key', apiSecret: 'secret' }, addedAt: '2024-01-01T00:00:00Z' }]
     const assets: AssetWithPrice[] = [
       makeAssetWithPrice({
         symbol: 'BTC',
         value: 50000,
-        protocol: 'cex:binance',
+        accountId: 'cex-1',
         type: 'crypto',
       }),
     ]
-    const result = calculateCustodyBreakdown(assets)
+    const result = calculateCustodyBreakdown(assets, accounts)
     expect(result[0].label).toBe('CEX')
   })
 
@@ -1303,8 +1306,8 @@ describe('calculateCustodyBreakdown', () => {
 
   it('classifies stocks and cash as Banks & Brokers', () => {
     const assets: AssetWithPrice[] = [
-      makeAssetWithPrice({ symbol: 'AAPL', type: 'stock', value: 9000 }),
-      makeAssetWithPrice({ symbol: 'CASH_USD_123', type: 'cash', value: 5000 }),
+      makeAssetWithPrice({ symbol: 'AAPL', assetClass: 'equity', type: 'stock', value: 9000, equityType: 'stock' }),
+      makeAssetWithPrice({ symbol: 'CASH_USD_123', assetClass: 'cash', type: 'cash', value: 5000 }),
     ]
     const result = calculateCustodyBreakdown(assets)
     expect(result[0].label).toBe('Banks & Brokers')
@@ -1344,10 +1347,11 @@ describe('calculateChainBreakdown', () => {
   })
 
   it('uses CEX exchange name for CEX positions', () => {
+    const accounts: Account[] = [{ id: 'cex-1', name: 'My Binance', isActive: true, connection: { dataSource: 'binance', apiKey: 'key', apiSecret: 'secret' }, addedAt: '2024-01-01T00:00:00Z' }]
     const assets: AssetWithPrice[] = [
-      makeAssetWithPrice({ symbol: 'BTC', protocol: 'cex:binance', value: 50000, type: 'crypto' }),
+      makeAssetWithPrice({ symbol: 'BTC', accountId: 'cex-1', value: 50000, type: 'crypto' }),
     ]
-    const result = calculateChainBreakdown(assets)
+    const result = calculateChainBreakdown(assets, accounts)
     expect(result[0].label).toBe('Binance')
   })
 
@@ -1439,7 +1443,7 @@ describe('calculateCryptoMetrics', () => {
         type: 'crypto',
         value: 3000,
         protocol: 'Morpho',
-        walletAddress: '0x123',
+        accountId: 'wallet-1',
       }),
       makeAssetWithPrice({ symbol: 'BTC', type: 'crypto', value: 7000 }),
     ]
@@ -1511,11 +1515,10 @@ describe('extractAccountName', () => {
     expect(extractAccountName(asset)).toBe('Morpho')
   })
 
-  it('uses CEX exchange name (capitalizes protocol)', () => {
-    const asset = makeAssetWithPrice({ name: 'Bitcoin', protocol: 'cex:binance' })
-    // The generic protocol handler (line 1995) matches before the cex:-specific one (line 2000)
-    // So cex:binance gets capitalized to Cex:binance
-    expect(extractAccountName(asset)).toBe('Cex:binance')
+  it('uses CEX exchange name from account lookup', () => {
+    const accountMap = new Map<string, Account>([['cex-1', { id: 'cex-1', name: 'My Binance', isActive: true, connection: { dataSource: 'binance', apiKey: 'key', apiSecret: 'secret' }, addedAt: '2024-01-01T00:00:00Z' }]])
+    const asset = makeAssetWithPrice({ name: 'Bitcoin', accountId: 'cex-1' })
+    expect(extractAccountName(asset, accountMap)).toBe('Binance')
   })
 
   it('uses chain name as fallback', () => {
@@ -1523,22 +1526,11 @@ describe('extractAccountName', () => {
     expect(extractAccountName(asset)).toBe('Eth')
   })
 
-  it('uses shortened wallet address', () => {
-    const asset = makeAssetWithPrice({
-      name: 'Ethereum',
-      protocol: undefined,
-      chain: undefined,
-      walletAddress: '0x1234567890abcdef1234',
-    })
-    expect(extractAccountName(asset)).toBe('0x1234...1234')
-  })
-
   it('returns full name when no pattern matches', () => {
     const asset = makeAssetWithPrice({
       name: 'My Asset',
       protocol: undefined,
       chain: undefined,
-      walletAddress: undefined,
     })
     expect(extractAccountName(asset)).toBe('My Asset')
   })
@@ -1548,14 +1540,14 @@ describe('extractAccountName', () => {
       name: '',
       protocol: undefined,
       chain: undefined,
-      walletAddress: undefined,
     })
     expect(extractAccountName(asset)).toBe('Manual')
   })
 
-  it('skips "wallet" protocol', () => {
-    const asset = makeAssetWithPrice({ name: 'ETH', protocol: 'wallet', chain: 'eth' })
-    expect(extractAccountName(asset)).toBe('Eth') // falls through to chain
+  it('resolves wallet account to shortened address', () => {
+    const accountMap = new Map<string, Account>([['wallet-1', { id: 'wallet-1', name: 'My Wallet', isActive: true, connection: { dataSource: 'debank', address: '0xAbCd1234567890eF', chains: ['eth'] }, addedAt: '2024-01-01T00:00:00Z' }]])
+    const asset = makeAssetWithPrice({ name: 'ETH', accountId: 'wallet-1', chain: 'eth' })
+    expect(extractAccountName(asset, accountMap)).toBe('0xAbCd...90eF')
   })
 })
 
@@ -1763,12 +1755,12 @@ describe('calculateAssetSummary', () => {
 
   it('counts unique wallets', () => {
     const assets: AssetWithPrice[] = [
-      makeAssetWithPrice({ symbol: 'ETH', value: 3000, walletAddress: '0xaaa', type: 'crypto' }),
-      makeAssetWithPrice({ symbol: 'ETH', value: 2000, walletAddress: '0xbbb', type: 'crypto' }),
-      makeAssetWithPrice({ symbol: 'ETH', value: 1000, walletAddress: '0xaaa', type: 'crypto' }),
+      makeAssetWithPrice({ symbol: 'ETH', value: 3000, accountId: 'wallet-1', type: 'crypto' }),
+      makeAssetWithPrice({ symbol: 'ETH', value: 2000, accountId: 'wallet-2', type: 'crypto' }),
+      makeAssetWithPrice({ symbol: 'ETH', value: 1000, accountId: 'wallet-1', type: 'crypto' }),
     ]
     const result = calculateAssetSummary(assets)!
-    expect(result.walletCount).toBe(2) // 0xaaa and 0xbbb
+    expect(result.walletCount).toBe(2) // wallet-1 and wallet-2
   })
 
   it('includes position count', () => {

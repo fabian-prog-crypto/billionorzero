@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { X, Wallet, Plus } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
-import { PerpExchange } from '@/types';
+import { PerpExchange, WalletConnection } from '@/types';
 import { getSupportedPerpExchanges } from '@/services';
 
 interface AddWalletModalProps {
@@ -32,7 +32,8 @@ export default function AddWalletModal({ isOpen, onClose }: AddWalletModalProps)
   const [bulkInput, setBulkInput] = useState('');
   const [bulkPerpExchanges, setBulkPerpExchanges] = useState<PerpExchange[]>([]);
 
-  const { addWallet, wallets } = usePortfolioStore();
+  const { addAccount, wallets: getWallets } = usePortfolioStore();
+  const wallets = getWallets();
 
   // Reset form when modal opens
   useEffect(() => {
@@ -70,7 +71,11 @@ export default function AddWalletModal({ isOpen, onClose }: AddWalletModalProps)
 
   // Check if address already exists
   const addressExists = (addr: string): boolean => {
-    return wallets.some(w => w.address.toLowerCase() === addr.toLowerCase());
+    return wallets.some(w => {
+      const conn = w.connection;
+      const walletAddr = (conn.dataSource === 'debank' || conn.dataSource === 'helius') ? (conn as WalletConnection).address : '';
+      return walletAddr.toLowerCase() === addr.toLowerCase();
+    });
   };
 
   // Parse bulk input into wallet entries
@@ -164,11 +169,15 @@ export default function AddWalletModal({ isOpen, onClose }: AddWalletModalProps)
       return;
     }
 
-    addWallet({
-      address, // Preserve original case for API compatibility (e.g., Lighter is case-sensitive)
+    addAccount({
       name,
-      chains: [],
-      perpExchanges: selectedPerpExchanges.length > 0 ? selectedPerpExchanges : undefined,
+      isActive: true,
+      connection: {
+        dataSource: 'debank',
+        address, // Preserve original case for API compatibility (e.g., Lighter is case-sensitive)
+        chains: [],
+        perpExchanges: selectedPerpExchanges.length > 0 ? selectedPerpExchanges : undefined,
+      },
     });
 
     onClose();
@@ -181,11 +190,15 @@ export default function AddWalletModal({ isOpen, onClose }: AddWalletModalProps)
 
     // Add all valid wallets with the same perp exchange settings
     validWallets.forEach(wallet => {
-      addWallet({
-        address: wallet.address,
+      addAccount({
         name: wallet.name,
-        chains: [],
-        perpExchanges: bulkPerpExchanges.length > 0 ? bulkPerpExchanges : undefined,
+        isActive: true,
+        connection: {
+          dataSource: 'debank',
+          address: wallet.address,
+          chains: [],
+          perpExchanges: bulkPerpExchanges.length > 0 ? bulkPerpExchanges : undefined,
+        },
       });
     });
 

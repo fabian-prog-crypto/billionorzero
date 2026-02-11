@@ -3,19 +3,13 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { MessageSquare, X, AlertCircle, Settings, Check, CornerDownLeft } from 'lucide-react';
 import Link from 'next/link';
-import { ParsedPositionAction, Position, AssetWithPrice } from '@/types';
-import { usePortfolioStore } from '@/store/portfolioStore';
-import { canInlineConfirm, executeAction } from '@/services/domain/action-executor';
-import { useCommandHistory } from '@/hooks/useCommandHistory';
+import { useCommandPalette } from '@/hooks/useCommandPalette';
+import { QueryResultView, MutationPreviewView } from '@/components/CommandResult';
 import { formatDistanceToNow } from 'date-fns';
-import InlineConfirmation from '@/components/InlineConfirmation';
 
 interface CommandPaletteProps {
   isOpen: boolean;
   onClose: () => void;
-  onParsed: (action: ParsedPositionAction) => void;
-  positions: Position[];
-  positionsWithPrices: AssetWithPrice[];
 }
 
 const EXAMPLE_GROUPS = [
@@ -39,52 +33,69 @@ const EXAMPLE_GROUPS = [
       'Update BTC amount to 0.6',
     ],
   },
+  {
+    label: 'QUERY',
+    examples: [
+      "What's my net worth?",
+      'Top 5 positions',
+    ],
+  },
+  {
+    label: 'NAVIGATE',
+    examples: [
+      'Go to performance',
+    ],
+  },
 ];
 
-export default function CommandPalette({
-  isOpen,
-  onClose,
-  onParsed,
-  positions,
-  positionsWithPrices,
-}: CommandPaletteProps) {
-  const [text, setText] = useState('');
-  const [loadingText, setLoadingText] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [closing, setClosing] = useState(false);
-  const [inlineAction, setInlineAction] = useState<ParsedPositionAction | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
+  const {
+    text,
+    setText,
+    isLoading,
+    loadingText,
+    queryResult,
+    mutationPreview,
+    successMessage,
+    error,
+    submit,
+    confirmMutation,
+    cancelMutation,
+    clearError,
+    reset,
+    recentCommands,
+  } = useCommandPalette();
+
   const inputRef = useRef<HTMLInputElement>(null);
   const errorTimerRef = useRef<NodeJS.Timeout | null>(null);
   const successTimerRef = useRef<NodeJS.Timeout | null>(null);
-
-  const { recentCommands, addCommand } = useCommandHistory();
-  const { hideBalances, updatePosition, removePosition, addPosition, addTransaction, updatePrice, setCustomPrice } =
-    usePortfolioStore();
+  const closingRef = useRef(false);
+  const [closing, setClosing] = useState(false);
 
   const animateClose = useCallback(() => {
+    if (closingRef.current) return;
+    closingRef.current = true;
     setClosing(true);
     setTimeout(() => {
+      closingRef.current = false;
       setClosing(false);
+      reset();
       onClose();
     }, 150);
-  }, [onClose]);
+  }, [onClose, reset]);
 
   // Auto-focus on open
   useEffect(() => {
     if (isOpen) {
-      setText('');
-      setLoadingText('');
-      setError(null);
-      setIsLoading(false);
-      setClosing(false);
-      setInlineAction(null);
-      setSuccessMessage(null);
-      // Small delay to ensure DOM is ready
-      setTimeout(() => inputRef.current?.focus(), 50);
+      reset();
+      closingRef.current = false;
+      // Defer closing state reset to avoid synchronous setState in effect
+      setTimeout(() => {
+        setClosing(false);
+        inputRef.current?.focus();
+      }, 50);
     }
-  }, [isOpen]);
+  }, [isOpen, reset]);
 
   // Escape key
   useEffect(() => {
@@ -92,8 +103,8 @@ export default function CommandPalette({
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        if (inlineAction) {
-          setInlineAction(null);
+        if (mutationPreview) {
+          cancelMutation();
           inputRef.current?.focus();
         } else {
           animateClose();
@@ -102,158 +113,37 @@ export default function CommandPalette({
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [isOpen, animateClose, inlineAction]);
+  }, [isOpen, animateClose, mutationPreview, cancelMutation]);
 
   // Auto-dismiss error after 5s
   useEffect(() => {
     if (error) {
       if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
-      errorTimerRef.current = setTimeout(() => setError(null), 5000);
+      errorTimerRef.current = setTimeout(() => clearError(), 5000);
     }
     return () => {
       if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
     };
-  }, [error]);
+  }, [error, clearError]);
 
-  // Cleanup success timer
+  // Auto-close on success after 1.2s
   useEffect(() => {
-    return () => {
-      if (successTimerRef.current) clearTimeout(successTimerRef.current);
-    };
-  }, []);
-
-  if (!isOpen) return null;
-
-  const handleSubmit = async () => {
-    if (!text.trim() || isLoading) return;
-
-    setIsLoading(true);
-    setLoadingText(text.trim());
-    setError(null);
-    setInlineAction(null);
-
-    try {
-      const ollamaUrl =
-        (typeof window !== 'undefined' &&
-          localStorage.getItem('ollama_url')) ||
-        'http://localhost:11434';
-      const ollamaModel =
-        (typeof window !== 'undefined' &&
-          localStorage.getItem('ollama_model')) ||
-        'llama3.2';
-
-      // Deduplicate wallet positions by symbol
-      const seenWalletSymbols = new Set<string>();
-      const deduplicatedPositions = positions.filter((p) => {
-        if (!p.walletAddress) return true;
-        const key = p.symbol.toUpperCase();
-        if (seenWalletSymbols.has(key)) return false;
-        seenWalletSymbols.add(key);
-        return true;
-      });
-
-      const positionContext = deduplicatedPositions.map((p) => {
-        // Extract account name from cash position names like "N26 (EUR)"
-        let accountName: string | undefined;
-        if (p.type === 'cash') {
-          const acctMatch = p.name.match(/^(.+?)\s*\(/);
-          if (acctMatch) accountName = acctMatch[1].trim();
-        }
-        return {
-          id: p.id,
-          symbol: p.symbol,
-          name: p.name,
-          type: p.type,
-          amount: p.amount,
-          costBasis: p.costBasis,
-          purchaseDate: p.purchaseDate,
-          accountName,
-          walletAddress: p.walletAddress,
-        };
-      });
-
-      const response = await fetch('/api/parse-position', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: text.trim(),
-          positions: positionContext,
-          ollamaUrl,
-          ollamaModel,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to parse command');
-      }
-
-      const parsed = data as ParsedPositionAction;
-      addCommand(text.trim());
-
-      // Check if action qualifies for inline confirmation
-      if (canInlineConfirm(parsed)) {
-        setInlineAction(parsed);
-        setIsLoading(false);
-        setLoadingText('');
-      } else {
-        // Complex action → full modal
-        onParsed(parsed);
-        setText('');
-        setLoadingText('');
-      }
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : 'Failed to parse command';
-      if (message.includes('Cannot connect') || message.includes('fetch')) {
-        setError(
-          'Cannot connect to Ollama. Make sure it is running (ollama serve).'
-        );
-      } else {
-        setError(message);
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleInlineConfirm = () => {
-    if (!inlineAction) return;
-
-    const result = executeAction(inlineAction, {
-      updatePosition,
-      removePosition,
-      addPosition,
-      addTransaction,
-      updatePrice,
-      setCustomPrice,
-      positions,
-      positionsWithPrices,
-    });
-
-    if (result.success) {
-      setInlineAction(null);
-      setSuccessMessage(result.summary || 'Done');
-      // Auto-close after 1.2s
+    if (successMessage) {
       successTimerRef.current = setTimeout(() => {
         animateClose();
       }, 1200);
-    } else {
-      setError(result.error || 'Operation failed');
-      setInlineAction(null);
     }
-  };
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    };
+  }, [successMessage, animateClose]);
 
-  const handleInlineCancel = () => {
-    setInlineAction(null);
-    inputRef.current?.focus();
-  };
+  if (!isOpen) return null;
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      handleSubmit();
+      submit();
     }
   };
 
@@ -261,7 +151,9 @@ export default function CommandPalette({
     if (!isLoading) animateClose();
   };
 
-  const showExamples = !text && !isLoading && !inlineAction && !successMessage;
+  const showExamples =
+    !text && !isLoading && !queryResult && !mutationPreview && !successMessage;
+  const inputDisabled = isLoading || !!mutationPreview || !!queryResult;
 
   return (
     <>
@@ -283,7 +175,9 @@ export default function CommandPalette({
               <div className="w-5 h-5 flex items-center justify-center">
                 <Check className="w-5 h-5 text-[var(--positive)]" />
               </div>
-              <span className="text-sm text-[var(--positive)]">{successMessage}</span>
+              <span className="text-sm text-[var(--positive)]">
+                {successMessage}
+              </span>
             </div>
           ) : (
             <>
@@ -291,7 +185,9 @@ export default function CommandPalette({
               <div className="relative">
                 <MessageSquare
                   className={`absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 transition-colors ${
-                    text ? 'text-[var(--foreground-muted)]' : 'text-[var(--foreground-subtle)]'
+                    text
+                      ? 'text-[var(--foreground-muted)]'
+                      : 'text-[var(--foreground-subtle)]'
                   }`}
                 />
                 <input
@@ -300,29 +196,33 @@ export default function CommandPalette({
                   value={text}
                   onChange={(e) => {
                     setText(e.target.value);
-                    if (error) setError(null);
-                    if (inlineAction) setInlineAction(null);
+                    if (error) clearError();
+                    if (mutationPreview) cancelMutation();
                   }}
                   onKeyDown={handleKeyDown}
-                  placeholder="Record a trade..."
+                  placeholder="Ask anything about your portfolio..."
                   className={`command-palette-input ${isLoading ? 'opacity-50' : ''}`}
-                  disabled={isLoading || !!inlineAction}
+                  disabled={inputDisabled}
                 />
                 {/* Right side: shortcut badge or clear button */}
-                {text && !isLoading && !inlineAction ? (
+                {text && !isLoading && !mutationPreview && !queryResult ? (
                   <button
                     onClick={() => {
                       setText('');
-                      setError(null);
+                      clearError();
                       inputRef.current?.focus();
                     }}
                     className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-[var(--background-secondary)] transition-colors"
                   >
                     <X className="w-4 h-4 text-[var(--foreground-muted)]" />
                   </button>
-                ) : !isLoading && !inlineAction ? (
+                ) : !isLoading && !mutationPreview && !queryResult ? (
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-[var(--foreground-subtle)] px-1.5 py-0.5 border border-[var(--border)]">
-                    {typeof navigator !== 'undefined' && /Mac/i.test(navigator.userAgent) ? '\u2318' : 'Ctrl+'}K
+                    {typeof navigator !== 'undefined' &&
+                    /Mac/i.test(navigator.userAgent)
+                      ? '\u2318'
+                      : 'Ctrl+'}
+                    K
                   </span>
                 ) : null}
               </div>
@@ -341,15 +241,33 @@ export default function CommandPalette({
                 </>
               )}
 
-              {/* Inline confirmation */}
-              {inlineAction && (
-                <InlineConfirmation
-                  action={inlineAction}
-                  positions={positions}
-                  positionsWithPrices={positionsWithPrices}
-                  hideBalances={hideBalances}
-                  onConfirm={handleInlineConfirm}
-                  onCancel={handleInlineCancel}
+              {/* Query result */}
+              {queryResult && (
+                <div>
+                  <QueryResultView result={queryResult} />
+                  <div className="px-4 py-2 flex justify-end">
+                    <button
+                      onClick={() => {
+                        reset();
+                        setTimeout(() => inputRef.current?.focus(), 50);
+                      }}
+                      className="text-[13px] text-[var(--foreground-muted)] hover:text-[var(--foreground)] transition-colors"
+                    >
+                      Ask another question
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Mutation preview */}
+              {mutationPreview && (
+                <MutationPreviewView
+                  preview={mutationPreview}
+                  onConfirm={confirmMutation}
+                  onCancel={() => {
+                    cancelMutation();
+                    inputRef.current?.focus();
+                  }}
                 />
               )}
 
@@ -371,7 +289,7 @@ export default function CommandPalette({
                     )}
                   </div>
                   <button
-                    onClick={() => setError(null)}
+                    onClick={clearError}
                     className="p-0.5 hover:bg-[var(--background-secondary)] transition-colors"
                   >
                     <X className="w-3 h-3" />
@@ -386,7 +304,9 @@ export default function CommandPalette({
                     {/* Recent commands */}
                     {recentCommands.length > 0 && (
                       <div>
-                        <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">RECENT</p>
+                        <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">
+                          RECENT
+                        </p>
                         <div className="space-y-1">
                           {recentCommands.map((entry) => (
                             <button
@@ -398,9 +318,14 @@ export default function CommandPalette({
                               className="flex items-center gap-2 w-full text-left text-[13px] text-[var(--foreground-muted)] hover:text-[var(--foreground)] transition-colors py-0.5"
                             >
                               <CornerDownLeft className="w-3 h-3 text-[var(--foreground-subtle)]" />
-                              <span className="flex-1 truncate">&ldquo;{entry.text}&rdquo;</span>
+                              <span className="flex-1 truncate">
+                                &ldquo;{entry.text}&rdquo;
+                              </span>
                               <span className="text-[11px] text-[var(--foreground-subtle)] flex-shrink-0">
-                                {formatDistanceToNow(new Date(entry.timestamp), { addSuffix: false })}
+                                {formatDistanceToNow(
+                                  new Date(entry.timestamp),
+                                  { addSuffix: false }
+                                )}
                               </span>
                             </button>
                           ))}
@@ -410,7 +335,9 @@ export default function CommandPalette({
 
                     {EXAMPLE_GROUPS.map((group) => (
                       <div key={group.label}>
-                        <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">{group.label}</p>
+                        <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">
+                          {group.label}
+                        </p>
                         <div className="space-y-1">
                           {group.examples.map((example) => (
                             <button
@@ -421,7 +348,9 @@ export default function CommandPalette({
                               }}
                               className="flex items-center gap-2 w-full text-left text-[13px] text-[var(--foreground-muted)] hover:text-[var(--foreground)] transition-colors py-0.5"
                             >
-                              <span className="text-[var(--foreground-subtle)]">&middot;</span>
+                              <span className="text-[var(--foreground-subtle)]">
+                                &middot;
+                              </span>
                               <span>&ldquo;{example}&rdquo;</span>
                             </button>
                           ))}

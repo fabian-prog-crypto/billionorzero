@@ -27,7 +27,6 @@ vi.mock('@/services', () => ({
 
 // Mock store - we need fine-grained control
 const mockStoreState = {
-  wallets: [] as unknown[],
   positions: [] as unknown[],
   accounts: [] as unknown[],
   prices: {} as Record<string, unknown>,
@@ -36,10 +35,27 @@ const mockStoreState = {
   setRefreshing: vi.fn(),
   setPrices: vi.fn(),
   setFxRates: vi.fn(),
-  setWalletPositions: vi.fn(),
-  setAccountPositions: vi.fn(),
+  setSyncedPositions: vi.fn(),
   setLastRefresh: vi.fn(),
   addSnapshot: vi.fn(),
+  walletAccounts: () => mockStoreState.accounts.filter((a) => {
+    const acc = a as { connection?: { dataSource?: string } };
+    return acc.connection?.dataSource === 'debank' || acc.connection?.dataSource === 'helius';
+  }),
+  wallets: () => mockStoreState.accounts.filter((a) => {
+    const acc = a as { connection?: { dataSource?: string } };
+    return acc.connection?.dataSource === 'debank' || acc.connection?.dataSource === 'helius';
+  }),
+  cexAccounts: () => mockStoreState.accounts.filter((a) => {
+    const acc = a as { connection?: { dataSource?: string } };
+    return ['binance', 'coinbase', 'kraken', 'okx'].includes(acc.connection?.dataSource ?? '');
+  }),
+  customPrices: {},
+  transactions: [],
+  lastRefresh: null as string | null,
+  hideBalances: false,
+  hideDust: false,
+  riskFreeRate: 0.05,
 }
 
 vi.mock('@/store/portfolioStore', () => {
@@ -50,7 +66,7 @@ vi.mock('@/store/portfolioStore', () => {
   }
   storeFunction.getState = () => mockStoreState
   storeFunction.setState = vi.fn()
-  storeFunction.subscribe = vi.fn()
+  storeFunction.subscribe = vi.fn(() => vi.fn()) // returns unsubscribe fn
   return { usePortfolioStore: storeFunction }
 })
 
@@ -72,7 +88,6 @@ function RefreshButton() {
 describe('PortfolioProvider', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockStoreState.wallets = []
     mockStoreState.positions = []
     mockStoreState.accounts = []
     mockStoreState.prices = {}
@@ -129,7 +144,6 @@ describe('PortfolioProvider', () => {
 describe('useRefresh', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockStoreState.wallets = []
     mockStoreState.positions = []
     mockStoreState.accounts = []
     mockStoreState.prices = {}
@@ -184,7 +198,7 @@ describe('useRefresh', () => {
     })
     expect(mockStoreState.setPrices).toHaveBeenCalled()
     expect(mockStoreState.setFxRates).toHaveBeenCalledWith({ EUR: 0.85 })
-    expect(mockStoreState.setWalletPositions).toHaveBeenCalledWith([{ id: '1', symbol: 'BTC', amount: 1 }])
+    expect(mockStoreState.setSyncedPositions).toHaveBeenCalledWith([], [{ id: '1', symbol: 'BTC', amount: 1 }])
     expect(mockStoreState.setLastRefresh).toHaveBeenCalled()
   })
 
@@ -227,10 +241,10 @@ describe('useRefresh', () => {
   })
 
   it('fetches CEX positions when accounts exist', async () => {
-    mockStoreState.accounts = [{ id: 'acc1', exchange: 'binance' }]
+    mockStoreState.accounts = [{ id: 'acc1', name: 'Binance', isActive: true, connection: { dataSource: 'binance', apiKey: 'k', apiSecret: 's' }, addedAt: '2024-01-01' }]
     const mockFetchCex = vi.mocked(fetchAllCexPositions)
     mockFetchCex.mockResolvedValue([
-      { id: 'cex1', symbol: 'BTC', amount: 0.5, type: 'crypto', protocol: 'cex:binance:acc1' } as unknown as Position,
+      { id: 'cex1', symbol: 'BTC', amount: 0.5, type: 'crypto', accountId: 'acc1' } as unknown as Position,
     ])
     mockGetPricesForPositions.mockResolvedValue({
       prices: { btc: { price: 50000 } },
@@ -244,14 +258,14 @@ describe('useRefresh', () => {
     await act(async () => {
       screen.getByText('Refresh').click()
     })
-    expect(mockFetchCex).toHaveBeenCalledWith([{ id: 'acc1', exchange: 'binance' }])
-    expect(mockStoreState.setAccountPositions).toHaveBeenCalledWith([
-      { id: 'cex1', symbol: 'BTC', amount: 0.5, type: 'crypto', protocol: 'cex:binance:acc1' },
+    expect(mockFetchCex).toHaveBeenCalledWith([{ id: 'acc1', name: 'Binance', isActive: true, connection: { dataSource: 'binance', apiKey: 'k', apiSecret: 's' }, addedAt: '2024-01-01' }])
+    expect(mockStoreState.setSyncedPositions).toHaveBeenCalledWith(['acc1'], [
+      { id: 'cex1', symbol: 'BTC', amount: 0.5, type: 'crypto', accountId: 'acc1' },
     ])
   })
 
   it('continues refresh even if CEX fetch fails', async () => {
-    mockStoreState.accounts = [{ id: 'acc1', exchange: 'binance' }]
+    mockStoreState.accounts = [{ id: 'acc1', name: 'Binance', isActive: true, connection: { dataSource: 'binance', apiKey: 'k', apiSecret: 's' }, addedAt: '2024-01-01' }]
     const mockFetchCex = vi.mocked(fetchAllCexPositions)
     mockFetchCex.mockRejectedValue(new Error('CEX API down'))
 
@@ -269,11 +283,11 @@ describe('useRefresh', () => {
     expect(mockStoreState.setLastRefresh).toHaveBeenCalled()
   })
 
-  it('excludes manual positions from wallet refresh', async () => {
+  it('excludes wallet and CEX positions from wallet refresh', async () => {
     mockStoreState.positions = [
-      { id: '1', symbol: 'BTC', amount: 1, walletAddress: '0x123' },
+      { id: '1', symbol: 'BTC', amount: 1, accountId: 'w1' },
       { id: '2', symbol: 'GOLD', amount: 10, type: 'manual' },
-      { id: '3', symbol: 'BTC', amount: 0.5, protocol: 'cex:binance:acc1' },
+      { id: '3', symbol: 'BTC', amount: 0.5, accountId: 'acc1' },
       { id: '4', symbol: 'AAPL', amount: 5 },
     ]
 
@@ -286,7 +300,7 @@ describe('useRefresh', () => {
       screen.getByText('Refresh').click()
     })
 
-    // Only manual positions (no walletAddress, no cex: protocol) should be passed
+    // Only manual positions (no accountId linking to wallet/cex) should be passed
     const manualPositions = mockRefreshPortfolio.mock.calls[0][0]
     expect(manualPositions).toEqual([
       { id: '2', symbol: 'GOLD', amount: 10, type: 'manual' },

@@ -1,6 +1,6 @@
 import { WalletProvider } from './wallet-provider';
 import type { DebankTokenResponse, DebankProtocolResponse } from '../api/types';
-import type { Wallet } from '@/types';
+import type { Account } from '@/types';
 
 // Mock the DeBank API module
 vi.mock('../api', () => {
@@ -92,6 +92,20 @@ function makeProtocol(overrides: Partial<DebankProtocolResponse> = {}): DebankPr
       },
     ],
     ...overrides,
+  };
+}
+
+function makeWalletAccount(overrides: { id?: string; address: string; name?: string; chains?: string[] }): Account {
+  return {
+    id: overrides.id || 'w1',
+    name: overrides.name || 'Wallet',
+    isActive: true,
+    connection: {
+      dataSource: 'debank',
+      address: overrides.address,
+      chains: overrides.chains || ['eth'],
+    },
+    addedAt: new Date().toISOString(),
   };
 }
 
@@ -538,22 +552,22 @@ describe('WalletProvider', () => {
     });
 
     it('routes 0x addresses to EVM path', async () => {
-      const wallets: Wallet[] = [{
-        id: 'w1', address: '0xAbcD1234567890abcdef1234567890abcdef1234', name: 'EVM', chains: ['eth'], addedAt: new Date().toISOString(),
-      }];
+      const accounts: Account[] = [
+        makeWalletAccount({ id: 'w1', address: '0xAbcD1234567890abcdef1234567890abcdef1234', name: 'EVM', chains: ['eth'] }),
+      ];
 
-      await provider.fetchAllWalletPositions(wallets);
+      await provider.fetchAllWalletPositions(accounts);
 
       // DeBank should be called for EVM wallet
       expect(mockClient.getWalletProtocols).toHaveBeenCalled();
     });
 
     it('returns empty for wallets with no supported address type', async () => {
-      const wallets: Wallet[] = [{
-        id: 'w1', address: 'bc1qnonsensebitcoinaddress', name: 'BTC', chains: ['btc'], addedAt: new Date().toISOString(),
-      }];
+      const accounts: Account[] = [
+        makeWalletAccount({ id: 'w1', address: 'bc1qnonsensebitcoinaddress', name: 'BTC', chains: ['btc'] }),
+      ];
 
-      const result = await provider.fetchAllWalletPositions(wallets);
+      const result = await provider.fetchAllWalletPositions(accounts);
 
       expect(result.positions).toHaveLength(0);
       expect(mockClient.getWalletTokens).not.toHaveBeenCalled();
@@ -579,11 +593,11 @@ describe('WalletProvider', () => {
       mockClient.getWalletTokens.mockResolvedValue([
         makeToken({ symbol: 'ETH', name: 'Ethereum', amount: 2, price: 3200, chain: 'eth' }),
       ]);
-      const wallets: Wallet[] = [{
-        id: 'w1', address: '0xABCD', name: 'Main', chains: ['eth'], addedAt: new Date().toISOString(),
-      }];
+      const accounts: Account[] = [
+        makeWalletAccount({ id: 'w1', address: '0xABCD', name: 'Main', chains: ['eth'] }),
+      ];
 
-      const result = await provider.fetchAllWalletPositions(wallets);
+      const result = await provider.fetchAllWalletPositions(accounts);
 
       expect(result.positions).toHaveLength(1);
       const pos = result.positions[0];
@@ -591,7 +605,7 @@ describe('WalletProvider', () => {
       expect(pos.symbol).toBe('ETH');
       expect(pos.name).toBe('Ethereum');
       expect(pos.amount).toBe(2);
-      expect(pos.walletAddress).toBe('0xABCD');
+      expect(pos.accountId).toBe('w1');
       expect(pos.chain).toBe('eth');
       expect(pos.debankPriceKey).toBe('debank-eth-eth');
     });
@@ -601,11 +615,11 @@ describe('WalletProvider', () => {
       mockClient.getWalletTokens.mockResolvedValue([
         makeToken({ symbol: 'ETH', amount: 2, price: 3200, chain: 'eth' }),
       ]);
-      const wallets: Wallet[] = [{
-        id: 'w1', address: '0xABCD', name: 'Main', chains: ['eth'], addedAt: new Date().toISOString(),
-      }];
+      const accounts: Account[] = [
+        makeWalletAccount({ id: 'w1', address: '0xABCD', name: 'Main', chains: ['eth'] }),
+      ];
 
-      const result = await provider.fetchAllWalletPositions(wallets);
+      const result = await provider.fetchAllWalletPositions(accounts);
 
       expect(result.prices['debank-eth-eth']).toEqual({ price: 3200, symbol: 'ETH' });
     });
@@ -626,11 +640,11 @@ describe('WalletProvider', () => {
         }),
       ]);
       mockClient.getWalletTokens.mockResolvedValue([]);
-      const wallets: Wallet[] = [{
-        id: 'w1', address: '0xABCD', name: 'Main', chains: ['eth'], addedAt: new Date().toISOString(),
-      }];
+      const accounts: Account[] = [
+        makeWalletAccount({ id: 'w1', address: '0xABCD', name: 'Main', chains: ['eth'] }),
+      ];
 
-      const result = await provider.fetchAllWalletPositions(wallets);
+      const result = await provider.fetchAllWalletPositions(accounts);
 
       const debtPos = result.positions.find(p => p.isDebt);
       expect(debtPos).toBeDefined();

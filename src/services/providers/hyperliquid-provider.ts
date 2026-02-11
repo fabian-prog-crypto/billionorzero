@@ -98,11 +98,12 @@ export class HyperliquidProvider {
 
       positions.push({
         id: `${walletId}-hyperliquid-perp-${coin}-${isShort ? 'short' : 'long'}`,
-        type: 'crypto',
+        assetClass: 'crypto' as const,
+        type: 'crypto' as const,
         symbol: coin,
         name: `${coin} ${isShort ? 'Short' : 'Long'} (Hyperliquid)`,
         amount: absSize,
-        walletAddress,
+        accountId: walletId,
         chain: 'hyperliquid',
         protocol: 'Hyperliquid',
         debankPriceKey: priceKey,
@@ -124,11 +125,12 @@ export class HyperliquidProvider {
 
       positions.push({
         id: `${walletId}-hyperliquid-margin-usdc`,
-        type: 'crypto',
+        assetClass: 'crypto' as const,
+        type: 'crypto' as const,
         symbol: 'USDC',
         name: 'USDC Margin (Hyperliquid)',
         amount: accountValue,
-        walletAddress,
+        accountId: walletId,
         chain: 'hyperliquid',
         protocol: 'Hyperliquid',
         debankPriceKey: priceKey,
@@ -183,11 +185,12 @@ export class HyperliquidProvider {
 
       positions.push({
         id: `${walletId}-hyperliquid-spot-${coin}`,
-        type: 'crypto',
+        assetClass: 'crypto' as const,
+        type: 'crypto' as const,
         symbol: coin,
         name: `${coin} (Hyperliquid${isStable ? ' Spot Margin' : ' Spot'})`,
         amount: total,
-        walletAddress,
+        accountId: walletId,
         chain: 'hyperliquid',
         protocol: 'Hyperliquid',
         debankPriceKey: priceKey,

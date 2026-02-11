@@ -4,7 +4,7 @@
  * Includes caching to reduce API calls during debugging
  */
 
-import { WalletBalance, DefiPosition, Position, Wallet } from '@/types';
+import { WalletBalance, DefiPosition, Position, Account, WalletConnection } from '@/types';
 import { getDebankApiClient, ApiError } from '../api';
 import { generateDemoWalletTokens, generateDemoDefiPositions } from './demo-data';
 import { getPerpExchangeService } from '../domain/perp-exchange-service';
@@ -452,24 +452,31 @@ export class WalletProvider {
    * @param wallets - Wallets to fetch positions for
    * @param forceRefresh - If true, bypass cache and fetch fresh data
    */
-  async fetchAllWalletPositions(wallets: Wallet[], forceRefresh: boolean = false): Promise<{
+  async fetchAllWalletPositions(accounts: Account[], forceRefresh: boolean = false): Promise<{
     positions: Position[];
     prices: Record<string, { price: number; symbol: string }>;
   }> {
+    // Filter to wallet accounts only and type-narrow
+    const walletAccounts = accounts.filter(
+      (a): a is Account & { connection: WalletConnection } =>
+        a.connection.dataSource === 'debank' || a.connection.dataSource === 'helius'
+    );
+
     // Separate wallets by type
-    const evmWallets = wallets.filter(w => w.address?.startsWith('0x'));
-    const solanaWallets = wallets.filter(w => this.isSolanaAddress(w.address));
-    const otherWallets = wallets.filter(w =>
-      !w.address?.startsWith('0x') && !this.isSolanaAddress(w.address)
+    const evmWallets = walletAccounts.filter(w => w.connection.address?.startsWith('0x'));
+    const solanaWallets = walletAccounts.filter(w => this.isSolanaAddress(w.connection.address));
+    const otherWallets = walletAccounts.filter(w =>
+      !w.connection.address?.startsWith('0x') && !this.isSolanaAddress(w.connection.address)
     );
 
     if (otherWallets.length > 0) {
       console.log('[WalletProvider.fetchAllWalletPositions] Skipping unsupported wallets:',
-        otherWallets.map(w => `${w.address?.slice(0, 10)}... (${w.name || 'unnamed'})`));
+        otherWallets.map(w => `${w.connection.address?.slice(0, 10)}... (${w.name || 'unnamed'})`));
     }
 
     console.log('[WalletProvider.fetchAllWalletPositions] Called with:', {
-      totalWallets: wallets.length,
+      totalAccounts: accounts.length,
+      walletAccounts: walletAccounts.length,
       evmWallets: evmWallets.length,
       solanaWallets: solanaWallets.length,
       otherWallets: otherWallets.length,
@@ -494,7 +501,7 @@ export class WalletProvider {
 
     for (const wallet of evmWallets) {
       // FIRST: Fetch DeFi protocol positions (including debt)
-      const { positions: protocolPositions } = await this.getWalletProtocols(wallet.address, forceRefresh);
+      const { positions: protocolPositions } = await this.getWalletProtocols(wallet.connection.address, forceRefresh);
 
       // Track seen position IDs to avoid duplicates within protocols
       const seenPositionIds = new Set<string>();
@@ -534,11 +541,12 @@ export class WalletProvider {
 
           allPositions.push({
             id: positionId,
+            assetClass: 'crypto' as const,
             type: 'crypto' as const,
             symbol: token.symbol,
             name: `${token.symbol} (${defiPos.protocol})`,
             amount: token.amount,
-            walletAddress: wallet.address,
+            accountId: wallet.id,
             chain: defiPos.chain,
             protocol: defiPos.protocol,
             detailTypes: token.detailTypes, // Raw detail_types from DeBank (e.g., ['vesting'])
@@ -583,11 +591,12 @@ export class WalletProvider {
 
             allPositions.push({
               id: positionId,
+              assetClass: 'crypto' as const,
               type: 'crypto' as const,
               symbol: token.symbol,
               name: `${token.symbol} Debt (${defiPos.protocol})`,
               amount: token.amount,
-              walletAddress: wallet.address,
+              accountId: wallet.id,
               chain: defiPos.chain,
               protocol: defiPos.protocol,
               isDebt: true,
@@ -602,7 +611,7 @@ export class WalletProvider {
       // SECOND: Fetch regular wallet tokens
       // DeBank's token API returns wallet balances SEPARATE from protocol deposits,
       // so there's no double-counting - we include all wallet tokens
-      const { tokens } = await this.getWalletTokens(wallet.address, forceRefresh);
+      const { tokens } = await this.getWalletTokens(wallet.connection.address, forceRefresh);
 
       const walletPositions = tokens.map((token, index) => {
           // Store the price from DeBank
@@ -614,11 +623,12 @@ export class WalletProvider {
 
           return {
             id: `${wallet.id}-${token.chain}-${token.symbol}-${index}`,
+            assetClass: 'crypto' as const,
             type: 'crypto' as const,
             symbol: token.symbol,
             name: token.name,
             amount: token.amount,
-            walletAddress: wallet.address,
+            accountId: wallet.id,
             chain: token.chain,
             debankPriceKey: priceKey,
             logo: token.logo, // Preserve logo URL from DeBank API
@@ -641,10 +651,10 @@ export class WalletProvider {
 
     // FOURTH: Fetch Solana wallet positions using Helius API
     for (const wallet of solanaWallets) {
-      const solanaResult = await this.getSolanaWalletTokens(wallet.address, forceRefresh);
+      const solanaResult = await this.getSolanaWalletTokens(wallet.connection.address, forceRefresh);
 
       if (solanaResult.error) {
-        console.warn(`[WalletProvider] Solana wallet ${wallet.address.slice(0, 8)}... error:`, solanaResult.error);
+        console.warn(`[WalletProvider] Solana wallet ${wallet.connection.address.slice(0, 8)}... error:`, solanaResult.error);
       }
 
       const solanaPositions = solanaResult.tokens.map((token, index) => {
@@ -656,11 +666,12 @@ export class WalletProvider {
 
         return {
           id: `${wallet.id}-sol-${token.symbol}-${index}`,
+          assetClass: 'crypto' as const,
           type: 'crypto' as const,
           symbol: token.symbol,
           name: token.name,
           amount: token.amount,
-          walletAddress: wallet.address,
+          accountId: wallet.id,
           chain: 'sol',
           debankPriceKey: priceKey,
           logo: token.logo, // Preserve logo URL from Helius API

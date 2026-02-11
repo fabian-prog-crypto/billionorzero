@@ -113,11 +113,12 @@ export class EtherealProvider {
 
       positions.push({
         id: `${walletId}-ethereal-perp-${symbol}-${isShort ? 'short' : 'long'}-${subaccount.id.slice(0, 8)}`,
-        type: 'crypto',
+        assetClass: 'crypto' as const,
+        type: 'crypto' as const,
         symbol: baseAsset,
         name: `${baseAsset} ${isShort ? 'Short' : 'Long'} (Ethereal)`,
         amount: absSize,
-        walletAddress,
+        accountId: walletId,
         chain: 'ethereal',
         protocol: 'Ethereal',
         debankPriceKey: priceKey,
@@ -205,11 +206,12 @@ export class EtherealProvider {
 
       positions.push({
         id: `${walletId}-ethereal-spot-${symbol}-${subaccount.id.slice(0, 8)}`,
-        type: 'crypto',
+        assetClass: 'crypto' as const,
+        type: 'crypto' as const,
         symbol,
         name: `${symbol} (Ethereal${isStable ? ' Margin' : ' Spot'})`,
         amount,
-        walletAddress,
+        accountId: walletId,
         chain: 'ethereal',
         protocol: 'Ethereal',
         debankPriceKey: priceKey,
@@ -240,11 +242,12 @@ export class EtherealProvider {
 
         positions.push({
           id: `${walletId}-ethereal-margin-usdc-${subaccount.id.slice(0, 8)}`,
-          type: 'crypto',
+          assetClass: 'crypto' as const,
+          type: 'crypto' as const,
           symbol: 'USDC',
           name: 'USDC Margin (Ethereal)',
           amount: estimatedMargin,
-          walletAddress,
+          accountId: walletId,
           chain: 'ethereal',
           protocol: 'Ethereal',
           debankPriceKey: priceKey,

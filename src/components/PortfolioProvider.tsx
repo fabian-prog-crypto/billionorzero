@@ -9,6 +9,7 @@ import {
   fetchAllCexPositions,
   getPriceProvider,
 } from '@/services';
+import { useAutoBackup } from '@/hooks/useAutoBackup';
 import type { Position, PriceData } from '@/types';
 
 const REFRESH_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours (once per day)
@@ -35,9 +36,15 @@ async function executeRefresh(forceRefresh: boolean = false): Promise<void> {
   const store = usePortfolioStore.getState();
   store.setRefreshing(true);
 
+  const walletAccounts = store.walletAccounts();
+  const cexAccounts = store.cexAccounts();
+
   console.log('[executeRefresh] Store state:', {
-    walletsCount: store.wallets.length,
-    walletAddresses: store.wallets.map(w => w.address?.slice(0, 10) + '...'),
+    walletAccountsCount: walletAccounts.length,
+    walletAddresses: walletAccounts.map(w => {
+      const conn = w.connection as import('@/types').WalletConnection;
+      return conn.address?.slice(0, 10) + '...';
+    }),
     positionsCount: store.positions.length,
     accountsCount: store.accounts.length,
   });
@@ -45,17 +52,17 @@ async function executeRefresh(forceRefresh: boolean = false): Promise<void> {
   try {
     const portfolioService = getPortfolioService();
 
-    // Get only manual positions (non-wallet, non-CEX positions)
+    // Get only standalone manual positions (not linked to any account)
     const manualPositions = store.positions.filter(
-      (p) => !p.walletAddress && !p.protocol?.startsWith('cex:')
+      (p) => !p.accountId
     );
 
-    console.log('[executeRefresh] Calling portfolioService.refreshPortfolio with', store.wallets.length, 'wallets');
+    console.log('[executeRefresh] Calling portfolioService.refreshPortfolio with', walletAccounts.length, 'wallet accounts');
 
     // Use the portfolio service to refresh wallets and prices
     const result = await portfolioService.refreshPortfolio(
       manualPositions,
-      store.wallets,
+      walletAccounts,
       forceRefresh
     );
 
@@ -68,9 +75,9 @@ async function executeRefresh(forceRefresh: boolean = false): Promise<void> {
     // Fetch CEX account positions
     let cexPositions: Position[] = [];
     let cexPrices: Record<string, PriceData> = {};
-    if (store.accounts.length > 0) {
+    if (cexAccounts.length > 0) {
       try {
-        cexPositions = await fetchAllCexPositions(store.accounts);
+        cexPositions = await fetchAllCexPositions(cexAccounts);
         // Fetch prices for CEX positions from CoinGecko
         if (cexPositions.length > 0) {
           const priceProvider = getPriceProvider();
@@ -95,12 +102,14 @@ async function executeRefresh(forceRefresh: boolean = false): Promise<void> {
 
     // Update wallet positions in store
     if (result.walletPositions.length > 0) {
-      currentStore.setWalletPositions(result.walletPositions);
+      const walletAccountIds = walletAccounts.map(a => a.id);
+      currentStore.setSyncedPositions(walletAccountIds, result.walletPositions);
     }
 
     // Update CEX positions in store
     if (cexPositions.length > 0) {
-      currentStore.setAccountPositions(cexPositions);
+      const cexAccountIds = cexAccounts.map(a => a.id);
+      currentStore.setSyncedPositions(cexAccountIds, cexPositions);
     }
 
     currentStore.setLastRefresh(new Date().toISOString());
@@ -128,6 +137,9 @@ interface PortfolioProviderProps {
 }
 
 export default function PortfolioProvider({ children }: PortfolioProviderProps) {
+  // Auto-backup store changes to server-side JSON files
+  useAutoBackup();
+
   // Initialize service on mount and reset any stuck refresh state
   useEffect(() => {
     getPortfolioService().initialize();
@@ -148,7 +160,7 @@ export default function PortfolioProvider({ children }: PortfolioProviderProps) 
   // // Initial refresh on mount
   // useEffect(() => {
   //   const store = usePortfolioStore.getState();
-  //   const hasData = store.positions.length > 0 || store.wallets.length > 0 || store.accounts.length > 0;
+  //   const hasData = store.positions.length > 0 || store.wallets().length > 0 || store.accounts.length > 0;
   //   if (hasData) {
   //     executeRefresh(false);
   //   }
@@ -158,7 +170,7 @@ export default function PortfolioProvider({ children }: PortfolioProviderProps) 
   // useEffect(() => {
   //   const interval = setInterval(() => {
   //     const store = usePortfolioStore.getState();
-  //     const hasData = store.positions.length > 0 || store.wallets.length > 0 || store.accounts.length > 0;
+  //     const hasData = store.positions.length > 0 || store.wallets().length > 0 || store.accounts.length > 0;
   //     if (hasData) {
   //       executeRefresh(false);
   //     }

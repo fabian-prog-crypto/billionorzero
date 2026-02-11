@@ -6,7 +6,7 @@ import { usePortfolioStore } from '@/store/portfolioStore';
 import { calculateAllPositionsWithPrices } from '@/services';
 import { fetchAllCexPositions } from '@/services/providers/cex-provider';
 import { formatCurrency, formatNumber } from '@/lib/utils';
-import { CexAccount, CexExchange } from '@/types';
+import { CexExchange, CexConnection } from '@/types';
 
 const EXCHANGE_INFO: Record<CexExchange, { name: string; logo: string; supported: boolean }> = {
   binance: { name: 'Binance', logo: 'B', supported: true },
@@ -16,25 +16,27 @@ const EXCHANGE_INFO: Record<CexExchange, { name: string; logo: string; supported
 };
 
 export default function AccountsPage() {
-  const { accounts, positions, prices, addAccount, removeAccount, updateAccount, setAccountPositions, hideBalances, toggleHideBalances } = usePortfolioStore();
+  const store = usePortfolioStore();
+  const { positions, prices, addAccount, removeAccount, updateAccount, setSyncedPositions, hideBalances, toggleHideBalances } = store;
+  const accounts = store.cexAccounts();
   const [showAddModal, setShowAddModal] = useState(false);
   const [isSyncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
 
   // Calculate CEX positions with prices
+  const cexAccountIds = useMemo(() => new Set(accounts.map(a => a.id)), [accounts]);
   const cexPositions = useMemo(() => {
-    const cexPositions = positions.filter((p) => p.protocol?.startsWith('cex:'));
-    return calculateAllPositionsWithPrices(cexPositions, prices);
-  }, [positions, prices]);
+    const filtered = positions.filter((p) => p.accountId && cexAccountIds.has(p.accountId));
+    return calculateAllPositionsWithPrices(filtered, prices);
+  }, [positions, prices, cexAccountIds]);
 
   // Group positions by account
   const positionsByAccount = useMemo(() => {
     const grouped: Record<string, typeof cexPositions> = {};
     cexPositions.forEach((p) => {
-      const accountId = p.protocol?.split(':')[2];
-      if (accountId) {
-        if (!grouped[accountId]) grouped[accountId] = [];
-        grouped[accountId].push(p);
+      if (p.accountId) {
+        if (!grouped[p.accountId]) grouped[p.accountId] = [];
+        grouped[p.accountId].push(p);
       }
     });
     return grouped;
@@ -50,11 +52,12 @@ export default function AccountsPage() {
     setSyncError(null);
     try {
       const newPositions = await fetchAllCexPositions(accounts);
-      setAccountPositions(newPositions);
+      const accountIds = accounts.filter(a => a.isActive).map(a => a.id);
+      setSyncedPositions(accountIds, newPositions);
       // Update last sync time for all synced accounts
       accounts.forEach((account) => {
         if (account.isActive) {
-          updateAccount(account.id, { lastSync: new Date().toISOString() });
+          updateAccount(account.id, { connection: { ...account.connection, lastSync: new Date().toISOString() } as CexConnection });
         }
       });
     } catch (error) {
@@ -138,7 +141,8 @@ export default function AccountsPage() {
           {accounts.map((account) => {
             const accountPositions = positionsByAccount[account.id] || [];
             const accountValue = accountPositions.reduce((sum, p) => sum + p.value, 0);
-            const exchangeInfo = EXCHANGE_INFO[account.exchange];
+            const conn = account.connection as CexConnection;
+            const exchangeInfo = EXCHANGE_INFO[conn.dataSource as CexExchange];
 
             return (
               <div key={account.id} className="border-b border-[var(--border)] last:border-0 pb-6 mb-6 last:pb-0 last:mb-0">
@@ -223,9 +227,9 @@ export default function AccountsPage() {
                   </div>
                 )}
 
-                {account.lastSync && (
+                {conn.lastSync && (
                   <p className="text-xs text-[var(--foreground-muted)] mt-3">
-                    Last synced: {new Date(account.lastSync).toLocaleString()}
+                    Last synced: {new Date(conn.lastSync).toLocaleString()}
                   </p>
                 )}
               </div>
@@ -243,7 +247,9 @@ export default function AccountsPage() {
 }
 
 function AddAccountModal({ onClose }: { onClose: () => void }) {
-  const { addAccount, accounts } = usePortfolioStore();
+  const addAccountStore = usePortfolioStore();
+  const { addAccount } = addAccountStore;
+  const accounts = addAccountStore.cexAccounts();
   const [exchange, setExchange] = useState<CexExchange>('binance');
   const [name, setName] = useState('');
   const [apiKey, setApiKey] = useState('');
@@ -293,11 +299,9 @@ function AddAccountModal({ onClose }: { onClose: () => void }) {
 
       // Credentials are valid, add the account
       addAccount({
-        exchange,
         name: name.trim(),
-        apiKey,
-        apiSecret,
         isActive: true,
+        connection: { dataSource: exchange, apiKey, apiSecret },
       });
 
       onClose();

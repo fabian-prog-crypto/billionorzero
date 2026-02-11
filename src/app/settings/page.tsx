@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Save, Key, RefreshCw, Trash2, Download, Upload, Fingerprint, LogOut, Shield, Sun, Moon, Monitor, TrendingUp, Bot, Loader2, CheckCircle, XCircle } from 'lucide-react';
+import { Save, Key, RefreshCw, Trash2, Download, Upload, Fingerprint, LogOut, Shield, Sun, Moon, Monitor, TrendingUp, Bot, Loader2, CheckCircle, XCircle, HardDrive } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import { useAuthStore } from '@/store/authStore';
 import { useThemeStore, applyTheme } from '@/store/themeStore';
@@ -26,8 +26,11 @@ export default function SettingsPage() {
   const [passkeySupported, setPasskeySupported] = useState(true);
   const [passkeyLoading, setPasskeyLoading] = useState(false);
   const [passkeyError, setPasskeyError] = useState<string | null>(null);
+  const [lastBackup, setLastBackup] = useState<string | null>(null);
+  const [backupCount, setBackupCount] = useState(0);
+  const [restoring, setRestoring] = useState(false);
 
-  const { positions, wallets, snapshots, riskFreeRate, setRiskFreeRate } = usePortfolioStore();
+  const { positions, accounts, snapshots, riskFreeRate, setRiskFreeRate } = usePortfolioStore();
   const { logout, setPasskeyEnabled } = useAuthStore();
   const { theme, setTheme } = useThemeStore();
 
@@ -48,6 +51,20 @@ export default function SettingsPage() {
     // Check passkey support and status
     setPasskeySupported(isPasskeySupported());
     setHasPasskey(isPasskeyRegistered());
+
+    // Fetch backup status
+    fetch('/api/backup')
+      .then(res => res.json())
+      .then(data => {
+        if (data.backups && data.backups.length > 0) {
+          const current = data.backups.find((b: { name: string }) => b.name === 'current.json');
+          if (current) {
+            setLastBackup(current.modified);
+          }
+          setBackupCount(data.backups.filter((b: { name: string }) => b.name.startsWith('backup-')).length);
+        }
+      })
+      .catch(() => { /* backup endpoint may not be available */ });
   }, []);
 
   const handleSetupPasskey = async () => {
@@ -123,7 +140,7 @@ export default function SettingsPage() {
   const handleExport = () => {
     const data = {
       positions,
-      wallets,
+      accounts,
       snapshots,
       exportedAt: new Date().toISOString(),
     };
@@ -144,18 +161,20 @@ export default function SettingsPage() {
     reader.onload = (event) => {
       try {
         const data = JSON.parse(event.target?.result as string);
-        if (data.positions && data.wallets) {
+        // Support both old format (wallets) and new format (accounts)
+        const importAccounts = data.accounts || data.wallets || [];
+        if (data.positions) {
           // Clear existing data and import
           localStorage.setItem('portfolio-storage', JSON.stringify({
             state: {
               positions: data.positions,
-              wallets: data.wallets,
+              accounts: importAccounts,
               snapshots: data.snapshots || [],
               prices: {},
               lastRefresh: null,
               isRefreshing: false,
             },
-            version: 0,
+            version: 10,
           }));
           window.location.reload();
         }
@@ -164,6 +183,37 @@ export default function SettingsPage() {
       }
     };
     reader.readAsText(file);
+  };
+
+  const handleRestoreFromBackup = async () => {
+    if (!confirm('This will replace all current data with the latest server backup. Continue?')) return;
+    setRestoring(true);
+    try {
+      const res = await fetch('/api/backup?file=current.json');
+      if (!res.ok) throw new Error('No backup found');
+      const data = await res.json();
+      localStorage.setItem('portfolio-storage', JSON.stringify({
+        state: {
+          positions: data.positions || [],
+          accounts: data.accounts || [],
+          prices: data.prices || {},
+          customPrices: data.customPrices || {},
+          transactions: data.transactions || [],
+          snapshots: data.snapshots || [],
+          lastRefresh: data.lastRefresh || null,
+          isRefreshing: false,
+          hideBalances: data.hideBalances ?? false,
+          hideDust: data.hideDust ?? false,
+          riskFreeRate: data.riskFreeRate ?? 0.05,
+        },
+        version: data.storeVersion || 10,
+      }));
+      window.location.reload();
+    } catch {
+      alert('Failed to restore from backup. No backup file found on server.');
+    } finally {
+      setRestoring(false);
+    }
   };
 
   const handleClearData = () => {
@@ -570,10 +620,25 @@ export default function SettingsPage() {
 
         {/* Data Management */}
         <div>
-          <h3 className="text-[15px] font-medium mb-4">Data Management</h3>
+          <h3 className="text-[15px] font-medium mb-4 flex items-center gap-2">
+            <HardDrive className="w-5 h-5" />
+            Data Management
+          </h3>
           <p className="text-[13px] text-[var(--foreground-muted)] mb-4">
-            Export your portfolio data for backup or import a previous backup.
+            Your portfolio is automatically backed up to the server every time data changes. Export, import, or restore from the latest backup.
           </p>
+
+          {lastBackup && (
+            <div className="flex items-center justify-between p-3 bg-[var(--background-secondary)] mb-4">
+              <div>
+                <span className="text-[13px]">Last auto-backup</span>
+                <p className="text-xs text-[var(--foreground-muted)]">
+                  {new Date(lastBackup).toLocaleString()} &middot; {backupCount} daily backup{backupCount !== 1 ? 's' : ''} saved
+                </p>
+              </div>
+              <div className="w-2 h-2 bg-[var(--positive)] animate-pulse"></div>
+            </div>
+          )}
 
           <div className="flex gap-3 flex-wrap">
             <button onClick={handleExport} className="btn btn-secondary">
@@ -591,6 +656,15 @@ export default function SettingsPage() {
                 className="hidden"
               />
             </label>
+
+            <button
+              onClick={handleRestoreFromBackup}
+              disabled={restoring || !lastBackup}
+              className="btn btn-secondary"
+            >
+              <RefreshCw className={`w-4 h-4 ${restoring ? 'animate-spin' : ''}`} />
+              {restoring ? 'Restoring...' : 'Restore from Backup'}
+            </button>
 
             <button onClick={handleClearData} className="btn btn-danger">
               <Trash2 className="w-4 h-4" />

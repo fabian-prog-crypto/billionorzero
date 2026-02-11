@@ -19,8 +19,10 @@ export function createDailySnapshot(
     date: new Date().toISOString().split('T')[0],
     totalValue: summary.totalValue,
     cryptoValue: summary.cryptoValue,
-    stockValue: summary.stockValue,
+    equityValue: summary.equityValue,
     cashValue: summary.cashValue,
+    otherValue: summary.otherValue,
+    stockValue: summary.stockValue,
     manualValue: summary.manualValue,
   };
 }
@@ -73,7 +75,7 @@ export function calculatePerformance(
     absoluteChange,
     percentChange,
     cryptoChange: endSnapshot.cryptoValue - startSnapshot.cryptoValue,
-    stockChange: endSnapshot.stockValue - startSnapshot.stockValue,
+    stockChange: (endSnapshot.equityValue ?? endSnapshot.stockValue ?? 0) - (startSnapshot.equityValue ?? startSnapshot.stockValue ?? 0),
   };
 }
 

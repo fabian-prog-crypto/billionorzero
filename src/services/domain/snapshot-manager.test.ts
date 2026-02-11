@@ -61,8 +61,8 @@ describe('getSnapshotsByPeriod', () => {
 
 describe('calculatePerformance', () => {
   it('calculates profit correctly', () => {
-    const start = makeSnapshot({ totalValue: 100000, cryptoValue: 60000, stockValue: 30000 })
-    const end = makeSnapshot({ totalValue: 120000, cryptoValue: 70000, stockValue: 35000 })
+    const start = makeSnapshot({ totalValue: 100000, cryptoValue: 60000, equityValue: 30000, stockValue: 30000 })
+    const end = makeSnapshot({ totalValue: 120000, cryptoValue: 70000, equityValue: 35000, stockValue: 35000 })
     const perf = calculatePerformance(start, end)
     expect(perf.absoluteChange).toBe(20000)
     expect(perf.percentChange).toBe(20)
@@ -71,8 +71,8 @@ describe('calculatePerformance', () => {
   })
 
   it('calculates loss correctly', () => {
-    const start = makeSnapshot({ totalValue: 100000, cryptoValue: 60000, stockValue: 30000 })
-    const end = makeSnapshot({ totalValue: 80000, cryptoValue: 45000, stockValue: 25000 })
+    const start = makeSnapshot({ totalValue: 100000, cryptoValue: 60000, equityValue: 30000, stockValue: 30000 })
+    const end = makeSnapshot({ totalValue: 80000, cryptoValue: 45000, equityValue: 25000, stockValue: 25000 })
     const perf = calculatePerformance(start, end)
     expect(perf.absoluteChange).toBe(-20000)
     expect(perf.percentChange).toBe(-20)

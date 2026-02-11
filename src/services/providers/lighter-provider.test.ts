@@ -93,7 +93,7 @@ describe('LighterProvider', () => {
       expect(btcPos!.amount).toBe(0.1);
       expect(btcPos!.chain).toBe('lighter');
       expect(btcPos!.protocol).toBe('Lighter');
-      expect(btcPos!.walletAddress).toBe('0xabc');
+      expect(btcPos!.accountId).toBe('wallet-1');
       expect(btcPos!.isDebt).toBe(false);
       expect(btcPos!.id).toContain('long');
     });

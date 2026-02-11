@@ -29,7 +29,9 @@ export default function CashCurrencyDetailPage() {
   const code = (params.code as string).toUpperCase();
   const [searchQuery, setSearchQuery] = useState('');
 
-  const { positions, prices, customPrices, fxRates, hideBalances, cashAccounts } = usePortfolioStore();
+  const cashCurrStore = usePortfolioStore();
+  const { positions, prices, customPrices, fxRates, hideBalances } = cashCurrStore;
+  const cashAccounts = useMemo(() => cashCurrStore.cashAccounts(), [cashCurrStore.accounts]);
 
   const allPositions = useMemo(() => {
     return calculateAllPositionsWithPrices(positions, prices, customPrices, fxRates);
@@ -73,13 +75,10 @@ export default function CashCurrencyDetailPage() {
     const groupMap = new Map<string, AccountGroup>();
 
     currencyPositions.forEach((p) => {
-      // Try to resolve account name from cash-account protocol
+      // Try to resolve account name from accountId
       let accountName = 'Unknown';
-      const protocol = p.protocol || '';
-      const cashAccountMatch = protocol.match(/^cash-account:(.+)$/);
-      if (cashAccountMatch) {
-        const accountId = cashAccountMatch[1];
-        const account = cashAccounts.find((a) => a.id === accountId);
+      if (p.accountId) {
+        const account = cashAccounts.find((a) => a.id === p.accountId);
         accountName = account?.name || extractAccountName(p);
       } else {
         accountName = extractAccountName(p);

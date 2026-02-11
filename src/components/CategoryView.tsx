@@ -35,7 +35,7 @@ export default function CategoryView({
   emptyIcon,
   emptyMessage,
 }: CategoryViewProps) {
-  const { positions, prices, customPrices, hideBalances } = usePortfolioStore();
+  const { positions, prices, customPrices, hideBalances, accounts } = usePortfolioStore();
 
   const categoryService = getCategoryService();
 
@@ -54,8 +54,8 @@ export default function CategoryView({
 
   // Use centralized service functions for chart data (SINGLE SOURCE OF TRUTH)
   const custodyChartData = useMemo((): DonutChartItem[] => {
-    return calculateCustodyBreakdown(categoryPositions);
-  }, [categoryPositions]);
+    return calculateCustodyBreakdown(categoryPositions, accounts);
+  }, [categoryPositions, accounts]);
 
   const chainChartData = useMemo((): DonutChartItem[] => {
     return calculateChainBreakdown(categoryPositions);

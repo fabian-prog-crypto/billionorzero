@@ -21,7 +21,7 @@ import {
 } from '@/lib/utils';
 
 export default function OverviewPage() {
-  const { positions, prices, customPrices, snapshots, hideBalances } = usePortfolioStore();
+  const { positions, prices, customPrices, snapshots, hideBalances, accounts } = usePortfolioStore();
 
   // Calculate portfolio summary (including custom price overrides)
   const summary = useMemo(() => {
@@ -46,8 +46,8 @@ export default function OverviewPage() {
   }, [allAssetsWithPrices]);
 
   const custodyChartData = useMemo((): DonutChartItem[] => {
-    return calculateCustodyBreakdown(allAssetsWithPrices);
-  }, [allAssetsWithPrices]);
+    return calculateCustodyBreakdown(allAssetsWithPrices, accounts);
+  }, [allAssetsWithPrices, accounts]);
 
   const riskChartData = useMemo((): DonutChartItem[] => {
     return calculateRiskProfile(allAssetsWithPrices);

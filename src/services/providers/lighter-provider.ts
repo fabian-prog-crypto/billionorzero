@@ -111,11 +111,12 @@ export class LighterProvider {
 
       positions.push({
         id: `${walletId}-lighter-perp-${symbol}-${isShort ? 'short' : 'long'}-${account.index}`,
-        type: 'crypto',
+        assetClass: 'crypto' as const,
+        type: 'crypto' as const,
         symbol: baseAsset,
         name: `${baseAsset} ${isShort ? 'Short' : 'Long'} (Lighter)`,
         amount: absSize,
-        walletAddress,
+        accountId: walletId,
         chain: 'lighter',
         protocol: 'Lighter',
         debankPriceKey: priceKey,
@@ -134,11 +135,12 @@ export class LighterProvider {
 
       positions.push({
         id: `${walletId}-lighter-margin-usdc-${account.index}`,
-        type: 'crypto',
+        assetClass: 'crypto' as const,
+        type: 'crypto' as const,
         symbol: 'USDC',
         name: 'USDC Margin (Lighter)',
         amount: accountValue,  // Use total_asset_value, not individual asset balances
-        walletAddress,
+        accountId: walletId,
         chain: 'lighter',
         protocol: 'Lighter',
         debankPriceKey: priceKey,
@@ -175,11 +177,12 @@ export class LighterProvider {
 
         positions.push({
           id: `${walletId}-lighter-spot-${symbol}-${account.index}`,
-          type: 'crypto',
+          assetClass: 'crypto' as const,
+          type: 'crypto' as const,
           symbol,
           name: `${symbol} (Lighter Spot)`,
           amount: balance,
-          walletAddress,
+          accountId: walletId,
           chain: 'lighter',
           protocol: 'Lighter',
           debankPriceKey: priceKey,

@@ -5,7 +5,7 @@
  * Supported exchanges: Hyperliquid, Lighter, Ethereal
  */
 
-import { Position, Wallet, PerpExchange } from '@/types';
+import { Position, Account, WalletConnection, PerpExchange } from '@/types';
 import { getHyperliquidProvider } from '../providers/hyperliquid-provider';
 import { getLighterProvider } from '../providers/lighter-provider';
 import { getEtherealProvider } from '../providers/ethereal-provider';
@@ -84,24 +84,27 @@ export class PerpExchangeService {
   }
 
   /**
-   * Get exchanges enabled for a wallet
+   * Get exchanges enabled for an account
    */
-  getWalletExchanges(wallet: Wallet): PerpExchangeId[] {
-    return wallet.perpExchanges || [];
+  getWalletExchanges(account: Account): PerpExchangeId[] {
+    const conn = account.connection as WalletConnection;
+    return conn.perpExchanges || [];
   }
 
   /**
-   * Check if wallet has any perp exchanges enabled
+   * Check if account has any perp exchanges enabled
    */
-  hasEnabledExchanges(wallet: Wallet): boolean {
-    return (wallet.perpExchanges?.length ?? 0) > 0;
+  hasEnabledExchanges(account: Account): boolean {
+    const conn = account.connection as WalletConnection;
+    return (conn.perpExchanges?.length ?? 0) > 0;
   }
 
   /**
-   * Fetch positions from all enabled exchanges for a wallet
+   * Fetch positions from all enabled exchanges for an account
    */
-  async fetchPositions(wallet: Wallet): Promise<PerpPositionsResult> {
-    const enabledExchanges = this.getWalletExchanges(wallet);
+  async fetchPositions(account: Account): Promise<PerpPositionsResult> {
+    const enabledExchanges = this.getWalletExchanges(account);
+    const conn = account.connection as WalletConnection;
 
     if (enabledExchanges.length === 0) {
       return { positions: [], prices: {}, errors: [] };
@@ -114,15 +117,15 @@ export class PerpExchangeService {
     // Create fetch promises for each enabled exchange
     const fetchPromises = enabledExchanges.map(async (exchangeId) => {
       try {
-        const result = await this.fetchFromExchange(exchangeId, wallet);
+        const result = await this.fetchFromExchange(exchangeId, account);
         if (result.positions.length > 0) {
-          console.log(`[${this.getExchangeName(exchangeId)}] Found ${result.positions.length} positions for ${wallet.address.slice(0, 8)}...`);
+          console.log(`[${this.getExchangeName(exchangeId)}] Found ${result.positions.length} positions for ${conn.address.slice(0, 8)}...`);
           allPositions.push(...result.positions);
           Object.assign(allPrices, result.prices);
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        console.error(`[${this.getExchangeName(exchangeId)}] Error for ${wallet.address.slice(0, 8)}...:`, errorMessage);
+        console.error(`[${this.getExchangeName(exchangeId)}] Error for ${conn.address.slice(0, 8)}...:`, errorMessage);
         errors.push({ exchange: exchangeId, error: errorMessage });
       }
     });
@@ -138,22 +141,23 @@ export class PerpExchangeService {
    */
   private async fetchFromExchange(
     exchangeId: PerpExchangeId,
-    wallet: Wallet
+    account: Account
   ): Promise<{ positions: Position[]; prices: Record<string, { price: number; symbol: string }> }> {
+    const conn = account.connection as WalletConnection;
     switch (exchangeId) {
       case 'hyperliquid': {
         const provider = getHyperliquidProvider();
-        const result = await provider.fetchPositions(wallet.address, wallet.id);
+        const result = await provider.fetchPositions(conn.address, account.id);
         return { positions: result.positions, prices: result.prices };
       }
       case 'lighter': {
         const provider = getLighterProvider();
-        const result = await provider.fetchPositions(wallet.address, wallet.id);
+        const result = await provider.fetchPositions(conn.address, account.id);
         return { positions: result.positions, prices: result.prices };
       }
       case 'ethereal': {
         const provider = getEtherealProvider();
-        const result = await provider.fetchPositions(wallet.address, wallet.id);
+        const result = await provider.fetchPositions(conn.address, account.id);
         return { positions: result.positions, prices: result.prices };
       }
       default:

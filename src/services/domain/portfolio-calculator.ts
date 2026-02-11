@@ -3,7 +3,7 @@
  * Pure business logic for portfolio calculations
  */
 
-import { Position, PriceData, AssetWithPrice, PortfolioSummary } from '@/types';
+import { Position, PriceData, AssetWithPrice, PortfolioSummary, AssetClass, AssetType, Account, WalletAccount, CexAccount, WalletConnection, DataSourceType, assetClassFromType } from '@/types';
 import { getPriceProvider } from '../providers';
 import {
   AssetCategory,
@@ -16,6 +16,72 @@ import {
   getCategoryService,
   getExposureCategoryConfig,
 } from './category-service';
+
+/**
+ * Build a lookup map from account ID to Account for efficient repeated access.
+ * Returns undefined if no accounts are provided.
+ */
+function buildAccountMap(accounts?: Account[]): Map<string, Account> | undefined {
+  if (!accounts || accounts.length === 0) return undefined;
+  const map = new Map<string, Account>();
+  for (const a of accounts) {
+    map.set(a.id, a);
+  }
+  return map;
+}
+
+/**
+ * Look up the connection data source for a position's accountId.
+ * Returns the DataSourceType ('debank' | 'helius' | 'binance' | 'manual' | ...) or undefined.
+ */
+function getConnectionDataSource(
+  accountId: string | undefined,
+  accountMap?: Map<string, Account>
+): DataSourceType | undefined {
+  if (!accountId || !accountMap) return undefined;
+  return accountMap.get(accountId)?.connection.dataSource;
+}
+
+/**
+ * @deprecated Use getConnectionDataSource instead. Kept for backward compatibility during transition.
+ * Look up the legacy account type for a position's accountId.
+ * Maps new connection dataSource to legacy AccountType equivalents.
+ */
+function getAccountType(
+  accountId: string | undefined,
+  accountMap?: Map<string, Account>
+): 'wallet' | 'brokerage' | 'cash' | 'cex' | undefined {
+  const ds = getConnectionDataSource(accountId, accountMap);
+  if (!ds) return undefined;
+  switch (ds) {
+    case 'debank':
+    case 'helius':
+      return 'wallet';
+    case 'binance':
+    case 'coinbase':
+    case 'kraken':
+    case 'okx':
+      return 'cex';
+    case 'manual': {
+      // Check if it has a slug (cash account) otherwise brokerage
+      const acct = accountMap?.get(accountId!);
+      return acct?.slug ? 'cash' : 'brokerage';
+    }
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Look up the full account for a position's accountId.
+ */
+function getAccount(
+  accountId: string | undefined,
+  accountMap?: Map<string, Account>
+): Account | undefined {
+  if (!accountId || !accountMap) return undefined;
+  return accountMap.get(accountId);
+}
 
 /**
  * Check if a position is an actual perp trade (Long/Short position)
@@ -124,7 +190,9 @@ export function classifyAssetExposure(
   const isDebt = asset.isDebt || asset.value < 0;
   const absValue = Math.abs(asset.value);
   const { isPerpTrade, isShort } = detectPerpTrade(asset.name);
-  const subCat = categoryService.getSubCategory(asset.symbol, asset.type);
+  // Pass effective type string to category service for backward compat
+  const effectiveType = asset.type;
+  const subCat = categoryService.getSubCategory(asset.symbol, effectiveType);
 
   // Check if cash equivalent (stablecoins, Pendle PTs)
   const symbolLower = asset.symbol.toLowerCase();
@@ -365,7 +433,8 @@ export function getPriceKey(position: Position): string {
 
   // Manual positions use CoinGecko/Finnhub price lookup
   const priceProvider = getPriceProvider();
-  return position.type === 'crypto'
+  const effectiveClass = position.assetClass ?? assetClassFromType(position.type);
+  return effectiveClass === 'crypto'
     ? priceProvider.getCoinId(position.symbol)
     : position.symbol.toLowerCase();
 }
@@ -431,9 +500,10 @@ export function calculatePositionValue(
   fxRates?: Record<string, number>
 ): AssetWithPrice {
   // Cash positions - apply FX conversion to USD
-  // Check BOTH explicit cash type AND positions that categoryService identifies as cash
+  // Check BOTH explicit cash class/type AND positions that categoryService identifies as cash
   // (e.g., manual positions with fiat currency symbols like CHF, EUR, GBP)
-  const isCashByType = position.type === 'cash';
+  const effectiveClass = position.assetClass ?? assetClassFromType(position.type);
+  const isCashByType = effectiveClass === 'cash';
   const isCashByCategory = getMainCategory(position.symbol, position.type) === 'cash';
 
   if (isCashByType || isCashByCategory) {
@@ -480,7 +550,7 @@ export function calculatePositionValue(
 
   // Fallback to CoinGecko price if DeBank price is 0 or missing
   // This helps tokens like SYRUP that DeBank doesn't have prices for
-  if ((!priceData || priceData.price === 0) && position.type === 'crypto') {
+  if ((!priceData || priceData.price === 0) && effectiveClass === 'crypto') {
     const priceProvider = getPriceProvider();
     const coinGeckoKey = priceProvider.getCoinId(position.symbol);
     const coinGeckoData = prices[coinGeckoKey];
@@ -645,16 +715,21 @@ export function calculatePortfolioSummary(
       ? ((totalValue - previousTotalValue) / Math.abs(previousTotalValue)) * 100
       : 0;
 
-  // Group by type - exclude perp notional from category values (they don't affect net worth)
-  const cryptoAssets = assetsWithPrice.filter((a) => a.type === 'crypto' && !a.isPerpNotional);
-  const stockAssets = assetsWithPrice.filter((a) => a.type === 'stock');
-  const cashAssets = assetsWithPrice.filter((a) => a.type === 'cash');
-  const manualAssets = assetsWithPrice.filter((a) => a.type === 'manual');
+  // Group by assetClass - exclude perp notional from category values (they don't affect net worth)
+  const getEffectiveClass = (a: AssetWithPrice): AssetClass => a.assetClass ?? assetClassFromType(a.type);
+  const cryptoAssets = assetsWithPrice.filter((a) => getEffectiveClass(a) === 'crypto' && !a.isPerpNotional);
+  const equityAssets = assetsWithPrice.filter((a) => getEffectiveClass(a) === 'equity');
+  const cashAssets = assetsWithPrice.filter((a) => getEffectiveClass(a) === 'cash');
+  const otherAssets = assetsWithPrice.filter((a) => getEffectiveClass(a) === 'other');
 
   const cryptoValue = cryptoAssets.reduce((sum, a) => sum + a.value, 0);
-  const stockValue = stockAssets.reduce((sum, a) => sum + a.value, 0);
+  const equityValue = equityAssets.reduce((sum, a) => sum + a.value, 0);
   const cashValue = cashAssets.reduce((sum, a) => sum + a.value, 0);
-  const manualValue = manualAssets.reduce((sum, a) => sum + a.value, 0);
+  const otherValue = otherAssets.reduce((sum, a) => sum + a.value, 0);
+
+  // Backward compat aliases
+  const stockValue = equityValue;
+  const manualValue = otherValue;
 
   // Top assets by value (for charts) - exclude perp notional
   const topAssets = assetsWithPrice.filter(a => !a.isPerpNotional).slice(0, 10);
@@ -673,7 +748,32 @@ export function calculatePortfolioSummary(
   // Aggregate unique assets for asset count
   const uniqueAssets = new Set(assetsWithPrice.map(a => a.symbol.toLowerCase()));
 
-  const assetsByType = [
+  // Build assetsByClass (new)
+  const assetsByClass: { assetClass: AssetClass; value: number; percentage: number }[] = [
+    {
+      assetClass: 'crypto' as const,
+      value: cryptoValue,
+      percentage: grossAssets > 0 ? (Math.max(0, cryptoValue) / grossAssets) * 100 : 0,
+    },
+    {
+      assetClass: 'equity' as const,
+      value: equityValue,
+      percentage: grossAssets > 0 ? (Math.max(0, equityValue) / grossAssets) * 100 : 0,
+    },
+    {
+      assetClass: 'cash' as const,
+      value: cashValue,
+      percentage: grossAssets > 0 ? (Math.max(0, cashValue) / grossAssets) * 100 : 0,
+    },
+    {
+      assetClass: 'other' as const,
+      value: otherValue,
+      percentage: grossAssets > 0 ? (Math.max(0, otherValue) / grossAssets) * 100 : 0,
+    },
+  ].filter((t) => t.value !== 0);
+
+  // Build legacy assetsByType for backward compat
+  const assetsByType: { type: AssetType; value: number; percentage: number }[] = [
     {
       type: 'crypto' as const,
       value: cryptoValue,
@@ -694,7 +794,7 @@ export function calculatePortfolioSummary(
       value: manualValue,
       percentage: grossAssets > 0 ? (Math.max(0, manualValue) / grossAssets) * 100 : 0,
     },
-  ].filter((t) => t.value !== 0); // Include negative values (net debt in category)
+  ].filter((t) => t.value !== 0);
 
   return {
     totalValue,
@@ -703,12 +803,15 @@ export function calculatePortfolioSummary(
     change24h,
     changePercent24h,
     cryptoValue,
+    equityValue,
     stockValue,
     cashValue,
+    otherValue,
     manualValue,
     positionCount: assetsWithPrice.length,
     assetCount: uniqueAssets.size,
     topAssets,
+    assetsByClass,
     assetsByType,
   };
 }
@@ -723,7 +826,8 @@ export function calculateTotalNAV(
 ): number {
   return positions.reduce((sum, position) => {
     // Cash positions have price = 1
-    if (position.type === 'cash') {
+    const effectiveClass = position.assetClass ?? assetClassFromType(position.type);
+    if (effectiveClass === 'cash') {
       return sum + position.amount;
     }
 
@@ -756,7 +860,8 @@ export function aggregatePositionsBySymbol(
     // Keep perp notional positions separate (leveraged exposure, not spot holdings)
     // But net debt with non-debt positions of the same symbol
     const perpSuffix = asset.isPerpNotional ? '-perp' : '';
-    const key = `${asset.symbol.toLowerCase()}-${asset.type}${perpSuffix}`;
+    const effectiveClass = asset.assetClass ?? assetClassFromType(asset.type);
+    const key = `${asset.symbol.toLowerCase()}-${effectiveClass}${perpSuffix}`;
     const existing = assetMap.get(key);
 
     // For debt positions, amount should be subtracted to get net amount
@@ -857,9 +962,9 @@ export function calculateAssetSummary(
   const exposureConfig = getExposureCategoryConfig(exposureCat);
   const mainCategory = categoryService.getMainCategory(first.symbol, first.type);
 
-  // Count unique sources
-  const uniqueWallets = new Set(
-    assetPositions.filter(p => p.walletAddress).map(p => p.walletAddress)
+  // Count unique accounts (wallets, CEX, brokerage, etc.)
+  const uniqueAccounts = new Set(
+    assetPositions.filter(p => p.accountId).map(p => p.accountId)
   );
 
   // Calculate total allocation (sum of allocations, respecting sign)
@@ -883,7 +988,7 @@ export function calculateAssetSummary(
     exposureCategoryColor: exposureConfig.color,
     mainCategory,
     positionCount: assetPositions.length,
-    walletCount: uniqueWallets.size,
+    walletCount: uniqueAccounts.size,
   };
 }
 
@@ -1114,7 +1219,7 @@ const CUSTODY_COLORS: Record<string, string> = {
  * Uses NET values - debt subtracts from the category where it was borrowed
  * EXCLUDES perp notional - only actual holdings (margin, spot) count
  */
-export function calculateCustodyBreakdown(assets: AssetWithPrice[]): CustodyBreakdownItem[] {
+export function calculateCustodyBreakdown(assets: AssetWithPrice[], accounts?: Account[]): CustodyBreakdownItem[] {
   const custodyMap: Record<string, { value: number; positions: Map<string, number> }> = {
     'Self-Custody': { value: 0, positions: new Map() },
     'DeFi': { value: 0, positions: new Map() },
@@ -1123,6 +1228,8 @@ export function calculateCustodyBreakdown(assets: AssetWithPrice[]): CustodyBrea
     'Banks & Brokers': { value: 0, positions: new Map() },
     'Manual': { value: 0, positions: new Map() },
   };
+
+  const accountMap = buildAccountMap(accounts);
 
   // Process ALL assets including debt - use NET values
   // Debt subtracts from the category where it was borrowed
@@ -1133,20 +1240,21 @@ export function calculateCustodyBreakdown(assets: AssetWithPrice[]): CustodyBrea
 
     const value = asset.value; // Can be negative for debt
     const symbolKey = asset.symbol.toUpperCase();
+    const acctType = getAccountType(asset.accountId, accountMap);
     let category: string;
 
-    if (asset.protocol?.startsWith('cex:')) {
+    if (acctType === 'cex') {
       category = 'CEX';
     } else if (isPerpProtocol(asset.protocol)) {
       // Perp DEXes (Hyperliquid, Vertex, Drift, etc.) are decentralized
       // Only margin (stablecoins) should show here, not notional
       category = 'Perp DEX';
-    } else if (asset.protocol?.startsWith('brokerage:')) {
+    } else if (acctType === 'brokerage') {
       category = 'Banks & Brokers';
-    } else if (asset.type === 'stock' || asset.type === 'cash') {
+    } else if ((asset.assetClass ?? assetClassFromType(asset.type)) === 'equity' || (asset.assetClass ?? assetClassFromType(asset.type)) === 'cash') {
       category = 'Banks & Brokers';
-    } else if (asset.walletAddress) {
-      if (asset.protocol && asset.protocol !== 'wallet') {
+    } else if (acctType === 'wallet') {
+      if (asset.protocol) {
         category = 'DeFi';
       } else {
         category = 'Self-Custody';
@@ -1188,8 +1296,9 @@ export function calculateCustodyBreakdown(assets: AssetWithPrice[]): CustodyBrea
  * Uses NET values - debt subtracts from the chain where it was borrowed
  * EXCLUDES perp notional - only actual holdings count
  */
-export function calculateChainBreakdown(assets: AssetWithPrice[]): ChainBreakdownItem[] {
+export function calculateChainBreakdown(assets: AssetWithPrice[], accounts?: Account[]): ChainBreakdownItem[] {
   const chainMap: Record<string, number> = {};
+  const accountMap = buildAccountMap(accounts);
 
   // Process ALL assets including debt - use NET values
   // EXCLUDE perp notional - they're leveraged exposure, not actual holdings
@@ -1199,11 +1308,13 @@ export function calculateChainBreakdown(assets: AssetWithPrice[]): ChainBreakdow
 
     const value = asset.value; // Can be negative for debt
     let chain = 'Other';
+    const acct = getAccount(asset.accountId, accountMap);
 
-    if (asset.protocol?.startsWith('cex:')) {
-      // CEX positions - use exchange name
-      const exchange = asset.protocol.replace('cex:', '');
-      chain = exchange.charAt(0).toUpperCase() + exchange.slice(1);
+    const acctDs = acct?.connection.dataSource;
+    const isCexAccount = acctDs === 'binance' || acctDs === 'coinbase' || acctDs === 'kraken' || acctDs === 'okx';
+    if (isCexAccount) {
+      // CEX positions - use exchange name (dataSource is the exchange name)
+      chain = acctDs!.charAt(0).toUpperCase() + acctDs!.slice(1);
     } else if (asset.protocol && isPerpProtocol(asset.protocol)) {
       // Perp protocols
       chain = asset.protocol.charAt(0).toUpperCase() + asset.protocol.slice(1);
@@ -1275,11 +1386,8 @@ export function calculateCryptoMetrics(assets: AssetWithPrice[]): CryptoMetrics 
     if (subCat === 'eth') {
       ethValue += value;
     }
-    // DeFi exposure: non-wallet, non-CEX, non-perp protocols
-    if (asset.protocol &&
-        asset.protocol !== 'wallet' &&
-        !asset.protocol.startsWith('cex:') &&
-        !isPerpProtocol(asset.protocol)) {
+    // DeFi exposure: protocol is a DeFi protocol name (not a perp exchange)
+    if (asset.protocol && !isPerpProtocol(asset.protocol)) {
       defiValue += value;
     }
 
@@ -1982,34 +2090,40 @@ export interface CashBreakdownResult {
 /**
  * Extract account/institution name from position name
  * Handles patterns like "Millennium (PLN)" -> "Millennium"
- * Also handles wallet addresses, protocols, chains
+ * Also handles account lookups, protocols, chains
  */
-export function extractAccountName(position: AssetWithPrice): string {
+export function extractAccountName(position: AssetWithPrice, accountMap?: Map<string, Account>): string {
   // Check for account name pattern: "AccountName (Currency)"
   const match = position.name.match(/^(.+?)\s*\(/);
   if (match) {
     return match[1].trim();
   }
 
-  // If it's a wallet with a protocol, use the protocol name
-  if (position.protocol && position.protocol !== 'wallet') {
+  // If it has a DeFi protocol, use the protocol name
+  if (position.protocol) {
     return position.protocol.charAt(0).toUpperCase() + position.protocol.slice(1);
   }
 
-  // If it's a CEX position
-  if (position.protocol?.startsWith('cex:')) {
-    const exchange = position.protocol.replace('cex:', '');
-    return exchange.charAt(0).toUpperCase() + exchange.slice(1);
+  // Look up the linked account
+  const acct = getAccount(position.accountId, accountMap);
+  if (acct) {
+    const ds = acct.connection.dataSource;
+    const isCex = ds === 'binance' || ds === 'coinbase' || ds === 'kraken' || ds === 'okx';
+    const isWallet = ds === 'debank' || ds === 'helius';
+    if (isCex) {
+      return ds.charAt(0).toUpperCase() + ds.slice(1);
+    }
+    if (isWallet && 'address' in acct.connection) {
+      const addr = (acct.connection as WalletConnection).address;
+      return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+    }
+    // Manual account (brokerage or cash) - use the account name
+    return acct.name;
   }
 
   // If it has a chain, use the chain name
   if (position.chain) {
     return position.chain.charAt(0).toUpperCase() + position.chain.slice(1);
-  }
-
-  // If it's a wallet position, show shortened address
-  if (position.walletAddress) {
-    return `${position.walletAddress.slice(0, 6)}...${position.walletAddress.slice(-4)}`;
   }
 
   // Default to the full name or "Manual"
@@ -2023,7 +2137,8 @@ export function extractAccountName(position: AssetWithPrice): string {
  */
 export function calculateCashBreakdown(
   assets: AssetWithPrice[],
-  includeStablecoins: boolean = true
+  includeStablecoins: boolean = true,
+  accounts?: Account[]
 ): CashBreakdownResult {
   const categoryService = getCategoryService();
 
@@ -2091,11 +2206,23 @@ export function calculateCashBreakdown(
     'SUSDE': '#1565C0',
   };
 
+  const accountMap = buildAccountMap(accounts);
+
   // Helper to get location label for a position
   const getLocationLabel = (p: AssetWithPrice) => {
-    if (p.protocol?.startsWith('cex:')) return p.protocol.replace('cex:', '').toUpperCase();
-    if (p.protocol && p.protocol !== 'wallet') return p.protocol;
-    if (p.walletAddress) return `${p.walletAddress.slice(0, 6)}...${p.walletAddress.slice(-4)}`;
+    const acct = getAccount(p.accountId, accountMap);
+    if (acct) {
+      const ds = acct.connection.dataSource;
+      const isCex = ds === 'binance' || ds === 'coinbase' || ds === 'kraken' || ds === 'okx';
+      if (isCex) return ds.toUpperCase();
+      if (p.protocol) return p.protocol;
+      const isWallet = ds === 'debank' || ds === 'helius';
+      if (isWallet && 'address' in acct.connection) {
+        const addr = (acct.connection as WalletConnection).address;
+        return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+      }
+    }
+    if (p.protocol) return p.protocol;
     return 'Manual';
   };
 
@@ -2119,9 +2246,10 @@ export function calculateCashBreakdown(
   positionsToAnalyze.forEach((p) => {
     if (p.value <= 0) return; // Only positive positions for institution breakdown
 
-    const accountName = extractAccountName(p);
+    const accountName = extractAccountName(p, accountMap);
     const currency = extractCurrencyCode(p.symbol);
-    const isWallet = !!p.walletAddress;
+    const acctType = getAccountType(p.accountId, accountMap);
+    const isWallet = acctType === 'wallet';
     const key = `${accountName}_${currency}`;
 
     if (!institutionMap[key]) {

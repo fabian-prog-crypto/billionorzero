@@ -3,7 +3,7 @@
  * Coordinates all sub-services for portfolio operations
  */
 
-import { Position, Wallet, PriceData } from '@/types';
+import { Position, Account, PriceData } from '@/types';
 import { getWalletProvider } from './providers';
 import { getPriceProvider } from './providers';
 import { getConfigManager, ServiceConfig } from './config';
@@ -93,12 +93,12 @@ export class PortfolioService {
    */
   async refreshPortfolio(
     manualPositions: Position[],
-    wallets: Wallet[],
+    accounts: Account[],
     forceRefresh: boolean = false
   ): Promise<RefreshResult> {
     console.log('[PortfolioService.refreshPortfolio] Starting with:', {
       manualPositionsCount: manualPositions.length,
-      walletsCount: wallets.length,
+      accountsCount: accounts.length,
       forceRefresh,
     });
 
@@ -111,7 +111,7 @@ export class PortfolioService {
     console.log('[PortfolioService.refreshPortfolio] Fetching wallet positions...');
 
     // Fetch wallet positions - includes prices from DeBank
-    const walletResult = await walletProvider.fetchAllWalletPositions(wallets, forceRefresh);
+    const walletResult = await walletProvider.fetchAllWalletPositions(accounts, forceRefresh);
     const walletPositions = walletResult.positions;
 
     console.log('[PortfolioService.refreshPortfolio] Wallet result:', {
@@ -122,7 +122,7 @@ export class PortfolioService {
     // Get unique wallet token symbols to fetch 24h changes from CoinGecko
     const walletCryptoSymbols = [...new Set(
       walletPositions
-        .filter(p => p.type === 'crypto')
+        .filter(p => p.assetClass === 'crypto' || p.type === 'crypto')
         .map(p => p.symbol.toLowerCase())
     )];
 

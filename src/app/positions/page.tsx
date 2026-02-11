@@ -24,7 +24,7 @@ import {
   formatAddress,
 } from '@/lib/utils';
 import { MainCategory, getCategoryLabel, isPerpProtocol, getCategoryService, AssetCategory, getPerpProtocolsWithPositions, ExposureCategoryType } from '@/services';
-import { AssetWithPrice, ParsedPositionAction } from '@/types';
+import { AssetWithPrice, ParsedPositionAction, Account, WalletConnection } from '@/types';
 import ConfirmPositionActionModal from '@/components/modals/ConfirmPositionActionModal';
 
 type ViewMode = 'positions' | 'assets';
@@ -90,7 +90,14 @@ export default function PositionsPage() {
   // Edit position modal state
   const [editAction, setEditAction] = useState<ParsedPositionAction | null>(null);
 
-  const { positions, prices, customPrices, removePosition, wallets, hideBalances, toggleHideBalances, hideDust, toggleHideDust } = usePortfolioStore();
+  const { positions, prices, customPrices, removePosition, wallets: getWallets, accounts, hideBalances, toggleHideBalances, hideDust, toggleHideDust } = usePortfolioStore();
+  const walletAccounts = useMemo(() => getWallets(), [accounts]);
+
+  // Helper to extract address from Account via connection
+  const getAccountAddress = (account: Account): string => {
+    const conn = account.connection;
+    return conn.dataSource === 'debank' || conn.dataSource === 'helius' ? (conn as WalletConnection).address : '';
+  };
   const { refresh, isRefreshing } = useRefresh();
 
   // Build category options hierarchy
@@ -336,7 +343,7 @@ export default function PositionsPage() {
       const pnlPercent = a.costBasis ? ((a.value - a.costBasis) / a.costBasis * 100).toFixed(2) : '';
       return viewMode === 'assets'
         ? [a.symbol.toUpperCase(), a.name, a.type, a.amount, a.currentPrice, a.value, a.costBasis || '', pnl, pnlPercent, a.changePercent24h, a.allocation]
-        : [a.symbol.toUpperCase(), a.name, a.type, a.walletAddress || 'Manual', a.chain || '', a.amount, a.currentPrice, a.value, a.costBasis || '', pnl, pnlPercent, a.changePercent24h, a.allocation];
+        : [a.symbol.toUpperCase(), a.name, a.type, a.accountId ? ((() => { const w = walletAccounts.find(w => w.id === a.accountId); return w ? getAccountAddress(w) : a.accountId; })()) : 'Manual', a.chain || '', a.amount, a.currentPrice, a.value, a.costBasis || '', pnl, pnlPercent, a.changePercent24h, a.allocation];
     });
 
     const csv = [headers, ...rows].map((row) => row.join(',')).join('\n');
@@ -558,7 +565,8 @@ export default function PositionsPage() {
               </thead>
               <tbody>
                 {filteredPositions.map((position) => {
-                  const isWalletPosition = !!position.walletAddress;
+                  const walletAccount = position.accountId ? walletAccounts.find(w => w.id === position.accountId) : undefined;
+                  const isWalletPosition = !!walletAccount;
                   const isDebt = position.isDebt;
 
                   return (
@@ -640,7 +648,7 @@ export default function PositionsPage() {
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <Wallet className="w-3 h-3 text-[var(--accent-primary)]" />
                               <span className="text-[11px] text-[var(--foreground-muted)]">
-                                {formatAddress(position.walletAddress!, 4)}
+                                {formatAddress(getAccountAddress(walletAccount!), 4)}
                               </span>
                               {position.chain && (
                                 <span className="tag text-[10px] py-0 px-1.5">{position.chain}</span>
@@ -841,7 +849,7 @@ export default function PositionsPage() {
       <div className="mt-4 flex items-center justify-between text-sm text-[var(--foreground-muted)]">
         <span>
           {displayData.length} {viewMode === 'assets' ? 'assets' : 'positions'}
-          {wallets.length > 0 && ` | ${wallets.length} wallet${wallets.length > 1 ? 's' : ''}`}
+          {walletAccounts.length > 0 && ` | ${walletAccounts.length} wallet${walletAccounts.length > 1 ? 's' : ''}`}
         </span>
         <span>
           {!categoryFilters.has('all') || searchQuery ? (

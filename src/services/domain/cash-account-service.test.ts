@@ -6,16 +6,16 @@ import {
   aggregateCashByCurrency,
 } from '@/services/domain/cash-account-service'
 import { makeCashPosition, makeAssetWithPrice } from '@/__tests__/fixtures'
-import type { CashAccount } from '@/types'
+import type { Account } from '@/types'
 
-function makeCashAccount(overrides: Partial<CashAccount> = {}): CashAccount {
+function makeCashAccount(overrides: Partial<Account> & { slug?: string } = {}): Account {
   return {
-    id: 'ca-1',
-    slug: 'revolut',
-    name: 'Revolut',
-    isActive: true,
-    addedAt: '2024-01-01T00:00:00Z',
-    ...overrides,
+    id: overrides.id || 'ca-1',
+    name: overrides.name || 'Revolut',
+    isActive: overrides.isActive ?? true,
+    connection: { dataSource: 'manual' },
+    slug: overrides.slug || 'revolut',
+    addedAt: overrides.addedAt || '2024-01-01T00:00:00Z',
   }
 }
 
@@ -75,36 +75,35 @@ describe('linkOrphanedCashPositions', () => {
     const account = makeCashAccount({ id: 'ca-1', slug: 'revolut' })
     const pos = makeCashPosition({
       name: 'Revolut (USD)',
-      protocol: 'cash-account:ca-1',
+      accountId: 'ca-1',
     })
     const result = linkOrphanedCashPositions([pos], [account])
     expect(result).toBeNull()
   })
 
-  it('creates account and links orphaned position without protocol', () => {
+  it('creates account and links orphaned position without accountId', () => {
     const pos = makeCashPosition({
       name: 'Wise (GBP)',
-      protocol: undefined,
     })
     const result = linkOrphanedCashPositions([pos], [])
     expect(result).not.toBeNull()
-    expect(result!.cashAccounts).toHaveLength(1)
-    expect(result!.cashAccounts[0].slug).toBe('wise')
-    expect(result!.cashAccounts[0].name).toBe('Wise')
-    expect(result!.positions[0].protocol).toMatch(/^cash-account:.+/)
+    expect(result!.accounts).toHaveLength(1)
+    expect(result!.accounts[0].slug).toBe('wise')
+    expect(result!.accounts[0].name).toBe('Wise')
+    expect(result!.positions[0].accountId).toBeTruthy()
   })
 
-  it('re-creates account when protocol points to missing account', () => {
+  it('re-creates account when accountId points to missing account', () => {
     const pos = makeCashPosition({
       name: 'N26 (EUR)',
-      protocol: 'cash-account:missing-id',
+      accountId: 'missing-id',
     })
     const result = linkOrphanedCashPositions([pos], [])
     expect(result).not.toBeNull()
-    expect(result!.cashAccounts).toHaveLength(1)
-    // Reuses the UUID from the protocol
-    expect(result!.cashAccounts[0].id).toBe('missing-id')
-    expect(result!.cashAccounts[0].slug).toBe('n26')
+    expect(result!.accounts).toHaveLength(1)
+    // Reuses the UUID from the accountId
+    expect(result!.accounts[0].id).toBe('missing-id')
+    expect(result!.accounts[0].slug).toBe('n26')
   })
 })
 
@@ -112,6 +111,7 @@ describe('aggregateCashByCurrency', () => {
   it('groups positions by currency and sums values', () => {
     const positions = [
       makeAssetWithPrice({
+        assetClass: 'cash',
         type: 'cash',
         symbol: 'CASH_USD_revolut',
         name: 'Revolut (USD)',
@@ -119,6 +119,7 @@ describe('aggregateCashByCurrency', () => {
         value: 5000,
       }),
       makeAssetWithPrice({
+        assetClass: 'cash',
         type: 'cash',
         symbol: 'CASH_USD_wise',
         name: 'Wise (USD)',
@@ -126,6 +127,7 @@ describe('aggregateCashByCurrency', () => {
         value: 3000,
       }),
       makeAssetWithPrice({
+        assetClass: 'cash',
         type: 'cash',
         symbol: 'CASH_EUR_revolut',
         name: 'Revolut (EUR)',
@@ -146,6 +148,7 @@ describe('aggregateCashByCurrency', () => {
   it('returns sorted by value descending', () => {
     const positions = [
       makeAssetWithPrice({
+        assetClass: 'cash',
         type: 'cash',
         symbol: 'CASH_CHF_ubs',
         name: 'UBS (CHF)',
@@ -153,6 +156,7 @@ describe('aggregateCashByCurrency', () => {
         value: 110,
       }),
       makeAssetWithPrice({
+        assetClass: 'cash',
         type: 'cash',
         symbol: 'CASH_EUR_n26',
         name: 'N26 (EUR)',

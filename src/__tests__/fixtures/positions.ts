@@ -6,6 +6,7 @@ const nextId = () => `test-pos-${++counter}`
 export function makePosition(overrides: Partial<Position> = {}): Position {
   return {
     id: nextId(),
+    assetClass: 'crypto',
     type: 'crypto',
     symbol: 'BTC',
     name: 'Bitcoin',
@@ -19,6 +20,7 @@ export function makePosition(overrides: Partial<Position> = {}): Position {
 
 export function makeCryptoPosition(overrides: Partial<Position> = {}): Position {
   return makePosition({
+    assetClass: 'crypto',
     type: 'crypto',
     symbol: 'ETH',
     name: 'Ethereum',
@@ -30,6 +32,7 @@ export function makeCryptoPosition(overrides: Partial<Position> = {}): Position 
 
 export function makeDebtPosition(overrides: Partial<Position> = {}): Position {
   return makePosition({
+    assetClass: 'crypto',
     type: 'crypto',
     symbol: 'USDC',
     name: 'USD Coin (Debt)',
@@ -42,6 +45,7 @@ export function makeDebtPosition(overrides: Partial<Position> = {}): Position {
 
 export function makeCashPosition(overrides: Partial<Position> = {}): Position {
   return makePosition({
+    assetClass: 'cash',
     type: 'cash',
     symbol: 'CASH_USD_revolut',
     name: 'Revolut (USD)',
@@ -53,10 +57,12 @@ export function makeCashPosition(overrides: Partial<Position> = {}): Position {
 
 export function makeStockPosition(overrides: Partial<Position> = {}): Position {
   return makePosition({
+    assetClass: 'equity',
     type: 'stock',
     symbol: 'AAPL',
     name: 'Apple Inc.',
     amount: 50,
+    equityType: 'stock',
     chain: undefined,
     ...overrides,
   })
@@ -64,6 +70,7 @@ export function makeStockPosition(overrides: Partial<Position> = {}): Position {
 
 export function makePerpPosition(overrides: Partial<Position> = {}): Position {
   return makePosition({
+    assetClass: 'crypto',
     type: 'crypto',
     symbol: 'BTC',
     name: 'BTC-PERP Long',
@@ -76,6 +83,7 @@ export function makePerpPosition(overrides: Partial<Position> = {}): Position {
 export function makeAssetWithPrice(overrides: Partial<AssetWithPrice> = {}): AssetWithPrice {
   return {
     id: nextId(),
+    assetClass: 'crypto',
     type: 'crypto',
     symbol: 'BTC',
     name: 'Bitcoin',

@@ -29,8 +29,10 @@ function makeSnapshot(date: string, totalValue: number, cryptoValue = 0, stockVa
     date,
     totalValue,
     cryptoValue,
-    stockValue,
+    equityValue: stockValue,
     cashValue: 0,
+    otherValue: manualValue,
+    stockValue,
     manualValue,
   }
 }

@@ -30,7 +30,7 @@ import {
   getChangeColor,
   getChainColor,
 } from '@/lib/utils';
-import { AssetWithPrice } from '@/types';
+import { AssetWithPrice, Account, WalletConnection } from '@/types';
 
 // Aggregated position by source
 interface AggregatedPosition {
@@ -58,7 +58,7 @@ export default function AssetDetailPage() {
     asset: AssetWithPrice | null;
   }>({ isOpen: false, asset: null });
 
-  const { positions, prices, customPrices, wallets, hideBalances } = usePortfolioStore();
+  const { positions, prices, customPrices, wallets: getWallets, accounts, hideBalances } = usePortfolioStore();
   const categoryService = getCategoryService();
 
   // Get all positions with prices
@@ -78,14 +78,21 @@ export default function AssetDetailPage() {
     return calculateAssetSummary(assetPositions);
   }, [assetPositions]);
 
+  // Helper to extract address from Account via connection
+  const getAccountAddress = (account: Account): string => {
+    const conn = account.connection;
+    return conn.dataSource === 'debank' || conn.dataSource === 'helius' ? (conn as WalletConnection).address : '';
+  };
+
   // Aggregate positions by source (wallet + protocol/chain combination)
   // Debt and non-debt positions are netted together
+  const walletAccounts = useMemo(() => getWallets(), [getWallets]);
   const aggregatedPositions = useMemo((): AggregatedPosition[] => {
     const groups: Record<string, AggregatedPosition> = {};
 
-    // Helper to find wallet by address
-    const findWallet = (address: string) => {
-      return wallets.find(w => w.address.toLowerCase() === address.toLowerCase());
+    // Helper to find wallet account by ID
+    const findWalletAccount = (accountId: string) => {
+      return walletAccounts.find(w => w.id === accountId);
     };
 
     assetPositions.forEach((p) => {
@@ -93,20 +100,21 @@ export default function AssetDetailPage() {
       let key: string;
       let walletId: string | undefined;
       let walletName: string | undefined;
+      let walletAddr: string | undefined;
 
-      if (p.walletAddress) {
+      // Check if this position belongs to a wallet account
+      const walletAccount = p.accountId ? findWalletAccount(p.accountId) : undefined;
+
+      if (walletAccount) {
+        const address = getAccountAddress(walletAccount);
         // Group by wallet + protocol (or chain if no protocol)
         const location = p.protocol || p.chain || 'wallet';
-        key = `${p.walletAddress}-${location}`;
-
-        // Find wallet info
-        const wallet = findWallet(p.walletAddress);
-        if (wallet) {
-          walletId = wallet.id;
-          walletName = wallet.name;
-        }
+        key = `${address}-${location}`;
+        walletId = walletAccount.id;
+        walletName = walletAccount.name;
+        walletAddr = address;
       } else {
-        // Manual positions
+        // Manual positions or non-wallet account positions
         key = `manual-${p.protocol || 'none'}`;
       }
 
@@ -115,7 +123,7 @@ export default function AssetDetailPage() {
           key,
           walletId,
           walletName,
-          walletAddress: p.walletAddress,
+          walletAddress: walletAddr,
           chain: p.chain,
           protocol: p.protocol,
           amount: 0,
@@ -138,7 +146,7 @@ export default function AssetDetailPage() {
 
     // Sort by value (descending) - positive values first, then negative
     return Object.values(groups).sort((a, b) => b.value - a.value);
-  }, [assetPositions, wallets]);
+  }, [assetPositions, walletAccounts]);
 
   // Filter positions by search query
   const filteredPositions = useMemo(() => {

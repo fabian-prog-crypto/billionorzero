@@ -33,6 +33,7 @@ const mockCalculateExposureData = vi.mocked(calculateExposureData)
 function makeAsset(symbol: string, value: number): AssetWithPrice {
   return {
     id: `pos-${symbol}`,
+    assetClass: 'crypto',
     type: 'crypto',
     symbol,
     name: symbol,

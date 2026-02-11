@@ -355,10 +355,12 @@ input::placeholder {
   padding: 4px 8px;
   background: var(--background-tertiary);
   border: 1px solid var(--border);
+  color: var(--foreground-muted);
   font-size: 10px;
   white-space: nowrap;
   opacity: 0;
   visibility: hidden;
+  pointer-events: none;
   transition: opacity 0.15s, visibility 0.15s;
   z-index: 50;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);

@@ -8,6 +8,7 @@ import { calculatePortfolioSummary } from '@/services';
 import AddWalletModal from '@/components/modals/AddWalletModal';
 import { formatAddress, formatCurrency } from '@/lib/utils';
 import { SUPPORTED_CHAINS, getPerpExchangeName } from '@/services';
+import { Account, WalletConnection, PerpExchange } from '@/types';
 
 type SortField = 'name' | 'assets' | 'value';
 type SortDirection = 'asc' | 'desc';
@@ -19,11 +20,23 @@ export default function WalletsPage() {
   const [sortField, setSortField] = useState<SortField>('value');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
-  const { wallets, positions, prices, removeWallet, hideBalances } = usePortfolioStore();
+  const store = usePortfolioStore();
+  const { positions, prices, removeAccount, hideBalances } = store;
+  const wallets = store.wallets();
+
+  const getAddress = (account: Account): string => {
+    const conn = account.connection;
+    return conn.dataSource === 'debank' || conn.dataSource === 'helius' ? conn.address : '';
+  };
+
+  const getPerpExchangesForWallet = (account: Account): PerpExchange[] | undefined => {
+    const conn = account.connection;
+    return (conn.dataSource === 'debank' || conn.dataSource === 'helius') ? (conn as WalletConnection).perpExchanges : undefined;
+  };
 
   const handleDelete = (id: string) => {
     if (confirm('Are you sure you want to remove this wallet? All associated positions will be removed.')) {
-      removeWallet(id);
+      removeAccount(id);
     }
   };
 
@@ -33,14 +46,14 @@ export default function WalletsPage() {
     setTimeout(() => setCopiedAddress(null), 2000);
   };
 
-  // Get positions for a wallet
-  const getWalletPositions = (address: string) => {
-    return positions.filter((p) => p.walletAddress === address);
+  // Get positions for a wallet by wallet ID
+  const getWalletPositions = (walletId: string) => {
+    return positions.filter((p) => p.accountId === walletId);
   };
 
   // Get wallet value - using centralized service
-  const getWalletValue = (address: string) => {
-    const walletPositions = getWalletPositions(address);
+  const getWalletValue = (walletId: string) => {
+    const walletPositions = getWalletPositions(walletId);
     const summary = calculatePortfolioSummary(walletPositions, prices);
     return summary.totalValue;
   };
@@ -51,8 +64,8 @@ export default function WalletsPage() {
   };
 
   // Get unique chains from wallet positions (auto-detected by DeBank)
-  const getWalletChains = (address: string) => {
-    const walletPositions = getWalletPositions(address);
+  const getWalletChains = (walletId: string) => {
+    const walletPositions = getWalletPositions(walletId);
     const chains = [...new Set(walletPositions.map(p => p.chain).filter(Boolean))] as string[];
     return chains.sort();
   };
@@ -71,10 +84,10 @@ export default function WalletsPage() {
           comparison = a.name.localeCompare(b.name);
           break;
         case 'assets':
-          comparison = getWalletPositions(a.address).length - getWalletPositions(b.address).length;
+          comparison = getWalletPositions(a.id).length - getWalletPositions(b.id).length;
           break;
         case 'value':
-          comparison = getWalletValue(a.address) - getWalletValue(b.address);
+          comparison = getWalletValue(a.id) - getWalletValue(b.id);
           break;
       }
 
@@ -172,8 +185,8 @@ export default function WalletsPage() {
             </thead>
             <tbody>
               {sortedWallets.map((wallet) => {
-                const walletPositions = getWalletPositions(wallet.address);
-                const walletValue = getWalletValue(wallet.address);
+                const walletPositions = getWalletPositions(wallet.id);
+                const walletValue = getWalletValue(wallet.id);
 
                 return (
                   <tr
@@ -192,23 +205,23 @@ export default function WalletsPage() {
                     <td className="py-2">
                       <div className="flex items-center gap-2">
                         <code className="text-[11px] text-[var(--foreground-muted)] font-mono">
-                          {formatAddress(wallet.address, 8)}
+                          {formatAddress(getAddress(wallet), 8)}
                         </code>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            copyAddress(wallet.address);
+                            copyAddress(getAddress(wallet));
                           }}
                           className="p-1 hover:bg-[var(--border)] "
                         >
-                          {copiedAddress === wallet.address ? (
+                          {copiedAddress === getAddress(wallet) ? (
                             <Check className="w-2.5 h-2.5 text-[var(--positive)]" />
                           ) : (
                             <Copy className="w-2.5 h-2.5 text-[var(--foreground-muted)]" />
                           )}
                         </button>
                         <a
-                          href={`https://etherscan.io/address/${wallet.address}`}
+                          href={`https://etherscan.io/address/${getAddress(wallet)}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           onClick={(e) => e.stopPropagation()}
@@ -221,8 +234,8 @@ export default function WalletsPage() {
                     <td className="py-2">
                       <div className="flex gap-1 flex-wrap">
                         {(() => {
-                          const detectedChains = getWalletChains(wallet.address);
-                          const perpExchanges = wallet.perpExchanges || [];
+                          const detectedChains = getWalletChains(wallet.id);
+                          const perpExchanges = getPerpExchangesForWallet(wallet) || [];
                           if (detectedChains.length === 0 && perpExchanges.length === 0) {
                             return <span className="text-[10px] text-[var(--foreground-muted)]">Syncing...</span>;
                           }

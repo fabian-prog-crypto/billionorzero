@@ -112,7 +112,7 @@ describe('EtherealProvider', () => {
       expect(ethPos!.amount).toBe(5);
       expect(ethPos!.chain).toBe('ethereal');
       expect(ethPos!.protocol).toBe('Ethereal');
-      expect(ethPos!.walletAddress).toBe('0xabc');
+      expect(ethPos!.accountId).toBe('wallet-1');
       expect(ethPos!.isDebt).toBe(false);
       expect(ethPos!.id).toContain('long');
     });

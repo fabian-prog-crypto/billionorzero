@@ -1,21 +1,22 @@
 import { fetchCexAccountPositions, fetchAllCexPositions } from './cex-provider';
-import type { CexAccount } from '@/types';
+import type { Account } from '@/types';
 
 // Mock uuid to return deterministic IDs
 vi.mock('uuid', () => ({
   v4: vi.fn(() => 'test-uuid-1234'),
 }));
 
-function makeAccount(overrides: Partial<CexAccount> = {}): CexAccount {
+function makeAccount(overrides: Partial<Account> & { exchange?: string; apiKey?: string; apiSecret?: string } = {}): Account {
   return {
-    id: 'acc-1',
-    exchange: 'binance',
-    name: 'My Binance',
-    apiKey: 'api-key-123',
-    apiSecret: 'api-secret-456',
-    isActive: true,
+    id: overrides.id || 'acc-1',
+    name: overrides.name || 'My Binance',
+    isActive: overrides.isActive ?? true,
+    connection: {
+      dataSource: (overrides.exchange || 'binance') as 'binance',
+      apiKey: overrides.apiKey || 'api-key-123',
+      apiSecret: overrides.apiSecret || 'api-secret-456',
+    },
     addedAt: new Date().toISOString(),
-    ...overrides,
   };
 }
 
@@ -61,7 +62,7 @@ describe('CEX Provider', () => {
       expect(btcPos!.name).toBe('Bitcoin');
       expect(btcPos!.type).toBe('crypto');
       expect(btcPos!.chain).toBe('binance');
-      expect(btcPos!.protocol).toBe('cex:binance:acc-1');
+      expect(btcPos!.accountId).toBe('acc-1');
 
       const ethPos = result.find(p => p.symbol === 'eth');
       expect(ethPos).toBeDefined();
@@ -153,7 +154,7 @@ describe('CEX Provider', () => {
       expect(fetch).not.toHaveBeenCalled();
     });
 
-    it('sets protocol field to cex:<exchange>:<id>', async () => {
+    it('sets accountId field to account id', async () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
         json: () => Promise.resolve(makeBinanceResponse([
@@ -163,7 +164,7 @@ describe('CEX Provider', () => {
 
       const result = await fetchCexAccountPositions(makeAccount({ id: 'acc-42', exchange: 'binance' }));
 
-      expect(result[0].protocol).toBe('cex:binance:acc-42');
+      expect(result[0].accountId).toBe('acc-42');
     });
   });
 

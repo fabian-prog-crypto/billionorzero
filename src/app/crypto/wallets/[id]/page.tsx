@@ -16,7 +16,7 @@ import {
   getChangeColor,
   getChainColor,
 } from '@/lib/utils';
-import { PerpExchange } from '@/types';
+import { PerpExchange, WalletConnection } from '@/types';
 import { getSupportedPerpExchanges } from '@/services';
 
 export default function WalletDetailPage() {
@@ -26,24 +26,33 @@ export default function WalletDetailPage() {
   const [copiedAddress, setCopiedAddress] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const { wallets, positions, prices, customPrices, hideBalances, updateWallet } = usePortfolioStore();
+  const store = usePortfolioStore();
+  const { positions, prices, customPrices, hideBalances, updateAccount } = store;
+  const wallets = store.wallets();
 
   const wallet = wallets.find((w) => w.id === walletId);
+
+  const walletAddress = wallet && (wallet.connection.dataSource === 'debank' || wallet.connection.dataSource === 'helius')
+    ? (wallet.connection as WalletConnection).address : '';
+  const walletPerpExchanges = wallet && (wallet.connection.dataSource === 'debank' || wallet.connection.dataSource === 'helius')
+    ? (wallet.connection as WalletConnection).perpExchanges : undefined;
 
   // Toggle perp exchange for this wallet
   const togglePerpExchange = (exchange: PerpExchange) => {
     if (!wallet) return;
-    const currentExchanges = wallet.perpExchanges || [];
+    const currentExchanges = walletPerpExchanges || [];
     const newExchanges = currentExchanges.includes(exchange)
       ? currentExchanges.filter(e => e !== exchange)
       : [...currentExchanges, exchange];
-    updateWallet(wallet.id, { perpExchanges: newExchanges.length > 0 ? newExchanges : undefined });
+    updateAccount(wallet.id, {
+      connection: { ...wallet.connection, perpExchanges: newExchanges.length > 0 ? newExchanges : undefined } as WalletConnection,
+    });
   };
 
   // Get positions for this wallet
   const walletPositions = useMemo(() => {
     if (!wallet) return [];
-    return positions.filter((p) => p.walletAddress === wallet.address);
+    return positions.filter((p) => p.accountId === wallet.id);
   }, [positions, wallet]);
 
   // Calculate positions with prices
@@ -88,7 +97,7 @@ export default function WalletDetailPage() {
 
   const copyAddress = () => {
     if (!wallet) return;
-    navigator.clipboard.writeText(wallet.address);
+    navigator.clipboard.writeText(walletAddress);
     setCopiedAddress(true);
     setTimeout(() => setCopiedAddress(false), 2000);
   };
@@ -132,7 +141,7 @@ export default function WalletDetailPage() {
                 onClick={copyAddress}
                 className="flex items-center gap-1 font-mono text-[11px] text-[var(--foreground-muted)] hover:text-[var(--foreground)] transition-colors"
               >
-                {formatAddress(wallet.address, 6)}
+                {formatAddress(walletAddress, 6)}
                 {copiedAddress ? (
                   <Check className="w-2.5 h-2.5 text-[var(--positive)]" />
                 ) : (
@@ -140,7 +149,7 @@ export default function WalletDetailPage() {
                 )}
               </button>
               <a
-                href={`https://etherscan.io/address/${wallet.address}`}
+                href={`https://etherscan.io/address/${walletAddress}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-[var(--foreground-muted)] hover:text-[var(--foreground)]"
@@ -206,7 +215,7 @@ export default function WalletDetailPage() {
         <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">Perp Exchanges</p>
         <div className="flex flex-wrap gap-1.5">
           {getSupportedPerpExchanges().map((exchange) => {
-            const isEnabled = wallet.perpExchanges?.includes(exchange.id) || false;
+            const isEnabled = walletPerpExchanges?.includes(exchange.id) || false;
             return (
               <button
                 key={exchange.id}
