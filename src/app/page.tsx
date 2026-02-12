@@ -38,7 +38,7 @@ export default function OverviewPage() {
     return calculateExposureData(allAssetsWithPrices);
   }, [allAssetsWithPrices]);
 
-  const { exposureMetrics, concentrationMetrics, grossAssets, totalDebts } = exposureData;
+  const { exposureMetrics, concentrationMetrics } = exposureData;
 
   // Use centralized service functions for chart data (SINGLE SOURCE OF TRUTH)
   const allocationChartData = useMemo((): DonutChartItem[] => {
@@ -52,19 +52,6 @@ export default function OverviewPage() {
   const riskChartData = useMemo((): DonutChartItem[] => {
     return calculateRiskProfile(allAssetsWithPrices);
   }, [allAssetsWithPrices]);
-
-  // Extract category totals for display (from centralized allocation data)
-  const categoryTotals = useMemo(() => {
-    const cashItem = allocationChartData.find(item => item.label === 'Cash & Equivalents');
-    const cryptoItem = allocationChartData.find(item => item.label === 'Crypto');
-    const equitiesItem = allocationChartData.find(item => item.label === 'Equities');
-
-    return {
-      cash: cashItem?.value || 0,
-      crypto: cryptoItem?.value || 0,
-      equities: equitiesItem?.value || 0,
-    };
-  }, [allocationChartData]);
 
   // Use centralized metrics (already calculated in exposureData)
   const debtRatio = exposureMetrics.debtRatio;
@@ -115,63 +102,6 @@ export default function OverviewPage() {
         {/* Mini chart */}
         <div className="w-full lg:w-[350px] h-[100px]">
           <NetWorthChart snapshots={snapshots} height={100} minimal />
-        </div>
-      </div>
-
-      <hr className="border-[var(--border)]" />
-
-      {/* Category Totals - using centralized service data */}
-      <div>
-        <h3 className="font-medium mb-4">Asset Allocation</h3>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
-          <div>
-            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">CASH & EQUIVALENTS</p>
-            <p className="text-xl font-semibold">
-              {hideBalances ? '••••' : formatCurrency(categoryTotals.cash)}
-            </p>
-            <p className="text-xs text-[var(--foreground-muted)]">
-              {grossAssets > 0 ? ((categoryTotals.cash / grossAssets) * 100).toFixed(1) : 0}% of assets
-            </p>
-          </div>
-          <div>
-            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">CRYPTO</p>
-            <p className="text-xl font-semibold">
-              {hideBalances ? '••••' : formatCurrency(categoryTotals.crypto)}
-            </p>
-            <p className="text-xs text-[var(--foreground-muted)]">
-              {grossAssets > 0 ? ((categoryTotals.crypto / grossAssets) * 100).toFixed(1) : 0}% of assets
-            </p>
-          </div>
-          <div>
-            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">EQUITIES</p>
-            <p className="text-xl font-semibold">
-              {hideBalances ? '••••' : formatCurrency(categoryTotals.equities)}
-            </p>
-            <p className="text-xs text-[var(--foreground-muted)]">
-              {grossAssets > 0 ? ((categoryTotals.equities / grossAssets) * 100).toFixed(1) : 0}% of assets
-            </p>
-          </div>
-          <div>
-            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">GROSS ASSETS</p>
-            <p className="text-xl font-semibold">
-              {hideBalances ? '••••' : formatCurrency(grossAssets)}
-            </p>
-            <p className="text-xs text-[var(--foreground-muted)]">
-              Total before debt
-            </p>
-          </div>
-          <div>
-            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2 flex items-center gap-1">
-              TOTAL DEBT
-              {totalDebts > 0 && <AlertTriangle className="w-3 h-3 text-[var(--warning)]" />}
-            </p>
-            <p className={`text-xl font-semibold ${totalDebts > 0 ? 'text-[var(--negative)]' : ''}`}>
-              {hideBalances ? '••••' : `-${formatCurrency(totalDebts)}`}
-            </p>
-            <p className="text-xs text-[var(--foreground-muted)]">
-              {grossAssets > 0 ? ((totalDebts / grossAssets) * 100).toFixed(1) : 0}% of assets
-            </p>
-          </div>
         </div>
       </div>
 
