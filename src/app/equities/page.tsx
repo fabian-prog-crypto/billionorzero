@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { TrendingUp, ArrowUpDown, ChevronDown, ChevronUp, Download } from 'lucide-react';
+import { TrendingUp, ArrowUpDown, ChevronDown, ChevronUp, Download, Edit2 } from 'lucide-react';
 import DonutChart from '@/components/charts/DonutChart';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import {
@@ -13,6 +13,8 @@ import { formatCurrency, formatNumber, formatPercent, getChangeColor } from '@/l
 import { SUBCATEGORY_COLORS } from '@/lib/colors';
 import SearchInput from '@/components/ui/SearchInput';
 import StockIcon from '@/components/ui/StockIcon';
+import ConfirmPositionActionModal from '@/components/modals/ConfirmPositionActionModal';
+import type { ParsedPositionAction, AssetWithPrice } from '@/types';
 
 type SortField = 'symbol' | 'value' | 'amount' | 'price' | 'change';
 type SortDirection = 'asc' | 'desc';
@@ -22,6 +24,30 @@ export default function EquitiesPage() {
   const [sortField, setSortField] = useState<SortField>('value');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [searchQuery, setSearchQuery] = useState('');
+  const [editAction, setEditAction] = useState<ParsedPositionAction | null>(null);
+
+  const handleEdit = (position: AssetWithPrice) => {
+    // Only allow editing manual (non-wallet-synced) positions
+    if (position.accountId) {
+      const store = usePortfolioStore.getState();
+      const account = store.accounts.find(a => a.id === position.accountId);
+      if (account && (account.connection.dataSource === 'debank' || account.connection.dataSource === 'helius')) {
+        return; // Can't edit wallet-synced positions
+      }
+    }
+    setEditAction({
+      action: 'update_position',
+      symbol: position.symbol,
+      name: position.name,
+      assetType: position.type,
+      amount: position.amount,
+      costBasis: position.costBasis,
+      date: position.purchaseDate,
+      matchedPositionId: position.id,
+      confidence: 1,
+      summary: `Edit ${position.symbol.toUpperCase()} position`,
+    });
+  };
 
   const categoryService = getCategoryService();
 
@@ -260,6 +286,7 @@ export default function EquitiesPage() {
                 </button>
               </th>
               <th className="table-header text-right pb-3">%</th>
+              <th className="table-header text-right pb-3 w-10"></th>
             </tr>
           </thead>
           <tbody>
@@ -270,7 +297,7 @@ export default function EquitiesPage() {
               return (
                 <tr
                   key={position.id}
-                  className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--background-secondary)] transition-colors"
+                  className="group border-b border-[var(--border)] last:border-0 hover:bg-[var(--background-secondary)] transition-colors"
                 >
                   <td className="py-2">
                     <div className="flex items-center gap-2">
@@ -309,6 +336,15 @@ export default function EquitiesPage() {
                   <td className="py-2 text-right text-xs text-[var(--foreground-muted)]">
                     {position.allocation.toFixed(1)}%
                   </td>
+                  <td className="py-2 text-right">
+                    <button
+                      onClick={() => handleEdit(position)}
+                      className="p-1.5 hover:bg-[var(--background-tertiary)] text-[var(--foreground-muted)] transition-colors opacity-0 group-hover:opacity-100"
+                      title="Edit position"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                  </td>
                 </tr>
               );
             })}
@@ -320,6 +356,16 @@ export default function EquitiesPage() {
         <div className="text-center py-12">
           <p className="text-[var(--foreground-muted)]">No positions match your search.</p>
         </div>
+      )}
+
+      {editAction && (
+        <ConfirmPositionActionModal
+          isOpen={!!editAction}
+          onClose={() => setEditAction(null)}
+          parsedAction={editAction}
+          positions={positions}
+          positionsWithPrices={allPositions}
+        />
       )}
     </div>
   );

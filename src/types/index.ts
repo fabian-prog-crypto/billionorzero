@@ -209,6 +209,7 @@ export interface ParsedPositionAction {
   totalProceeds?: number;
   date?: string;
   matchedPositionId?: string;
+  matchedAccountId?: string;
   missingFields?: string[];
   confidence: number;
   summary: string;

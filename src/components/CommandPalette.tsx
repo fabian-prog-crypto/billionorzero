@@ -1,10 +1,13 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { MessageSquare, X, AlertCircle, Settings, Check, CornerDownLeft } from 'lucide-react';
 import Link from 'next/link';
 import { useCommandPalette } from '@/hooks/useCommandPalette';
-import { QueryResultView, MutationPreviewView } from '@/components/CommandResult';
+import { QueryResultView } from '@/components/CommandResult';
+import { usePortfolioStore } from '@/store/portfolioStore';
+import { calculateAllPositionsWithPrices } from '@/services/domain/portfolio-calculator';
+import ConfirmPositionActionModal from '@/components/modals/ConfirmPositionActionModal';
 import { formatDistanceToNow } from 'date-fns';
 
 interface CommandPaletteProps {
@@ -55,16 +58,27 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
     isLoading,
     loadingText,
     queryResult,
-    mutationPreview,
+    llmResponse,
     successMessage,
     error,
     submit,
-    confirmMutation,
     cancelMutation,
     clearError,
     reset,
     recentCommands,
+    pendingAction,
+    setPendingAction,
   } = useCommandPalette();
+
+  // Store data for the confirmation modal
+  const positions = usePortfolioStore(s => s.positions);
+  const prices = usePortfolioStore(s => s.prices);
+  const customPrices = usePortfolioStore(s => s.customPrices);
+  const fxRates = usePortfolioStore(s => s.fxRates);
+  const positionsWithPrices = useMemo(
+    () => calculateAllPositionsWithPrices(positions, prices, customPrices, fxRates),
+    [positions, prices, customPrices, fxRates]
+  );
 
   const inputRef = useRef<HTMLInputElement>(null);
   const errorTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -97,15 +111,30 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
     }
   }, [isOpen, reset]);
 
+  // When pendingAction is set, close the palette without resetting pendingAction
+  useEffect(() => {
+    if (pendingAction && isOpen) {
+      if (closingRef.current) return;
+      closingRef.current = true;
+      setClosing(true);
+      setTimeout(() => {
+        closingRef.current = false;
+        setClosing(false);
+        onClose(); // Close palette without calling reset()
+      }, 150);
+    }
+  }, [pendingAction]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Escape key
   useEffect(() => {
     if (!isOpen) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        if (mutationPreview) {
+        if (llmResponse) {
           cancelMutation();
-          inputRef.current?.focus();
+          reset();
+          setTimeout(() => inputRef.current?.focus(), 50);
         } else {
           animateClose();
         }
@@ -113,7 +142,7 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [isOpen, animateClose, mutationPreview, cancelMutation]);
+  }, [isOpen, animateClose, llmResponse, cancelMutation, reset]);
 
   // Auto-dismiss error after 5s
   useEffect(() => {
@@ -138,7 +167,21 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
     };
   }, [successMessage, animateClose]);
 
-  if (!isOpen) return null;
+  // When palette is closed but pendingAction exists, render only the modal
+  if (!isOpen) {
+    if (pendingAction) {
+      return (
+        <ConfirmPositionActionModal
+          isOpen={!!pendingAction}
+          onClose={() => { setPendingAction(null); }}
+          parsedAction={pendingAction}
+          positions={positions}
+          positionsWithPrices={positionsWithPrices}
+        />
+      );
+    }
+    return null;
+  }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
@@ -152,8 +195,8 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
   };
 
   const showExamples =
-    !text && !isLoading && !queryResult && !mutationPreview && !successMessage;
-  const inputDisabled = isLoading || !!mutationPreview || !!queryResult;
+    !text && !isLoading && !queryResult && !llmResponse && !successMessage;
+  const inputDisabled = isLoading || !!queryResult || !!llmResponse;
 
   return (
     <>
@@ -197,7 +240,10 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
                   onChange={(e) => {
                     setText(e.target.value);
                     if (error) clearError();
-                    if (mutationPreview) cancelMutation();
+                    if (llmResponse) {
+                      cancelMutation();
+                      reset();
+                    }
                   }}
                   onKeyDown={handleKeyDown}
                   placeholder="Ask anything about your portfolio..."
@@ -205,7 +251,7 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
                   disabled={inputDisabled}
                 />
                 {/* Right side: shortcut badge or clear button */}
-                {text && !isLoading && !mutationPreview && !queryResult ? (
+                {text && !isLoading && !queryResult && !llmResponse ? (
                   <button
                     onClick={() => {
                       setText('');
@@ -216,7 +262,7 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
                   >
                     <X className="w-4 h-4 text-[var(--foreground-muted)]" />
                   </button>
-                ) : !isLoading && !mutationPreview && !queryResult ? (
+                ) : !isLoading && !queryResult && !llmResponse ? (
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-[var(--foreground-subtle)] px-1.5 py-0.5 border border-[var(--border)]">
                     {typeof navigator !== 'undefined' &&
                     /Mac/i.test(navigator.userAgent)
@@ -259,16 +305,24 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
                 </div>
               )}
 
-              {/* Mutation preview */}
-              {mutationPreview && (
-                <MutationPreviewView
-                  preview={mutationPreview}
-                  onConfirm={confirmMutation}
-                  onCancel={() => {
-                    cancelMutation();
-                    inputRef.current?.focus();
-                  }}
-                />
+              {/* LLM response */}
+              {llmResponse && (
+                <div className="border-t border-[var(--border)]">
+                  <div className="px-4 py-3 text-[13px] text-[var(--foreground)] whitespace-pre-wrap leading-relaxed">
+                    {llmResponse}
+                  </div>
+                  <div className="px-4 py-2 flex justify-end border-t border-[var(--border)]">
+                    <button
+                      onClick={() => {
+                        reset();
+                        setTimeout(() => inputRef.current?.focus(), 50);
+                      }}
+                      className="text-[13px] text-[var(--foreground-muted)] hover:text-[var(--foreground)] transition-colors"
+                    >
+                      Ask another question
+                    </button>
+                  </div>
+                </div>
               )}
 
               {/* Error bar */}

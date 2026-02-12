@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Banknote, ArrowUpDown, ChevronDown, ChevronUp, Download } from 'lucide-react';
+import { Banknote, ArrowUpDown, ChevronDown, ChevronUp, Download, Edit2 } from 'lucide-react';
 import DonutChart, { DonutChartItem } from '@/components/charts/DonutChart';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import {
@@ -16,6 +16,8 @@ import { formatCurrency, formatNumber } from '@/lib/utils';
 import { CURRENCY_COLORS } from '@/lib/colors';
 import CurrencyIcon from '@/components/ui/CurrencyIcon';
 import SearchInput from '@/components/ui/SearchInput';
+import ConfirmPositionActionModal from '@/components/modals/ConfirmPositionActionModal';
+import type { ParsedPositionAction, AssetWithPrice } from '@/types';
 
 type SortField = 'account' | 'currency' | 'value' | 'amount';
 type SortDirection = 'asc' | 'desc';
@@ -36,6 +38,31 @@ export default function CashPage() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [includeStablecoins, setIncludeStablecoins] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [editAction, setEditAction] = useState<ParsedPositionAction | null>(null);
+
+  const handleEditCash = (position: AssetWithPrice) => {
+    // Only allow editing manual (non-wallet-synced) cash positions
+    if (position.accountId) {
+      const store = usePortfolioStore.getState();
+      const account = store.accounts.find(a => a.id === position.accountId);
+      if (account && (account.connection.dataSource === 'debank' || account.connection.dataSource === 'helius')) {
+        return;
+      }
+    }
+    const currencyCode = extractCurrencyCode(position.symbol);
+    const acctName = extractAccountName(position);
+    setEditAction({
+      action: 'update_cash',
+      symbol: currencyCode,
+      assetType: 'cash',
+      amount: position.amount,
+      currency: currencyCode,
+      accountName: acctName,
+      matchedPositionId: position.id,
+      confidence: 1,
+      summary: `Edit ${acctName} (${currencyCode}) balance`,
+    });
+  };
 
   // Calculate all positions with prices (including FX conversion for fiat)
   const allPositions = useMemo(() => {
@@ -377,6 +404,7 @@ export default function CashPage() {
                 </button>
               </th>
               <th className="table-header text-right pb-3">%</th>
+              <th className="table-header text-right pb-3 w-10"></th>
             </tr>
           </thead>
           <tbody>
@@ -384,10 +412,15 @@ export default function CashPage() {
               const percentage = displayTotal > 0 ? (position.value / displayTotal) * 100 : 0;
               const cleanSymbol = extractCurrencyCode(position.symbol);
               const accountName = extractAccountName(position);
+              // Check if position is editable (not wallet-synced)
+              const isEditable = !position.accountId || (() => {
+                const acct = usePortfolioStore.getState().accounts.find(a => a.id === position.accountId);
+                return !acct || (acct.connection.dataSource !== 'debank' && acct.connection.dataSource !== 'helius');
+              })();
               return (
                 <tr
                   key={position.id}
-                  className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--background-secondary)] transition-colors"
+                  className="group border-b border-[var(--border)] last:border-0 hover:bg-[var(--background-secondary)] transition-colors"
                 >
                   <td className="py-2">
                     <Link
@@ -421,6 +454,17 @@ export default function CashPage() {
                   <td className="py-2 text-right text-xs text-[var(--foreground-muted)]">
                     {percentage.toFixed(1)}%
                   </td>
+                  <td className="py-2 text-right">
+                    {isEditable && (
+                      <button
+                        onClick={() => handleEditCash(position)}
+                        className="p-1.5 hover:bg-[var(--background-tertiary)] text-[var(--foreground-muted)] transition-colors opacity-0 group-hover:opacity-100"
+                        title="Edit balance"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </td>
                 </tr>
               );
             })}
@@ -438,6 +482,16 @@ export default function CashPage() {
             {hideBalances ? '••••••' : formatCurrency(displayTotal)}
           </span>
         </div>
+      )}
+
+      {editAction && (
+        <ConfirmPositionActionModal
+          isOpen={!!editAction}
+          onClose={() => setEditAction(null)}
+          parsedAction={editAction}
+          positions={positions}
+          positionsWithPrices={allPositions}
+        />
       )}
     </div>
   );

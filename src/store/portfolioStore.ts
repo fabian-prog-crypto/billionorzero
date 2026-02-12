@@ -899,10 +899,16 @@ export const usePortfolioStore = create<PortfolioState>()(
         return () => {
           const state = usePortfolioStore.getState();
 
-          // Ensure all manual accounts have a slug (repairs accounts that skipped slug assignment during migration)
+          // Repair slug only for manual accounts that hold cash positions (not brokerage accounts)
+          const cashAccountIds = new Set(
+            state.positions
+              .filter(p => p.assetClass === 'cash' || p.type === 'cash')
+              .map(p => p.accountId)
+              .filter(Boolean)
+          );
           let accountsChanged = false;
           const repairedAccounts = state.accounts.map((a) => {
-            if (a.connection.dataSource === 'manual' && !a.slug) {
+            if (a.connection.dataSource === 'manual' && !a.slug && cashAccountIds.has(a.id)) {
               accountsChanged = true;
               return { ...a, slug: toSlug(a.name) };
             }

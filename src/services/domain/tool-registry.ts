@@ -301,19 +301,12 @@ export function getToolsByType(type: ToolType): ToolDefinition[] {
 }
 
 /**
- * Build a JSON schema suitable for Ollama structured output.
- *
- * The schema describes an object with:
- *   - `tool`: enum of all tool ids
- *   - `args`: object with additionalProperties (union of all possible arg fields)
- *   - `confidence`: number between 0 and 1
- *
- * This lets the LLM return structured JSON that conforms to the ToolCall interface.
+ * Build a JSON schema suitable for Ollama structured output (legacy format).
+ * @deprecated Use toOllamaTools() for native tool calling instead.
  */
 export function buildToolSchema(): object {
   const toolIds = TOOL_REGISTRY.map((t) => t.id);
 
-  // Collect every unique field across all tools to build the args properties
   const argsProperties: Record<string, object> = {};
   const seenFields = new Set<string>();
 
@@ -357,4 +350,63 @@ export function buildToolSchema(): object {
     required: ['tool', 'args', 'confidence'],
     additionalProperties: false,
   };
+}
+
+// ─── Ollama Native Tool Format ───────────────────────────────────────────────
+
+interface OllamaToolFunction {
+  name: string;
+  description: string;
+  parameters: {
+    type: 'object';
+    properties: Record<string, unknown>;
+    required: string[];
+  };
+}
+
+interface OllamaTool {
+  type: 'function';
+  function: OllamaToolFunction;
+}
+
+/**
+ * Convert the tool registry to Ollama's native tool calling format.
+ * This is the correct format for Ollama's `tools` parameter (not `format`).
+ *
+ * Only includes tools usable server-side (excludes navigation).
+ */
+export function toOllamaTools(): OllamaTool[] {
+  return TOOL_REGISTRY
+    .filter((t) => t.type !== 'navigation')
+    .map((tool) => {
+      const properties: Record<string, unknown> = {};
+      const required: string[] = [];
+
+      for (const field of tool.fields) {
+        const prop: Record<string, unknown> = {
+          type: field.type,
+          description: field.description,
+        };
+        if (field.enum) {
+          prop.enum = field.enum;
+        }
+        properties[field.name] = prop;
+        if (field.required) {
+          required.push(field.name);
+        }
+      }
+
+      return {
+        type: 'function' as const,
+        function: {
+          name: tool.id,
+          description: tool.description,
+          parameters: {
+            type: 'object' as const,
+            properties,
+            required,
+          },
+        },
+      };
+    });
 }

@@ -68,6 +68,18 @@ export async function PUT(request: NextRequest) {
     ensureDataDir();
 
     const body = await request.text();
+
+    // Guard: refuse to overwrite a populated db with empty/tiny data
+    if (fs.existsSync(DB_PATH)) {
+      const existingSize = fs.statSync(DB_PATH).size;
+      if (existingSize > 1000 && body.length < 100) {
+        return NextResponse.json(
+          { error: 'Refusing to wipe database: incoming payload is suspiciously small compared to existing data. This is likely a bug.' },
+          { status: 409 }
+        );
+      }
+    }
+
     fs.writeFileSync(DB_PATH, body, 'utf-8');
 
     return NextResponse.json({ ok: true });

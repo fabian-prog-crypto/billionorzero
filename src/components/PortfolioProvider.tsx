@@ -10,6 +10,7 @@ import {
   getPriceProvider,
 } from '@/services';
 import { useAutoBackup } from '@/hooks/useAutoBackup';
+import { useDbSync } from '@/hooks/useDbSync';
 import type { Position, PriceData } from '@/types';
 
 const REFRESH_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours (once per day)
@@ -139,6 +140,8 @@ interface PortfolioProviderProps {
 export default function PortfolioProvider({ children }: PortfolioProviderProps) {
   // Auto-backup store changes to server-side JSON files
   useAutoBackup();
+  // Auto-sync store to db.json for CMD-K consistency
+  useDbSync();
 
   // Initialize service on mount and reset any stuck refresh state
   useEffect(() => {

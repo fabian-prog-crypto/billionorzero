@@ -18,7 +18,9 @@ export default function SettingsPage() {
   const [birdeyeApiKey, setBirdeyeApiKey] = useState('');
   const [stockApiKey, setStockApiKey] = useState('');
   const [ollamaUrl, setOllamaUrl] = useState('http://localhost:11434');
-  const [ollamaModel, setOllamaModel] = useState('llama3.2');
+  const [ollamaModel, setOllamaModel] = useState('qwen2.5:14b');
+  const [customModel, setCustomModel] = useState('');
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [ollamaStatus, setOllamaStatus] = useState<'idle' | 'testing' | 'connected' | 'error'>('idle');
   const [ollamaError, setOllamaError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -46,7 +48,10 @@ export default function SettingsPage() {
     setBirdeyeApiKey(localStorage.getItem('birdeye_api_key') || '');
     setStockApiKey(localStorage.getItem('stock_api_key') || '');
     setOllamaUrl(localStorage.getItem('ollama_url') || 'http://localhost:11434');
-    setOllamaModel(localStorage.getItem('ollama_model') || 'llama3.2');
+    const savedModel = localStorage.getItem('ollama_model') || 'llama3.2:latest';
+    setOllamaModel(savedModel);
+    const recommended = ['llama3.2:latest', 'llama3.1:8b', 'mistral:7b'];
+    if (!recommended.includes(savedModel)) setCustomModel(savedModel);
 
     // Check passkey support and status
     setPasskeySupported(isPasskeySupported());
@@ -103,6 +108,7 @@ export default function SettingsPage() {
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
       const models = data.models?.map((m: { name: string }) => m.name) || [];
+      setAvailableModels(models);
       const hasModel = models.some((m: string) => m.startsWith(ollamaModel));
       if (hasModel) {
         setOllamaStatus('connected');
@@ -128,7 +134,7 @@ export default function SettingsPage() {
     } else {
       localStorage.removeItem('ollama_url');
     }
-    if (ollamaModel && ollamaModel !== 'llama3.2') {
+    if (ollamaModel && ollamaModel !== 'llama3.2:latest') {
       localStorage.setItem('ollama_model', ollamaModel);
     } else {
       localStorage.removeItem('ollama_model');
@@ -407,6 +413,13 @@ export default function SettingsPage() {
                   setOllamaUrl(e.target.value);
                   setOllamaStatus('idle');
                 }}
+                onBlur={() => {
+                  if (ollamaUrl && ollamaUrl !== 'http://localhost:11434') {
+                    localStorage.setItem('ollama_url', ollamaUrl);
+                  } else {
+                    localStorage.removeItem('ollama_url');
+                  }
+                }}
                 className="w-full"
               />
               <p className="text-xs text-[var(--foreground-muted)] mt-1">
@@ -416,19 +429,52 @@ export default function SettingsPage() {
 
             <div>
               <label className="block text-sm font-medium mb-1">Model</label>
-              <input
-                type="text"
-                placeholder="llama3.2"
-                value={ollamaModel}
+              <select
+                value={['llama3.2:latest', 'llama3.1:8b', 'mistral:7b'].includes(ollamaModel) ? ollamaModel : 'custom'}
                 onChange={(e) => {
-                  setOllamaModel(e.target.value);
+                  const model = e.target.value === 'custom' ? (customModel || '') : e.target.value;
+                  setOllamaModel(model);
                   setOllamaStatus('idle');
+                  // Auto-save immediately
+                  if (model && model !== 'llama3.2:latest') {
+                    localStorage.setItem('ollama_model', model);
+                  } else {
+                    localStorage.removeItem('ollama_model');
+                  }
                 }}
-                className="w-full"
-              />
+                className="w-full bg-[var(--background-tertiary)] border border-[var(--border)] text-[var(--foreground)] px-3 py-2 text-[13px]"
+              >
+                <option value="llama3.2:latest">Llama 3.2 3B (Recommended)</option>
+                <option value="llama3.1:8b">Llama 3.1 8B</option>
+                <option value="mistral:7b">Mistral 7B</option>
+                <option value="custom">Custom...</option>
+              </select>
+              {!['llama3.2:latest', 'llama3.1:8b', 'mistral:7b'].includes(ollamaModel) && (
+                <input
+                  type="text"
+                  placeholder="Enter model name (e.g. phi3:mini)"
+                  value={ollamaModel}
+                  onChange={(e) => {
+                    setOllamaModel(e.target.value);
+                    setCustomModel(e.target.value);
+                    setOllamaStatus('idle');
+                  }}
+                  onBlur={() => {
+                    if (ollamaModel) {
+                      localStorage.setItem('ollama_model', ollamaModel);
+                    }
+                  }}
+                  className="w-full mt-2"
+                />
+              )}
               <p className="text-xs text-[var(--foreground-muted)] mt-1">
-                Ollama model to use for parsing. Default: llama3.2
+                Llama 3.2 3B is fast with good tool-calling accuracy. Larger models may be more accurate but slower.
               </p>
+              {availableModels.length > 0 && (
+                <p className="text-xs text-[var(--foreground-muted)] mt-1">
+                  Installed: {availableModels.join(', ')}
+                </p>
+              )}
             </div>
 
             <div className="flex items-center gap-3">

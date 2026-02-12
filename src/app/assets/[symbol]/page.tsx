@@ -21,6 +21,7 @@ import {
 import CryptoIcon from '@/components/ui/CryptoIcon';
 import StockIcon from '@/components/ui/StockIcon';
 import CustomPriceModal from '@/components/modals/CustomPriceModal';
+import ConfirmPositionActionModal from '@/components/modals/ConfirmPositionActionModal';
 import SearchInput from '@/components/ui/SearchInput';
 import {
   formatCurrency,
@@ -30,7 +31,7 @@ import {
   getChangeColor,
   getChainColor,
 } from '@/lib/utils';
-import { AssetWithPrice, Account, WalletConnection } from '@/types';
+import { AssetWithPrice, Account, WalletConnection, ParsedPositionAction } from '@/types';
 
 // Aggregated position by source
 interface AggregatedPosition {
@@ -57,6 +58,22 @@ export default function AssetDetailPage() {
     isOpen: boolean;
     asset: AssetWithPrice | null;
   }>({ isOpen: false, asset: null });
+  const [editAction, setEditAction] = useState<ParsedPositionAction | null>(null);
+
+  const handleEditPosition = (position: AssetWithPrice) => {
+    setEditAction({
+      action: 'update_position',
+      symbol: position.symbol,
+      name: position.name,
+      assetType: position.type,
+      amount: position.amount,
+      costBasis: position.costBasis,
+      date: position.purchaseDate,
+      matchedPositionId: position.id,
+      confidence: 1,
+      summary: `Edit ${position.symbol.toUpperCase()} position`,
+    });
+  };
 
   const { positions, prices, customPrices, wallets: getWallets, accounts, hideBalances } = usePortfolioStore();
   const categoryService = getCategoryService();
@@ -356,6 +373,7 @@ export default function AssetDetailPage() {
               <th className="table-header text-right pb-3">Amount</th>
               <th className="table-header text-right pb-3">Value</th>
               <th className="table-header text-right pb-3">%</th>
+              <th className="table-header text-right pb-3 w-10"></th>
             </tr>
           </thead>
           <tbody>
@@ -367,7 +385,7 @@ export default function AssetDetailPage() {
               return (
                 <tr
                   key={group.key}
-                  className={`border-b border-[var(--border)] last:border-0 hover:bg-[var(--background-secondary)] transition-colors ${
+                  className={`group border-b border-[var(--border)] last:border-0 hover:bg-[var(--background-secondary)] transition-colors ${
                     group.isDebt ? 'bg-[var(--negative-light)]' : ''
                   }`}
                 >
@@ -441,6 +459,17 @@ export default function AssetDetailPage() {
                   <td className={`py-2 text-right text-[10px] ${group.isDebt ? 'text-[var(--negative)]' : 'text-[var(--foreground-muted)]'}`}>
                     {percent.toFixed(1)}%
                   </td>
+                  <td className="py-2 text-right">
+                    {!group.walletAddress && group.positions.length > 0 && (
+                      <button
+                        onClick={() => handleEditPosition(group.positions[0])}
+                        className="p-1.5 hover:bg-[var(--background-tertiary)] text-[var(--foreground-muted)] transition-colors opacity-0 group-hover:opacity-100"
+                        title="Edit position"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </td>
                 </tr>
               );
             })}
@@ -457,6 +486,17 @@ export default function AssetDetailPage() {
           {hideBalances ? '••••••' : formatCurrency(filteredPositions.reduce((sum, p) => sum + p.value, 0))}
         </span>
       </div>
+
+      {/* Edit Position Modal */}
+      {editAction && (
+        <ConfirmPositionActionModal
+          isOpen={!!editAction}
+          onClose={() => setEditAction(null)}
+          parsedAction={editAction}
+          positions={positions}
+          positionsWithPrices={allPositionsWithPrices}
+        />
+      )}
 
       {/* Custom Price Modal */}
       {customPriceModal.asset && (

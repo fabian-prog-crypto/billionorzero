@@ -28,7 +28,7 @@ npm run start    # Start production server
 npm run lint     # Run ESLint (Next.js core-web-vitals + TypeScript rules)
 ```
 
-There is no test framework configured. No `npm test` command exists.
+Unit tests use Vitest (`npx vitest run`). E2E tests use Playwright (`npx playwright test`). See the **Testing** section below for details.
 
 ## Project Structure
 
@@ -253,7 +253,7 @@ Three Zustand stores, all persisted to localStorage:
 
 | Store | Key | Contents |
 |-------|-----|----------|
-| `portfolioStore` | `portfolio-storage` (v2) | Positions, wallets, CEX accounts, prices, custom prices, FX rates, snapshots, UI state, settings |
+| `portfolioStore` | `portfolio-storage` (v13) | Positions, wallets, CEX accounts, prices, custom prices, FX rates, snapshots, UI state, settings |
 | `authStore` | `auth-storage` | Authentication status, passkey flag, login timestamp |
 | `themeStore` | `theme-storage` | Theme preference (light/dark/system) |
 
@@ -480,6 +480,22 @@ All in `src/lib/utils.ts`:
 | `src/services/config/service-config.ts` | API key management |
 | `docs/SERVICE_ARCHITECTURE.md` | Detailed architecture diagrams and data flow |
 
+## Testing
+
+### Commands
+
+```bash
+npx playwright test                        # Run all E2E tests
+npx playwright test e2e/command-palette    # Run CMD-K tests only
+npx playwright test --headed               # Run with visible browser
+npx playwright show-report                 # View last HTML report
+npx vitest run                             # Run all unit/integration tests
+```
+
+### E2E and unit test patterns
+
+See `.claude/rules/testing.md` for comprehensive test patterns, E2E seed data rules (v13 format, `seedApiToken()`, `seededPage` fixture), and store migration guidance.
+
 ## Common Tasks
 
 ### Adding a new page
@@ -502,36 +518,11 @@ All in `src/lib/utils.ts`:
 1. Add types to the `PortfolioState` interface in `src/store/portfolioStore.ts`
 2. Implement the action in the store's `create()` call
 3. If adding persistent fields, they auto-persist via Zustand's `persist` middleware
-4. Consider migration if changing the persisted schema shape (current version: 2)
+4. Consider migration if changing the persisted schema shape (current version: 13). See `.claude/rules/testing.md` for migration guidance.
 
-## Pre-Merge QA: Portfolio Diff Check (MANDATORY)
+## Pre-Merge QA
 
-Before merging any branch into main, you **must** perform a quantitative portfolio comparison to verify your changes do not silently alter existing portfolio data. This is a hard gate -- do not skip it.
-
-### Procedure
-
-1. **Baseline snapshot (main):** Check out `main`, run the app (`npm run dev`), trigger a full portfolio sync, and record the complete output -- all positions, prices, asset classifications, and calculated values (net worth, exposure metrics, category totals).
-
-2. **Branch snapshot:** Check out your feature branch, run the app, trigger a full portfolio sync with the same wallets/accounts, and record the same data.
-
-3. **Diff the two snapshots.** Compare position-by-position:
-   - Position count, symbols, amounts, chains, protocols
-   - Prices and 24h change values
-   - Calculated values (position value, allocation %)
-   - Exposure classifications (`classifyAssetExposure()` outputs)
-   - Portfolio summary totals (net worth, gross assets, debts, category breakdowns)
-
-### Decision rules
-
-| Diff result | Action |
-|-------------|--------|
-| **Existing positions/prices/values changed** | **ABORT the merge.** Investigate why existing data differs. Fix the regression before proceeding. Do not merge until the baseline matches. |
-| **Only new/additional positions appear** | **ASK the user** for explicit approval before merging. Explain what new positions were added and why. |
-| **No differences** | Safe to merge. |
-
-### Why this matters
-
-This app has no test suite. The portfolio sync pipeline touches multiple external APIs, providers, and classification logic. A small change in any layer (API parsing, provider fallback, classification rules, price resolution order) can silently corrupt portfolio values. This diff check is the primary regression safety net.
+See `.claude/rules/qa.md` for the mandatory portfolio diff check procedure and `.claude/rules/qa-acceptance.md` for the feature acceptance criteria checklist.
 
 ## Existing Documentation
 

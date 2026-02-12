@@ -23,17 +23,39 @@ export const useAuthStore = create<AuthState>()(
       loginTimestamp: null,
       _hasHydrated: false,
 
-      setAuthenticated: (value) => set({
-        isAuthenticated: value,
-        loginTimestamp: value ? Date.now() : null,
-      }),
+      setAuthenticated: (value) => {
+        set({
+          isAuthenticated: value,
+          loginTimestamp: value ? Date.now() : null,
+        });
+        if (value) {
+          fetch('/api/auth/token', { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+              if (data.token) {
+                localStorage.setItem('api-session-token', data.token);
+              }
+            })
+            .catch(() => {});
+        }
+      },
       setPasskeyEnabled: (value) => set({ isPasskeyEnabled: value }),
       setHasHydrated: (value) => set({ _hasHydrated: value }),
 
-      logout: () => set({
-        isAuthenticated: false,
-        loginTimestamp: null,
-      }),
+      logout: () => {
+        const token = localStorage.getItem('api-session-token');
+        if (token) {
+          fetch('/api/auth/token', {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${token}` },
+          }).catch(() => {});
+          localStorage.removeItem('api-session-token');
+        }
+        set({
+          isAuthenticated: false,
+          loginTimestamp: null,
+        });
+      },
     }),
     {
       name: 'auth-storage',
@@ -48,6 +70,15 @@ export const useAuthStore = create<AuthState>()(
               state.isAuthenticated = false;
               state.loginTimestamp = null;
             }
+          }
+          // Refresh server-side token for returning users (handles server restart)
+          if (state.isAuthenticated) {
+            fetch('/api/auth/token', { method: 'POST' })
+              .then(res => res.json())
+              .then(data => {
+                if (data.token) localStorage.setItem('api-session-token', data.token);
+              })
+              .catch(() => {});
           }
           state._hasHydrated = true;
         }

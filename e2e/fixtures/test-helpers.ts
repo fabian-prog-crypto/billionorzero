@@ -2,13 +2,35 @@ import { test as base, Page } from '@playwright/test';
 
 /**
  * Seed data for localStorage to bootstrap the app with demo positions.
- * This bypasses the need for API keys or a running backend.
+ * Uses store v13 with unified accounts[] and AccountConnection discriminated union.
  */
 
-const MANUAL_POSITIONS = [
+// ─── Accounts (v13 unified model) ────────────────────────────────────────────
+
+const ACCOUNTS = [
+  {
+    id: 'test-brokerage-1',
+    name: 'Revolut',
+    isActive: true,
+    connection: { dataSource: 'manual' },
+    addedAt: '2024-01-01T00:00:00.000Z',
+  },
+  {
+    id: 'test-bank-1',
+    name: 'Test Bank',
+    isActive: true,
+    connection: { dataSource: 'manual' },
+    addedAt: '2024-01-01T00:00:00.000Z',
+  },
+];
+
+// ─── Positions ───────────────────────────────────────────────────────────────
+
+const POSITIONS = [
   {
     id: 'test-btc-1',
     type: 'crypto',
+    assetClass: 'crypto',
     symbol: 'bitcoin',
     name: 'Bitcoin',
     amount: 1.5,
@@ -20,6 +42,7 @@ const MANUAL_POSITIONS = [
   {
     id: 'test-eth-1',
     type: 'crypto',
+    assetClass: 'crypto',
     symbol: 'ethereum',
     name: 'Ethereum',
     amount: 10,
@@ -31,28 +54,31 @@ const MANUAL_POSITIONS = [
   {
     id: 'test-aapl-1',
     type: 'stock',
+    assetClass: 'equity',
     symbol: 'AAPL',
     name: 'Apple Inc.',
     amount: 50,
     costBasis: 8500,
-    protocol: 'brokerage:test-brokerage-1',
+    accountId: 'test-brokerage-1',
     addedAt: '2024-03-01T00:00:00.000Z',
     updatedAt: '2024-03-01T00:00:00.000Z',
   },
   {
     id: 'test-cash-usd-1',
     type: 'cash',
+    assetClass: 'cash',
     symbol: 'CASH_USD_1000000',
     name: 'Test Bank (USD)',
     amount: 10000,
     costBasis: 10000,
-    protocol: 'cash-account:test-cash-account-1',
+    accountId: 'test-bank-1',
     addedAt: '2024-01-01T00:00:00.000Z',
     updatedAt: '2024-01-01T00:00:00.000Z',
   },
   {
     id: 'test-manual-gold',
     type: 'manual',
+    assetClass: 'other',
     symbol: 'GOLD',
     name: 'Gold',
     amount: 5,
@@ -61,6 +87,8 @@ const MANUAL_POSITIONS = [
     updatedAt: '2024-04-01T00:00:00.000Z',
   },
 ];
+
+// ─── Prices ──────────────────────────────────────────────────────────────────
 
 const PRICES: Record<string, object> = {
   bitcoin: {
@@ -100,33 +128,13 @@ const PRICES: Record<string, object> = {
   },
 };
 
-const BROKERAGE_ACCOUNTS = [
-  {
-    id: 'test-brokerage-1',
-    name: 'Revolut',
-    isActive: true,
-    addedAt: '2024-01-01T00:00:00.000Z',
-  },
-];
-
-const CASH_ACCOUNTS = [
-  {
-    id: 'test-cash-account-1',
-    slug: 'test-bank',
-    name: 'Test Bank',
-    isActive: true,
-    addedAt: '2024-01-01T00:00:00.000Z',
-  },
-];
+// ─── Storage Builders ────────────────────────────────────────────────────────
 
 function buildPortfolioStorage() {
   return JSON.stringify({
     state: {
-      positions: MANUAL_POSITIONS,
-      wallets: [],
-      accounts: [],
-      brokerageAccounts: BROKERAGE_ACCOUNTS,
-      cashAccounts: CASH_ACCOUNTS,
+      positions: POSITIONS,
+      accounts: ACCOUNTS,
       prices: PRICES,
       customPrices: {},
       fxRates: {},
@@ -137,7 +145,7 @@ function buildPortfolioStorage() {
       hideDust: false,
       riskFreeRate: 0.05,
     },
-    version: 7,
+    version: 13,
   });
 }
 
@@ -156,6 +164,21 @@ function buildAuthStorage() {
       loginTimestamp: null,
     },
     version: 0,
+  });
+}
+
+/**
+ * Fetches a fresh API session token from the running dev server.
+ */
+async function seedApiToken(page: Page) {
+  await page.evaluate(async () => {
+    try {
+      const res = await fetch('/api/auth/token', { method: 'POST' });
+      const data = await res.json();
+      if (data.token) localStorage.setItem('api-session-token', data.token);
+    } catch {
+      // Token seeding is best-effort for tests that don't hit protected routes
+    }
   });
 }
 
@@ -182,10 +205,7 @@ export async function seedEmptyPortfolio(page: Page) {
   const emptyPortfolio = JSON.stringify({
     state: {
       positions: [],
-      wallets: [],
       accounts: [],
-      brokerageAccounts: [],
-      cashAccounts: [],
       prices: {},
       customPrices: {},
       fxRates: {},
@@ -196,7 +216,7 @@ export async function seedEmptyPortfolio(page: Page) {
       hideDust: false,
       riskFreeRate: 0.05,
     },
-    version: 7,
+    version: 13,
   });
 
   await page.addInitScript((data) => {
@@ -226,6 +246,7 @@ export const test = base.extend<{ seededPage: Page }>({
     await seedLocalStorage(page);
     await page.goto('/');
     await waitForAppLoad(page);
+    await seedApiToken(page);
     await use(page);
   },
 });

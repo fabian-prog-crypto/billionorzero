@@ -2,13 +2,10 @@
 
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { usePortfolioStore } from '@/store/portfolioStore';
 import { useCommandHistory } from '@/hooks/useCommandHistory';
-import { MutationPreview, QueryResult } from '@/services/domain/command-types';
-import { getToolById } from '@/services/domain/tool-registry';
-import { executeQuery } from '@/services/domain/query-executor';
-import { previewMutation, executeMutation } from '@/services/domain/mutation-executor';
-import type { WalletConnection, CexConnection } from '@/types';
+import { QueryResult } from '@/services/domain/command-types';
+import { getOrRefreshToken, refreshToken } from '@/lib/api-token';
+import type { ParsedPositionAction } from '@/types';
 
 // ─── Navigation Routes ──────────────────────────────────────────────────────
 
@@ -26,76 +23,18 @@ const PAGE_ROUTES: Record<string, string> = {
   other: '/other',
 };
 
-// ─── Portfolio Context Builder ───────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-function buildPortfolioContext(): string {
-  const store = usePortfolioStore.getState();
-  const { positions, accounts } = store;
-  const lines: string[] = [];
-
-  // Accounts
-  if (accounts.length > 0) {
-    lines.push('Accounts:');
-    for (const a of accounts) {
-      const ds = a.connection.dataSource;
-      if (ds === 'debank' || ds === 'helius') {
-        const conn = a.connection as WalletConnection;
-        lines.push(`  ${a.name} (wallet, ${conn.address.slice(0, 6)}...${conn.address.slice(-4)}, chains: ${(conn.chains || []).join(', ')})`);
-      } else if (ds === 'binance' || ds === 'coinbase' || ds === 'kraken' || ds === 'okx') {
-        lines.push(`  ${a.name} (${ds})`);
-      } else if (a.slug) {
-        lines.push(`  ${a.name} (cash account)`);
-      } else {
-        lines.push(`  ${a.name} (brokerage)`);
-      }
-    }
-    lines.push('');
-  }
-
-  // Split positions by mutability
-  const walletIds = new Set(
-    accounts.filter((a) => a.connection.dataSource === 'debank' || a.connection.dataSource === 'helius').map((a) => a.id)
-  );
-  const mutablePositions = positions.filter(
-    (p) => !p.accountId || !walletIds.has(p.accountId)
-  );
-  const readOnlyPositions = positions.filter(
-    (p) => p.accountId && walletIds.has(p.accountId)
-  );
-
-  // Deduplicate wallet positions by symbol
-  const seenWalletSymbols = new Set<string>();
-
-  if (mutablePositions.length > 0) {
-    lines.push('Mutable positions:');
-    for (const p of mutablePositions) {
-      const account = p.accountId
-        ? accounts.find((a) => a.id === p.accountId)
-        : null;
-      const accountStr = account ? `, ${account.name}` : '';
-      if (p.type === 'cash') {
-        lines.push(`  ${p.name} (${p.amount}) - cash${accountStr}`);
-      } else {
-        lines.push(`  ${p.symbol} (${p.amount}) - ${p.type}${accountStr}`);
-      }
-    }
-    lines.push('');
-  }
-
-  if (readOnlyPositions.length > 0) {
-    lines.push('Read-only (from sync):');
-    for (const p of readOnlyPositions) {
-      const key = p.symbol.toUpperCase();
-      if (seenWalletSymbols.has(key)) continue;
-      seenWalletSymbols.add(key);
-      const account = p.accountId
-        ? accounts.find((a) => a.id === p.accountId)
-        : null;
-      lines.push(`  ${p.symbol} (${p.amount}) - ${account?.name || 'wallet'}`);
-    }
-  }
-
-  return lines.join('\n');
+interface ChatResponse {
+  response: string;
+  toolCalls: {
+    tool: string;
+    args: Record<string, unknown>;
+    result: unknown;
+    isMutation: boolean;
+  }[];
+  mutations: boolean;
+  pendingAction?: ParsedPositionAction;
 }
 
 // ─── Hook ────────────────────────────────────────────────────────────────────
@@ -105,9 +44,10 @@ export function useCommandPalette() {
   const [isLoading, setIsLoading] = useState(false);
   const [loadingText, setLoadingText] = useState('');
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
-  const [mutationPreview, setMutationPreview] = useState<MutationPreview | null>(null);
+  const [llmResponse, setLlmResponse] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<ParsedPositionAction | null>(null);
 
   const router = useRouter();
   const { recentCommands, addCommand } = useCommandHistory();
@@ -117,12 +57,25 @@ export function useCommandPalette() {
     setIsLoading(false);
     setLoadingText('');
     setQueryResult(null);
-    setMutationPreview(null);
+    setLlmResponse(null);
     setSuccessMessage(null);
     setError(null);
+    setPendingAction(null);
   }, []);
 
   const clearError = useCallback(() => setError(null), []);
+
+  // Check for navigation intent in tool calls
+  const handleNavigation = useCallback((toolCalls: ChatResponse['toolCalls']) => {
+    const navCall = toolCalls.find(tc => tc.tool === 'navigate');
+    if (navCall) {
+      const page = navCall.args.page as string;
+      const route = PAGE_ROUTES[page] || '/';
+      router.push(route);
+      return true;
+    }
+    return false;
+  }, [router]);
 
   const submit = useCallback(async () => {
     if (!text.trim() || isLoading) return;
@@ -131,7 +84,7 @@ export function useCommandPalette() {
     setLoadingText(text.trim());
     setError(null);
     setQueryResult(null);
-    setMutationPreview(null);
+    setLlmResponse(null);
 
     try {
       const ollamaUrl =
@@ -139,63 +92,76 @@ export function useCommandPalette() {
         'http://localhost:11434';
       const ollamaModel =
         (typeof window !== 'undefined' && localStorage.getItem('ollama_model')) ||
-        'llama3.2';
-      const context = buildPortfolioContext();
+        'llama3.2:latest';
 
-      const response = await fetch('/api/command', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: text.trim(),
-          context,
-          ollamaUrl,
-          ollamaModel,
-        }),
-      });
+      const token = await getOrRefreshToken();
+
+      const makeRequest = async (authToken: string | null) => {
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+        if (authToken) {
+          headers['Authorization'] = `Bearer ${authToken}`;
+        }
+        return fetch('/api/chat', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            text: text.trim(),
+            ollamaUrl,
+            ollamaModel,
+          }),
+        });
+      };
+
+      let response = await makeRequest(token);
+
+      // Auto-retry on 401: refresh token and try once more
+      if (response.status === 401) {
+        const freshToken = await refreshToken();
+        if (freshToken) {
+          response = await makeRequest(freshToken);
+        }
+      }
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to parse command');
+        if (response.status === 401) {
+          throw new Error('Session expired. Please refresh the page.');
+        }
+        throw new Error(data.error || 'Failed to process command');
       }
 
-      const { tool, args } = data as {
-        tool: string;
-        args: Record<string, unknown>;
-        confidence: number;
-      };
+      const chatResponse = data as ChatResponse;
       addCommand(text.trim());
 
-      // Route by tool type
-      const toolDef = getToolById(tool);
-      if (!toolDef) {
-        setError(`Unknown tool: ${tool}`);
+      // Check for navigation
+      if (chatResponse.toolCalls && handleNavigation(chatResponse.toolCalls)) {
+        setSuccessMessage('Navigating...');
         return;
       }
 
-      switch (toolDef.type) {
-        case 'query': {
-          const result = executeQuery(tool, args);
-          setQueryResult(result);
-          break;
-        }
-        case 'mutation': {
-          const preview = previewMutation(tool, args);
-          setMutationPreview(preview);
-          break;
-        }
-        case 'navigation': {
-          const page = args.page as string;
-          const route = PAGE_ROUTES[page] || '/';
-          router.push(route);
-          setSuccessMessage(`Navigating to ${page}...`);
-          break;
-        }
+      // If server returned a pending mutation action, surface it for confirmation
+      if (chatResponse.pendingAction) {
+        setPendingAction(chatResponse.pendingAction);
+        return;
+      }
+
+      // If mutations were made (non-confirmable like toggles), show success
+      if (chatResponse.mutations) {
+        setSuccessMessage(chatResponse.response || 'Changes applied');
+        return;
+      }
+
+      // Show LLM response
+      if (chatResponse.response) {
+        setLlmResponse(chatResponse.response);
       }
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : 'Failed to parse command';
-      if (message.includes('Cannot connect') || message.includes('fetch')) {
+        err instanceof Error ? err.message : 'Failed to process command';
+      if (message.includes('Cannot connect') || message.includes('fetch') || message.includes('Ollama not reachable')) {
         setError(
           'Cannot connect to Ollama. Make sure it is running (ollama serve).'
         );
@@ -205,27 +171,11 @@ export function useCommandPalette() {
     } finally {
       setIsLoading(false);
     }
-  }, [text, isLoading, router, addCommand]);
-
-  const confirmMutation = useCallback(() => {
-    if (!mutationPreview) return;
-
-    const result = executeMutation(
-      mutationPreview.tool,
-      mutationPreview.resolvedArgs
-    );
-
-    if (result.success) {
-      setMutationPreview(null);
-      setSuccessMessage(result.summary || 'Done');
-    } else {
-      setError(result.error || 'Operation failed');
-      setMutationPreview(null);
-    }
-  }, [mutationPreview]);
+  }, [text, isLoading, addCommand, handleNavigation]);
 
   const cancelMutation = useCallback(() => {
-    setMutationPreview(null);
+    setLlmResponse(null);
+    setPendingAction(null);
   }, []);
 
   return {
@@ -234,14 +184,15 @@ export function useCommandPalette() {
     isLoading,
     loadingText,
     queryResult,
-    mutationPreview,
+    llmResponse,
     successMessage,
     error,
     submit,
-    confirmMutation,
     cancelMutation,
     clearError,
     reset,
     recentCommands,
+    pendingAction,
+    setPendingAction,
   };
 }

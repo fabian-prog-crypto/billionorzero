@@ -66,6 +66,11 @@ export default function ConfirmPositionActionModal({
   const [editCostBasis, setEditCostBasis] = useState(parsedAction.costBasis?.toString() || '');
   const [editPurchaseDate, setEditPurchaseDate] = useState(parsedAction.date || '');
 
+  // Account selector for buy/update_position
+  const [selectedAccountId, setSelectedAccountId] = useState(
+    parsedAction.matchedAccountId || ''
+  );
+
   const firstMissingRef = useRef<HTMLInputElement>(null);
 
   // Reset when modal opens with new action
@@ -124,6 +129,29 @@ export default function ConfirmPositionActionModal({
           setEditPurchaseDate(parsedAction.date || pos.purchaseDate || '');
         }
       }
+
+      // Auto-select account for buy/update_position/update_cash/add_cash
+      if (parsedAction.action === 'buy' || parsedAction.action === 'update_position') {
+        const matchedPos = parsedAction.matchedPositionId
+          ? positions.find(p => p.id === parsedAction.matchedPositionId)
+          : null;
+
+        // Priority: matchedAccountId from CMD-K → matched position's accountId → first relevant account
+        const resolvedAccountId =
+          parsedAction.matchedAccountId ||
+          matchedPos?.accountId ||
+          '';
+        setSelectedAccountId(resolvedAccountId);
+      } else if (parsedAction.action === 'update_cash' || parsedAction.action === 'add_cash') {
+        const matchedPos = parsedAction.matchedPositionId
+          ? positions.find(p => p.id === parsedAction.matchedPositionId)
+          : null;
+        setSelectedAccountId(
+          parsedAction.matchedAccountId || matchedPos?.accountId || ''
+        );
+      } else {
+        setSelectedAccountId(parsedAction.matchedAccountId || '');
+      }
     }
   }, [isOpen, parsedAction, positionsWithPrices, positions]);
 
@@ -143,6 +171,18 @@ export default function ConfirmPositionActionModal({
   const isUpdateCash = action === 'update_cash';
   const isSetPrice = action === 'set_price';
   const isUpdatePosition = action === 'update_position';
+
+  // Compute relevant accounts for the account dropdown
+  const relevantAccounts = (() => {
+    if (isBuy || isUpdatePosition) {
+      const assetType = parsedAction.assetType;
+      if (assetType === 'stock' || assetType === 'etf') return store.brokerageAccounts();
+      if (assetType === 'crypto') return [...store.walletAccounts(), ...store.cexAccounts()];
+      return store.manualAccounts();
+    }
+    if (isUpdateCash || isAddCash) return store.cashAccounts();
+    return [];
+  })();
 
   // Find matched position
   const matchedPosition = matchedPositionId
@@ -412,11 +452,18 @@ export default function ConfirmPositionActionModal({
         const existingPos =
           addToExisting && matchedPosition ? matchedPosition : null;
 
-        // Determine brokerage accountId for new buys
-        const buyBrokerageAccountId = existingPos?.accountId && brokerageAccounts.some(a => a.id === existingPos.accountId)
+        // Determine accountId for new buys: prefer selectedAccountId from dropdown
+        const cryptoAccounts = parsedAction.assetType === 'crypto'
+          ? [...store.walletAccounts(), ...store.cexAccounts()]
+          : [];
+        const buyBrokerageAccountId = selectedAccountId
+          ? selectedAccountId
+          : existingPos?.accountId
           ? existingPos.accountId
           : (parsedAction.assetType === 'stock' || parsedAction.assetType === 'etf') && brokerageAccounts.length > 0
           ? brokerageAccounts[0].id
+          : cryptoAccounts.length > 0
+          ? cryptoAccounts[0].id
           : undefined;
 
         const actionData: ParsedPositionAction = {
@@ -452,6 +499,9 @@ export default function ConfirmPositionActionModal({
           ? positions.find(p => p.id === matchedPositionId)
           : null;
 
+        // Resolve accountId: selected dropdown → matched position's accountId
+        const resolvedCashAccountId = selectedAccountId || existingMatch?.accountId || undefined;
+
         if (existingMatch) {
           // Add to existing cash position
           const newAmount = existingMatch.amount + numAmount;
@@ -469,6 +519,7 @@ export default function ConfirmPositionActionModal({
             name: accountName.trim() ? `${accountName.trim()} (${cashCurrency})` : `Cash (${cashCurrency})`,
             amount: numAmount,
             costBasis: numAmount,
+            ...(resolvedCashAccountId ? { accountId: resolvedCashAccountId } : {}),
           });
           // Set price to 1 for fiat (value = amount)
           updatePrice(cashSymbol.toLowerCase(), {
@@ -499,10 +550,15 @@ export default function ConfirmPositionActionModal({
           setError('No matching cash position found');
           return;
         }
-        updatePosition(target.id, {
+        const cashUpdates: Partial<Position> = {
           amount: numAmount,
           costBasis: numAmount,
-        });
+        };
+        // Move to a different bank account if changed
+        if (selectedAccountId && selectedAccountId !== target.accountId) {
+          cashUpdates.accountId = selectedAccountId;
+        }
+        updatePosition(target.id, cashUpdates);
       } else if (isSetPrice) {
         // Set custom price override
         if (numNewPrice <= 0) {
@@ -529,6 +585,10 @@ export default function ConfirmPositionActionModal({
         const numEditCostBasis = parseFloat(editCostBasis);
         if (editCostBasis && !isNaN(numEditCostBasis)) updates.costBasis = numEditCostBasis;
         if (editPurchaseDate) updates.purchaseDate = editPurchaseDate;
+        // Allow moving position to a different account
+        if (selectedAccountId && selectedAccountId !== matchedPosition.accountId) {
+          updates.accountId = selectedAccountId;
+        }
         if (Object.keys(updates).length === 0) {
           setError('No fields changed');
           return;
@@ -763,6 +823,16 @@ export default function ConfirmPositionActionModal({
                   )}
                 </div>
               </div>
+
+              {/* Account context for sell */}
+              {matchedPosition?.accountId && (() => {
+                const acct = store.accounts.find(a => a.id === matchedPosition.accountId);
+                return acct ? (
+                  <div className="text-xs text-[var(--foreground-muted)]">
+                    Account: {acct.name}
+                  </div>
+                ) : null;
+              })()}
             </>
           )}
 
@@ -844,6 +914,25 @@ export default function ConfirmPositionActionModal({
                   </div>
                 </div>
               </div>
+
+              {/* Account selector (for buy actions with available accounts) */}
+              {relevantAccounts.length > 0 && (
+                <div>
+                  <label className="block text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">
+                    Account
+                  </label>
+                  <select
+                    value={selectedAccountId}
+                    onChange={(e) => setSelectedAccountId(e.target.value)}
+                    className="w-full"
+                  >
+                    <option value="">No account</option>
+                    {relevantAccounts.map((a) => (
+                      <option key={a.id} value={a.id}>{a.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {/* Existing position: add-to or create separate */}
               {matchedPosition && (
@@ -1015,11 +1104,15 @@ export default function ConfirmPositionActionModal({
                 <div className="p-3 bg-[var(--background-secondary)]">
                   {symbolMatches.map((p) => {
                     const withPrice = positionsWithPrices.find(pw => pw.id === p.id);
+                    const acct = p.accountId ? store.accounts.find(a => a.id === p.accountId) : null;
                     return (
                       <div key={p.id} className="flex items-center justify-between text-sm py-1">
                         <div>
                           <span className="font-medium">{p.symbol.toUpperCase()}</span>
                           <span className="text-[var(--foreground-muted)] ml-2">{formatNumber(p.amount)} units</span>
+                          {acct && (
+                            <span className="text-[var(--foreground-muted)] ml-1">· {acct.name}</span>
+                          )}
                         </div>
                         {withPrice && (
                           <span className="font-mono text-sm">{formatCurrency(withPrice.value)}</span>
@@ -1063,6 +1156,25 @@ export default function ConfirmPositionActionModal({
                   </select>
                 </div>
               )}
+
+              {/* Bank account selector */}
+              {relevantAccounts.length > 0 && (
+                <div>
+                  <label className="block text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">
+                    Account
+                  </label>
+                  <select
+                    value={selectedAccountId}
+                    onChange={(e) => setSelectedAccountId(e.target.value)}
+                    className="w-full"
+                  >
+                    <option value="">No account</option>
+                    {relevantAccounts.map((a) => (
+                      <option key={a.id} value={a.id}>{a.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="flex items-center text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">
                   New Balance
@@ -1096,7 +1208,13 @@ export default function ConfirmPositionActionModal({
                     Balance Change
                   </p>
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-[var(--foreground-muted)]">{updateCashMatched.name}</span>
+                    <span className="text-[var(--foreground-muted)]">
+                      {updateCashMatched.name}
+                      {updateCashMatched.accountId && (() => {
+                        const acct = store.accounts.find(a => a.id === updateCashMatched.accountId);
+                        return acct ? ` · ${acct.name}` : '';
+                      })()}
+                    </span>
                     <div className="font-mono">
                       <span>{formatNumber(updateCashMatched.amount)}</span>
                       <span className="text-[var(--foreground-muted)] mx-2">→</span>
@@ -1163,7 +1281,13 @@ export default function ConfirmPositionActionModal({
                       return (
                         <div key={p.id} className="space-y-1">
                           <div className="flex items-center justify-between text-sm">
-                            <span className="text-[var(--foreground-muted)]">{formatNumber(p.amount)} {symbol}</span>
+                            <span className="text-[var(--foreground-muted)]">
+                              {formatNumber(p.amount)} {symbol}
+                              {p.accountId && (() => {
+                                const acct = store.accounts.find(a => a.id === p.accountId);
+                                return acct ? ` · ${acct.name}` : '';
+                              })()}
+                            </span>
                             <div className="font-mono text-xs">
                               <span>{formatCurrency(oldValue)}</span>
                               <span className="text-[var(--foreground-muted)] mx-2">→</span>
@@ -1196,6 +1320,24 @@ export default function ConfirmPositionActionModal({
           {/* ===== UPDATE POSITION FIELDS ===== */}
           {isUpdatePosition && matchedPosition && (
             <>
+              {/* Account selector for update_position */}
+              {relevantAccounts.length > 0 && (
+                <div>
+                  <label className="block text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">
+                    Account
+                  </label>
+                  <select
+                    value={selectedAccountId}
+                    onChange={(e) => setSelectedAccountId(e.target.value)}
+                    className="w-full"
+                  >
+                    <option value="">No account</option>
+                    {relevantAccounts.map((a) => (
+                      <option key={a.id} value={a.id}>{a.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="block text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">
                   Amount
