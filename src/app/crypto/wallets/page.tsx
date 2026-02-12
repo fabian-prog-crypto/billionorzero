@@ -2,10 +2,11 @@
 
 import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Trash2, Wallet, ExternalLink, Copy, Check, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Plus, Trash2, Wallet, ExternalLink, Copy, Check, ChevronRight } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import { calculatePortfolioSummary } from '@/services';
 import AddWalletModal from '@/components/modals/AddWalletModal';
+import SortableTableHeader from '@/components/ui/SortableTableHeader';
 import { formatAddress, formatCurrency } from '@/lib/utils';
 import { SUPPORTED_CHAINS, getPerpExchangeName } from '@/services';
 import { Account, WalletConnection, PerpExchange } from '@/types';
@@ -104,15 +105,6 @@ export default function WalletsPage() {
     }
   };
 
-  const SortIcon = ({ field }: { field: SortField }) => {
-    if (sortField !== field) {
-      return <ArrowUpDown className="w-3 h-3 text-[var(--foreground-muted)]" />;
-    }
-    return sortDirection === 'asc'
-      ? <ArrowUp className="w-3 h-3" />
-      : <ArrowDown className="w-3 h-3" />;
-  };
-
   return (
     <div>
       {/* Actions */}
@@ -152,33 +144,15 @@ export default function WalletsPage() {
             <thead>
               <tr className="border-b border-[var(--border)]">
                 <th className="table-header text-left pb-3">
-                  <button
-                    onClick={() => handleSort('name')}
-                    className="flex items-center gap-1 hover:text-[var(--foreground)] transition-colors"
-                  >
-                    Name
-                    <SortIcon field="name" />
-                  </button>
+                  <SortableTableHeader field="name" label="Name" currentField={sortField} direction={sortDirection} onSort={(f) => handleSort(f as SortField)} />
                 </th>
                 <th className="table-header text-left pb-3">Address</th>
                 <th className="table-header text-left pb-3">Networks</th>
                 <th className="table-header text-right pb-3">
-                  <button
-                    onClick={() => handleSort('assets')}
-                    className="flex items-center gap-1 ml-auto hover:text-[var(--foreground)] transition-colors"
-                  >
-                    Assets
-                    <SortIcon field="assets" />
-                  </button>
+                  <SortableTableHeader field="assets" label="Assets" currentField={sortField} direction={sortDirection} onSort={(f) => handleSort(f as SortField)} align="right" />
                 </th>
                 <th className="table-header text-right pb-3">
-                  <button
-                    onClick={() => handleSort('value')}
-                    className="flex items-center gap-1 ml-auto hover:text-[var(--foreground)] transition-colors"
-                  >
-                    Value
-                    <SortIcon field="value" />
-                  </button>
+                  <SortableTableHeader field="value" label="Value" currentField={sortField} direction={sortDirection} onSort={(f) => handleSort(f as SortField)} align="right" />
                 </th>
                 <th className="table-header text-right pb-3 w-20"></th>
               </tr>

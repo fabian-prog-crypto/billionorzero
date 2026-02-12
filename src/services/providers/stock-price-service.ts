@@ -176,27 +176,37 @@ export function getStockPriceService(config?: StockPriceServiceConfig): StockPri
   return instance;
 }
 
-/**
- * Search for stocks (common stocks for suggestions)
- */
-export function searchStocks(query: string): any[] {
-  const allStocks = [
-    { symbol: 'AAPL', description: 'Apple Inc.' },
-    { symbol: 'GOOGL', description: 'Alphabet Inc.' },
-    { symbol: 'MSFT', description: 'Microsoft Corporation' },
-    { symbol: 'AMZN', description: 'Amazon.com Inc.' },
-    { symbol: 'TSLA', description: 'Tesla Inc.' },
-    { symbol: 'NVDA', description: 'NVIDIA Corporation' },
-    { symbol: 'META', description: 'Meta Platforms Inc.' },
-    { symbol: 'NFLX', description: 'Netflix Inc.' },
-    { symbol: 'AMD', description: 'Advanced Micro Devices' },
-    { symbol: 'INTC', description: 'Intel Corporation' },
-  ];
+const FALLBACK_STOCKS = [
+  { symbol: 'AAPL', description: 'Apple Inc.' },
+  { symbol: 'GOOGL', description: 'Alphabet Inc.' },
+  { symbol: 'MSFT', description: 'Microsoft Corporation' },
+  { symbol: 'AMZN', description: 'Amazon.com Inc.' },
+  { symbol: 'TSLA', description: 'Tesla Inc.' },
+  { symbol: 'NVDA', description: 'NVIDIA Corporation' },
+  { symbol: 'META', description: 'Meta Platforms Inc.' },
+  { symbol: 'NFLX', description: 'Netflix Inc.' },
+  { symbol: 'AMD', description: 'Advanced Micro Devices' },
+  { symbol: 'INTC', description: 'Intel Corporation' },
+];
 
-  const q = query.toLowerCase();
-  return allStocks.filter(
-    (s) =>
-      s.symbol.toLowerCase().includes(q) ||
-      s.description.toLowerCase().includes(q)
-  );
+/**
+ * Search for stocks via Finnhub API with fallback to hardcoded list
+ */
+export async function searchStocks(query: string): Promise<Array<{ symbol: string; description: string }>> {
+  try {
+    const client = getStockApiClient();
+    const results = await client.searchSymbol(query);
+    return results.slice(0, 10).map(r => ({
+      symbol: r.symbol,
+      description: r.description,
+    }));
+  } catch {
+    // Fallback to hardcoded list when no API key or API error
+    const q = query.toLowerCase();
+    return FALLBACK_STOCKS.filter(
+      (s) =>
+        s.symbol.toLowerCase().includes(q) ||
+        s.description.toLowerCase().includes(q)
+    );
+  }
 }

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Banknote, ArrowUpDown, ChevronDown, ChevronUp, Download, Edit2 } from 'lucide-react';
+import { Banknote, Download, Edit2 } from 'lucide-react';
 import DonutChart, { DonutChartItem } from '@/components/charts/DonutChart';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import {
@@ -16,21 +16,12 @@ import { formatCurrency, formatNumber } from '@/lib/utils';
 import { CURRENCY_COLORS } from '@/lib/colors';
 import CurrencyIcon from '@/components/ui/CurrencyIcon';
 import SearchInput from '@/components/ui/SearchInput';
+import SortableTableHeader from '@/components/ui/SortableTableHeader';
 import ConfirmPositionActionModal from '@/components/modals/ConfirmPositionActionModal';
 import type { ParsedPositionAction, AssetWithPrice } from '@/types';
 
 type SortField = 'account' | 'currency' | 'value' | 'amount';
 type SortDirection = 'asc' | 'desc';
-
-function SortIcon({ field, sortField, sortDirection }: { field: SortField; sortField: SortField; sortDirection: SortDirection }) {
-  if (sortField !== field) return <ArrowUpDown className="w-3 h-3 opacity-50" />;
-  return sortDirection === 'asc' ? (
-    <ChevronUp className="w-3 h-3" />
-  ) : (
-    <ChevronDown className="w-3 h-3" />
-  );
-}
-
 
 export default function CashPage() {
   const { positions, prices, customPrices, fxRates, hideBalances } = usePortfolioStore();
@@ -372,36 +363,16 @@ export default function CashPage() {
           <thead>
             <tr className="border-b border-[var(--border)]">
               <th className="table-header text-left pb-3">
-                <button
-                  onClick={() => handleSort('account')}
-                  className="flex items-center gap-1 hover:text-[var(--foreground)] transition-colors"
-                >
-                  Account <SortIcon field="account" sortField={sortField} sortDirection={sortDirection} />
-                </button>
+                <SortableTableHeader field="account" label="Account" currentField={sortField} direction={sortDirection} onSort={(f) => handleSort(f as SortField)} />
               </th>
               <th className="table-header text-left pb-3">
-                <button
-                  onClick={() => handleSort('currency')}
-                  className="flex items-center gap-1 hover:text-[var(--foreground)] transition-colors"
-                >
-                  Currency <SortIcon field="currency" sortField={sortField} sortDirection={sortDirection} />
-                </button>
+                <SortableTableHeader field="currency" label="Currency" currentField={sortField} direction={sortDirection} onSort={(f) => handleSort(f as SortField)} />
               </th>
               <th className="table-header text-right pb-3">
-                <button
-                  onClick={() => handleSort('amount')}
-                  className="flex items-center gap-1 ml-auto hover:text-[var(--foreground)] transition-colors"
-                >
-                  Amount <SortIcon field="amount" sortField={sortField} sortDirection={sortDirection} />
-                </button>
+                <SortableTableHeader field="amount" label="Amount" currentField={sortField} direction={sortDirection} onSort={(f) => handleSort(f as SortField)} align="right" />
               </th>
               <th className="table-header text-right pb-3">
-                <button
-                  onClick={() => handleSort('value')}
-                  className="flex items-center gap-1 ml-auto hover:text-[var(--foreground)] transition-colors"
-                >
-                  Value <SortIcon field="value" sortField={sortField} sortDirection={sortDirection} />
-                </button>
+                <SortableTableHeader field="value" label="Value" currentField={sortField} direction={sortDirection} onSort={(f) => handleSort(f as SortField)} align="right" />
               </th>
               <th className="table-header text-right pb-3">%</th>
               <th className="table-header text-right pb-3 w-10"></th>

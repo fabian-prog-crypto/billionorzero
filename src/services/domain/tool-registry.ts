@@ -13,16 +13,17 @@ const mutationTools: ToolDefinition[] = [
   {
     id: 'buy_position',
     type: 'mutation',
-    description: 'Buy a new position or add to existing',
+    description: 'Buy a new position or add to existing. When user specifies a dollar amount to spend ("$50k worth"), use totalCost and leave amount empty.',
     fields: [
       { name: 'symbol', type: 'string', required: true, description: 'Ticker symbol (e.g. BTC, AAPL)' },
-      { name: 'amount', type: 'number', required: true, description: 'Quantity to buy' },
-      { name: 'price', type: 'number', required: false, description: 'Purchase price per unit' },
+      { name: 'amount', type: 'number', required: false, description: 'Quantity to buy. Omit when totalCost is provided instead.' },
+      { name: 'price', type: 'number', required: false, description: 'Price per unit (use when user says "at $X")' },
+      { name: 'totalCost', type: 'number', required: false, description: 'Total dollar amount to spend (use when user says "$Xk worth of", "for $X", or specifies a dollar amount without per-unit price). When set, leave amount empty.' },
       { name: 'assetType', type: 'string', required: false, description: 'Asset type', enum: ['crypto', 'stock', 'etf', 'manual'] },
       { name: 'name', type: 'string', required: false, description: 'Display name for the asset' },
       { name: 'account', type: 'string', required: false, description: 'Account to associate with' },
     ],
-    examples: ['bought 10 AAPL at $185', 'buy 0.5 BTC'],
+    examples: ['bought 10 AAPL at $185', 'buy 0.5 BTC', 'bought 123 MSFT for 50k', 'bought $50k worth of MSFT'],
   },
   {
     id: 'sell_partial',

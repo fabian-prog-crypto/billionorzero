@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { TrendingUp, ArrowUpDown, ChevronDown, ChevronUp, Download, Edit2 } from 'lucide-react';
+import { TrendingUp, Download, Edit2 } from 'lucide-react';
 import DonutChart from '@/components/charts/DonutChart';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import {
@@ -12,6 +12,7 @@ import {
 import { formatCurrency, formatNumber, formatPercent, getChangeColor } from '@/lib/utils';
 import { SUBCATEGORY_COLORS } from '@/lib/colors';
 import SearchInput from '@/components/ui/SearchInput';
+import SortableTableHeader from '@/components/ui/SortableTableHeader';
 import StockIcon from '@/components/ui/StockIcon';
 import ConfirmPositionActionModal from '@/components/modals/ConfirmPositionActionModal';
 import type { ParsedPositionAction, AssetWithPrice } from '@/types';
@@ -106,15 +107,6 @@ export default function EquitiesPage() {
       setSortField(field);
       setSortDirection('desc');
     }
-  };
-
-  const renderSortIcon = (field: SortField) => {
-    if (sortField !== field) return <ArrowUpDown className="w-3 h-3 opacity-50" />;
-    return sortDirection === 'asc' ? (
-      <ChevronUp className="w-3 h-3" />
-    ) : (
-      <ChevronDown className="w-3 h-3" />
-    );
   };
 
   const exportCSV = () => {
@@ -245,45 +237,20 @@ export default function EquitiesPage() {
           <thead>
             <tr className="border-b border-[var(--border)]">
               <th className="table-header text-left pb-3">
-                <button
-                  onClick={() => handleSort('symbol')}
-                  className="flex items-center gap-1 hover:text-[var(--foreground)] transition-colors"
-                >
-                  Asset {renderSortIcon('symbol')}
-                </button>
+                <SortableTableHeader field="symbol" label="Asset" currentField={sortField} direction={sortDirection} onSort={(f) => handleSort(f as SortField)} />
               </th>
               <th className="table-header text-left pb-3">Type</th>
               <th className="table-header text-right pb-3">
-                <button
-                  onClick={() => handleSort('amount')}
-                  className="flex items-center gap-1 ml-auto hover:text-[var(--foreground)] transition-colors"
-                >
-                  Amount {renderSortIcon('amount')}
-                </button>
+                <SortableTableHeader field="amount" label="Amount" currentField={sortField} direction={sortDirection} onSort={(f) => handleSort(f as SortField)} align="right" />
               </th>
               <th className="table-header text-right pb-3">
-                <button
-                  onClick={() => handleSort('price')}
-                  className="flex items-center gap-1 ml-auto hover:text-[var(--foreground)] transition-colors"
-                >
-                  Price {renderSortIcon('price')}
-                </button>
+                <SortableTableHeader field="price" label="Price" currentField={sortField} direction={sortDirection} onSort={(f) => handleSort(f as SortField)} align="right" />
               </th>
               <th className="table-header text-right pb-3">
-                <button
-                  onClick={() => handleSort('value')}
-                  className="flex items-center gap-1 ml-auto hover:text-[var(--foreground)] transition-colors"
-                >
-                  Value {renderSortIcon('value')}
-                </button>
+                <SortableTableHeader field="value" label="Value" currentField={sortField} direction={sortDirection} onSort={(f) => handleSort(f as SortField)} align="right" />
               </th>
               <th className="table-header text-right pb-3">
-                <button
-                  onClick={() => handleSort('change')}
-                  className="flex items-center gap-1 ml-auto hover:text-[var(--foreground)] transition-colors"
-                >
-                  24h {renderSortIcon('change')}
-                </button>
+                <SortableTableHeader field="change" label="24h" currentField={sortField} direction={sortDirection} onSort={(f) => handleSort(f as SortField)} align="right" />
               </th>
               <th className="table-header text-right pb-3">%</th>
               <th className="table-header text-right pb-3 w-10"></th>

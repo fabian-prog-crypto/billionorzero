@@ -3,7 +3,6 @@
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useCommandHistory } from '@/hooks/useCommandHistory';
-import { QueryResult } from '@/services/domain/command-types';
 import { getOrRefreshToken, refreshToken } from '@/lib/api-token';
 import type { ParsedPositionAction } from '@/types';
 
@@ -25,6 +24,8 @@ const PAGE_ROUTES: Record<string, string> = {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+export type PaletteMode = 'commands' | 'loading' | 'result' | 'success' | 'error';
+
 interface ChatResponse {
   response: string;
   toolCalls: {
@@ -43,7 +44,7 @@ export function useCommandPalette() {
   const [text, setText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [loadingText, setLoadingText] = useState('');
-  const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
+  const [queryResult, setQueryResult] = useState<null>(null);
   const [llmResponse, setLlmResponse] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -51,6 +52,16 @@ export function useCommandPalette() {
 
   const router = useRouter();
   const { recentCommands, addCommand } = useCommandHistory();
+
+  // ─── Derived mode ──────────────────────────────────────────────────────────
+
+  const mode: PaletteMode = (() => {
+    if (successMessage) return 'success';
+    if (error) return 'error';
+    if (isLoading) return 'loading';
+    if (queryResult || llmResponse) return 'result';
+    return 'commands';
+  })();
 
   const reset = useCallback(() => {
     setText('');
@@ -77,11 +88,12 @@ export function useCommandPalette() {
     return false;
   }, [router]);
 
-  const submit = useCallback(async () => {
-    if (!text.trim() || isLoading) return;
+  const submitText = useCallback(async (input: string) => {
+    const trimmed = input.trim();
+    if (!trimmed || isLoading) return;
 
     setIsLoading(true);
-    setLoadingText(text.trim());
+    setLoadingText(trimmed);
     setError(null);
     setQueryResult(null);
     setLlmResponse(null);
@@ -107,7 +119,7 @@ export function useCommandPalette() {
           method: 'POST',
           headers,
           body: JSON.stringify({
-            text: text.trim(),
+            text: trimmed,
             ollamaUrl,
             ollamaModel,
           }),
@@ -134,7 +146,7 @@ export function useCommandPalette() {
       }
 
       const chatResponse = data as ChatResponse;
-      addCommand(text.trim());
+      addCommand(trimmed);
 
       // Check for navigation
       if (chatResponse.toolCalls && handleNavigation(chatResponse.toolCalls)) {
@@ -171,7 +183,11 @@ export function useCommandPalette() {
     } finally {
       setIsLoading(false);
     }
-  }, [text, isLoading, addCommand, handleNavigation]);
+  }, [isLoading, addCommand, handleNavigation]);
+
+  const submit = useCallback(async () => {
+    await submitText(text);
+  }, [text, submitText]);
 
   const cancelMutation = useCallback(() => {
     setLlmResponse(null);
@@ -181,6 +197,7 @@ export function useCommandPalette() {
   return {
     text,
     setText,
+    mode,
     isLoading,
     loadingText,
     queryResult,
@@ -188,6 +205,7 @@ export function useCommandPalette() {
     successMessage,
     error,
     submit,
+    submitText,
     cancelMutation,
     clearError,
     reset,

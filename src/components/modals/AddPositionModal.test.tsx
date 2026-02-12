@@ -201,7 +201,7 @@ describe('AddPositionModal', () => {
 
   it('submits stock position and calls refresh', async () => {
     const { searchStocks } = await import('@/services')
-    vi.mocked(searchStocks).mockReturnValue([
+    vi.mocked(searchStocks).mockResolvedValue([
       { symbol: 'AAPL', description: 'Apple Inc' },
     ])
 

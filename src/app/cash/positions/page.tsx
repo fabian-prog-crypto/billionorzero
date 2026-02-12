@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
-import { ArrowUpDown, ChevronUp, ChevronDown, Download, Banknote } from 'lucide-react';
+import { Edit2, Trash2, Download, Banknote } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import {
   calculateAllPositionsWithPrices,
@@ -11,8 +11,11 @@ import {
   aggregateCashByCurrency,
 } from '@/services';
 import CurrencyIcon from '@/components/ui/CurrencyIcon';
+import ConfirmPositionActionModal from '@/components/modals/ConfirmPositionActionModal';
 import SearchInput from '@/components/ui/SearchInput';
+import SortableTableHeader from '@/components/ui/SortableTableHeader';
 import { formatCurrency, formatNumber } from '@/lib/utils';
+import { ParsedPositionAction, AssetWithPrice } from '@/types';
 
 type SortField = 'currency' | 'value' | 'amount';
 type SortDirection = 'asc' | 'desc';
@@ -22,8 +25,10 @@ export default function CashPositionsPage() {
   const [sortField, setSortField] = useState<SortField>('value');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [includeStablecoins, setIncludeStablecoins] = useState(false);
+  const [editAction, setEditAction] = useState<ParsedPositionAction | null>(null);
 
-  const { positions, prices, customPrices, fxRates, hideBalances } = usePortfolioStore();
+  const store = usePortfolioStore();
+  const { positions, prices, customPrices, fxRates, hideBalances, removePosition } = store;
 
   const allPositions = useMemo(() => {
     return calculateAllPositionsWithPrices(positions, prices, customPrices, fxRates);
@@ -89,13 +94,59 @@ export default function CashPositionsPage() {
     }
   };
 
-  const renderSortIcon = (field: SortField) => {
-    if (sortField !== field) return <ArrowUpDown className="w-3 h-3 opacity-50" />;
-    return sortDirection === 'asc' ? (
-      <ChevronUp className="w-3 h-3" />
-    ) : (
-      <ChevronDown className="w-3 h-3" />
-    );
+  const handleEdit = (pos: AssetWithPrice) => {
+    const currency = extractCurrencyCode(pos.symbol);
+    // Find the first underlying manual cash position for this aggregated entry
+    const underlyingPositions = positions.filter(p => {
+      if (p.type !== 'cash') return false;
+      const sym = extractCurrencyCode(p.symbol);
+      return sym === currency;
+    });
+    const manualPos = underlyingPositions.find(p => {
+      if (!p.accountId) return true;
+      const account = store.accounts.find(a => a.id === p.accountId);
+      return !account || account.connection.dataSource === 'manual';
+    });
+    if (!manualPos) return;
+
+    setEditAction({
+      action: 'update_cash',
+      symbol: currency,
+      assetType: 'cash',
+      amount: manualPos.amount,
+      currency,
+      matchedPositionId: manualPos.id,
+      matchedAccountId: manualPos.accountId,
+      confidence: 1,
+      summary: `Edit ${currency} cash balance`,
+    });
+  };
+
+  const hasManualCashPosition = (pos: AssetWithPrice): boolean => {
+    const currency = extractCurrencyCode(pos.symbol);
+    return positions.some(p => {
+      if (p.type !== 'cash') return false;
+      const sym = extractCurrencyCode(p.symbol);
+      if (sym !== currency) return false;
+      if (!p.accountId) return true;
+      const account = store.accounts.find(a => a.id === p.accountId);
+      return !account || account.connection.dataSource === 'manual';
+    });
+  };
+
+  const handleDelete = (pos: AssetWithPrice) => {
+    const currency = extractCurrencyCode(pos.symbol);
+    const manualPositions = positions.filter(p => {
+      if (p.type !== 'cash') return false;
+      const sym = extractCurrencyCode(p.symbol);
+      if (sym !== currency) return false;
+      if (!p.accountId) return true;
+      const account = store.accounts.find(a => a.id === p.accountId);
+      return !account || account.connection.dataSource === 'manual';
+    });
+    if (manualPositions.length === 0) return;
+    if (!confirm(`Delete ${currency} cash position${manualPositions.length > 1 ? 's' : ''}?`)) return;
+    manualPositions.forEach(p => removePosition(p.id));
   };
 
   const exportCSV = () => {
@@ -191,21 +242,16 @@ export default function CashPositionsPage() {
             <thead>
               <tr className="border-b border-[var(--border)]">
                 <th className="table-header text-left pb-3">
-                  <button onClick={() => handleSort('currency')} className="flex items-center gap-1 hover:text-[var(--foreground)] transition-colors">
-                    Currency {renderSortIcon('currency')}
-                  </button>
+                  <SortableTableHeader field="currency" label="Currency" currentField={sortField} direction={sortDirection} onSort={(f) => handleSort(f as SortField)} />
                 </th>
                 <th className="table-header text-right pb-3">
-                  <button onClick={() => handleSort('amount')} className="flex items-center gap-1 ml-auto hover:text-[var(--foreground)] transition-colors">
-                    Amount {renderSortIcon('amount')}
-                  </button>
+                  <SortableTableHeader field="amount" label="Amount" currentField={sortField} direction={sortDirection} onSort={(f) => handleSort(f as SortField)} align="right" />
                 </th>
                 <th className="table-header text-right pb-3">
-                  <button onClick={() => handleSort('value')} className="flex items-center gap-1 ml-auto hover:text-[var(--foreground)] transition-colors">
-                    Value {renderSortIcon('value')}
-                  </button>
+                  <SortableTableHeader field="value" label="Value" currentField={sortField} direction={sortDirection} onSort={(f) => handleSort(f as SortField)} align="right" />
                 </th>
                 <th className="table-header text-right pb-3">%</th>
+                <th className="table-header text-right pb-3 w-10"></th>
               </tr>
             </thead>
             <tbody>
@@ -215,7 +261,7 @@ export default function CashPositionsPage() {
                 return (
                   <tr
                     key={cleanSymbol}
-                    className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--background-secondary)] transition-colors"
+                    className="group border-b border-[var(--border)] last:border-0 hover:bg-[var(--background-secondary)] transition-colors"
                   >
                     <td className="py-2">
                       <Link
@@ -239,6 +285,28 @@ export default function CashPositionsPage() {
                     <td className="py-2 text-right text-xs text-[var(--foreground-muted)]">
                       {percentage.toFixed(1)}%
                     </td>
+                    <td className="py-2 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        {hasManualCashPosition(position) && (
+                          <>
+                            <button
+                              onClick={() => handleEdit(position)}
+                              className="p-1.5 opacity-0 group-hover:opacity-100 hover:bg-[var(--background-tertiary)] transition-all"
+                              title="Edit cash balance"
+                            >
+                              <Edit2 className="w-4 h-4 text-[var(--foreground-muted)]" />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(position)}
+                              className="p-1.5 opacity-0 group-hover:opacity-100 hover:bg-[var(--background-tertiary)] transition-all"
+                              title="Delete cash position"
+                            >
+                              <Trash2 className="w-4 h-4 text-[var(--foreground-muted)]" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 );
               })}
@@ -258,6 +326,17 @@ export default function CashPositionsPage() {
             {hideBalances ? '••••••' : formatCurrency(searchQuery ? filteredPositions.reduce((sum, p) => sum + p.value, 0) : displayTotal)}
           </span>
         </div>
+      )}
+
+      {/* Edit Cash Modal */}
+      {editAction && (
+        <ConfirmPositionActionModal
+          isOpen
+          onClose={() => setEditAction(null)}
+          parsedAction={editAction}
+          positions={positions}
+          positionsWithPrices={allPositions}
+        />
       )}
     </div>
   );

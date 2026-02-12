@@ -18,6 +18,7 @@ These are auto-reject. Do not merge until all are resolved.
 - [ ] `hideBalances` support: any new value display checks this store flag and shows `'••••'` when true
 - [ ] DB backup intact: `portfolio-backup-11022026.json` must not be deleted, overwritten, or corrupted. After all changes, verify the backup file still exists and contains valid data (688 positions, 34 accounts).
 - [ ] Test cases documented: after completing a feature, append test case descriptions to the feature's plan `.md` file (or create a `tests.md` section in it). Document what was tested, key scenarios covered, and any edge cases verified — so future readers know the test coverage intent without reading every test file.
+- [ ] Browser verified: after any UI change, run `npm run dev` and visually confirm the affected pages render correctly in the browser. Do not rely solely on build/lint/test passing.
 
 ## Advisory
 

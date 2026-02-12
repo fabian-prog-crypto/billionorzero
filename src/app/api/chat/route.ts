@@ -8,11 +8,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { readDb, withDb, type PortfolioData } from '../portfolio/db-store';
 import { toOllamaTools, getToolById } from '@/services/domain/tool-registry';
+import { classifyIntent } from '@/services/domain/intent-router';
 import { calculatePortfolioSummary, calculateAllPositionsWithPrices, calculateExposureData, calculateRiskProfile, calculatePerpPageData } from '@/services/domain/portfolio-calculator';
 import { calculatePerformanceMetrics } from '@/services/domain/performance-metrics';
 import { assetClassFromType, typeFromAssetClass } from '@/types';
-import type { Position, Transaction, Account, ParsedPositionAction, PositionActionType } from '@/types';
+import type { Position, Transaction, Account } from '@/types';
 import { toSlug } from '@/services/domain/cash-account-service';
+import { toolCallToAction, findPositionBySymbol, CONFIRM_MUTATION_TOOLS } from '@/services/domain/action-mapper';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -47,16 +49,37 @@ const DEFAULT_MODEL = 'llama3.2:latest';
 
 // ─── Portfolio Context Builder ────────────────────────────────────────────────
 
-function buildSystemContext(db: PortfolioData): string {
+function buildSystemContext(db: PortfolioData, opts?: { includePositions?: boolean }): string {
   const lines: string[] = [
     'You are a portfolio assistant. ALWAYS respond in English.',
     '',
     '## Rules',
     '- ALWAYS call a tool before answering. NEVER answer from context alone.',
     '- For any question about portfolio data (net worth, positions, exposure, etc.), call the appropriate query tool FIRST, then summarize the result.',
-    '- For mutations, call the tool directly.',
+    '- For mutations, call the mutation tool DIRECTLY — do NOT look up the position first.',
+    '- When the user uses past tense ("bought", "sold", "added", "removed", "updated"), treat it as a mutation.',
+    '  "bought 10 AAPL" → call buy_position(symbol: "AAPL", amount: 10, assetType: "stock")',
+    '  "sold half my ETH" → call sell_partial(symbol: "ETH", percent: 50)',
+    '- For buy_position: if the position does not exist yet, it will be created automatically. Do NOT call query_position_details before buying.',
+    '',
+    '## Buy: "at" vs "for" vs "worth of" disambiguation',
+    '- "at $X" means per-unit price → use the `price` parameter',
+    '  "bought 10 AAPL at $185" → buy_position(symbol: "AAPL", amount: 10, price: 185, assetType: "stock")',
+    '- "for $X" or "for Xk" means total spend → use the `totalCost` parameter',
+    '  "bought 123 MSFT for 50k" → buy_position(symbol: "MSFT", amount: 123, totalCost: 50000, assetType: "stock")',
+    '- "$X worth of Y" or "Xk of Y" or "X dollars of Y" means total spend → use `totalCost` only, do NOT set `amount`',
+    '  "bought $50k worth of MSFT" → buy_position(symbol: "MSFT", totalCost: 50000, assetType: "stock")',
+    '  "bought 50k USD of AAPL" → buy_position(symbol: "AAPL", totalCost: 50000, assetType: "stock")',
+    '- IMPORTANT: When the user specifies a dollar amount to spend without quantity, set `totalCost` and omit `amount`. The system will calculate shares from the current price.',
+    '- NEVER put a total dollar value into the `price` field. `price` is ALWAYS per-unit.',
     '- Keep answers concise — 1-3 sentences max.',
     '- Do NOT refuse to call tools. Do NOT ask for confirmation before querying.',
+    '',
+    '## Asset type — always set this',
+    '- Stock tickers (AAPL, MSFT, TSLA, GOOG, AMZN, META, NVDA, etc.) → assetType: "stock"',
+    '- ETFs (SPY, QQQ, VTI, VOO, IWM, etc.) → assetType: "etf"',
+    '- Crypto (BTC, ETH, SOL, DOGE, ADA, XRP, etc.) → assetType: "crypto"',
+    '- Default to "crypto" only for unknown tickers',
     '',
     '## Portfolio Context (for reference only — always use tools for accurate data)',
   ];
@@ -70,211 +93,38 @@ function buildSystemContext(db: PortfolioData): string {
     }
   }
 
-  // Top positions by value (limit to ~20 for context size)
-  try {
-    const assets = calculateAllPositionsWithPrices(db.positions, db.prices, db.customPrices, db.fxRates);
-    const sorted = assets.sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
-    const top = sorted.slice(0, 20);
+  // Top positions by value — skip for mutation intents to reduce context size
+  if (opts?.includePositions !== false) {
+    try {
+      const assets = calculateAllPositionsWithPrices(db.positions, db.prices, db.customPrices, db.fxRates);
+      const sorted = assets.sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
+      const top = sorted.slice(0, 20);
 
-    if (top.length > 0) {
-      lines.push(`\nTop positions (${db.positions.length} total):`);
-      for (const p of top) {
-        const acct = p.accountId ? db.accounts.find(a => a.id === p.accountId) : null;
-        const acctStr = acct ? ` [${acct.name}]` : '';
-        const debtStr = p.isDebt ? ' (DEBT)' : '';
-        lines.push(`  - ${p.symbol}: ${p.amount} = $${Math.round(p.value)}${debtStr}${acctStr} (id: ${p.id.slice(0, 8)})`);
+      if (top.length > 0) {
+        lines.push(`\nTop positions (${db.positions.length} total):`);
+        for (const p of top) {
+          const acct = p.accountId ? db.accounts.find(a => a.id === p.accountId) : null;
+          const acctStr = acct ? ` [${acct.name}]` : '';
+          const debtStr = p.isDebt ? ' (DEBT)' : '';
+          lines.push(`  - ${p.symbol}: ${p.amount} = $${Math.round(p.value)}${debtStr}${acctStr} (id: ${p.id.slice(0, 8)})`);
+        }
       }
-    }
 
-    // Summary stats
-    const summary = calculatePortfolioSummary(db.positions, db.prices, db.customPrices, db.fxRates);
-    lines.push(`\nNet worth: $${Math.round(summary.totalValue)}`);
-    lines.push(`Positions: ${summary.positionCount}, Assets: ${summary.assetCount}`);
-  } catch {
-    lines.push(`\nPositions: ${db.positions.length} (prices unavailable)`);
+      // Summary stats
+      const summary = calculatePortfolioSummary(db.positions, db.prices, db.customPrices, db.fxRates);
+      lines.push(`\nNet worth: $${Math.round(summary.totalValue)}`);
+      lines.push(`Positions: ${summary.positionCount}, Assets: ${summary.assetCount}`);
+    } catch {
+      lines.push(`\nPositions: ${db.positions.length} (prices unavailable)`);
+    }
+  } else {
+    lines.push(`\nPositions: ${db.positions.length} total`);
   }
 
   return lines.join('\n');
 }
 
 // ─── Tool Executor ────────────────────────────────────────────────────────────
-
-function findPositionBySymbol(positions: Position[], symbol: string): Position | undefined {
-  const s = symbol.toLowerCase();
-  const matches = positions.filter(p => p.symbol.toLowerCase() === s);
-  if (matches.length === 0) return undefined;
-  // Prefer manual position
-  return matches.find(p => !p.accountId) || matches[0];
-}
-
-// Mutation tools that require confirmation via the modal
-const CONFIRM_MUTATION_TOOLS = new Set([
-  'buy_position', 'sell_partial', 'sell_all', 'remove_position',
-  'update_position', 'set_price', 'add_cash', 'update_cash',
-]);
-
-/**
- * Map an Ollama tool call to a ParsedPositionAction for the confirmation modal.
- * Returns null if the tool is not a confirmable mutation.
- */
-function toolCallToAction(toolName: string, args: Record<string, unknown>, db: PortfolioData): ParsedPositionAction | null {
-  if (!CONFIRM_MUTATION_TOOLS.has(toolName)) return null;
-
-  const symbol = String(args.symbol || args.currency || '').toUpperCase();
-  const amount = args.amount ? Number(args.amount) : undefined;
-  const price = args.price ? Number(args.price) : undefined;
-
-  // Resolve position by symbol for sell/update/remove actions
-  const matchedPosition = symbol ? findPositionBySymbol(db.positions, symbol) : undefined;
-
-  // Resolve account by name
-  const accountArg = args.account as string | undefined;
-  let matchedAccountId: string | undefined;
-  let accountName: string | undefined;
-  if (accountArg) {
-    const match = db.accounts.find(a => a.name.toLowerCase().includes(accountArg.toLowerCase()));
-    if (match) {
-      matchedAccountId = match.id;
-      accountName = match.name;
-    } else {
-      accountName = accountArg;
-    }
-  }
-
-  switch (toolName) {
-    case 'buy_position': {
-      const assetType = String(args.assetType || 'crypto') as 'crypto' | 'stock' | 'etf' | 'cash' | 'manual';
-      const name = String(args.name || symbol);
-      return {
-        action: 'buy',
-        symbol,
-        name,
-        assetType,
-        amount,
-        pricePerUnit: price,
-        totalCost: amount && price ? amount * price : undefined,
-        matchedPositionId: matchedPosition?.id,
-        matchedAccountId,
-        accountName,
-        confidence: 0.9,
-        summary: `Buy ${amount ?? '?'} ${symbol}${price ? ` at $${price}` : ''}`,
-      };
-    }
-    case 'sell_partial': {
-      const sellAmount = args.amount ? Number(args.amount) : undefined;
-      const sellPercent = args.percent ? Number(args.percent) : undefined;
-      return {
-        action: 'sell_partial',
-        symbol,
-        assetType: matchedPosition?.type || 'crypto',
-        sellAmount,
-        sellPercent,
-        sellPrice: price,
-        matchedPositionId: matchedPosition?.id,
-        confidence: 0.9,
-        summary: `Sell ${sellAmount ? sellAmount + ' ' : sellPercent ? sellPercent + '% of ' : ''}${symbol}`,
-      };
-    }
-    case 'sell_all': {
-      return {
-        action: 'sell_all',
-        symbol,
-        assetType: matchedPosition?.type || 'crypto',
-        sellPrice: price,
-        matchedPositionId: matchedPosition?.id,
-        confidence: 0.9,
-        summary: `Sell all ${symbol}`,
-      };
-    }
-    case 'remove_position': {
-      return {
-        action: 'remove',
-        symbol,
-        assetType: matchedPosition?.type || 'crypto',
-        matchedPositionId: matchedPosition?.id,
-        confidence: 0.9,
-        summary: `Remove ${symbol} from portfolio`,
-      };
-    }
-    case 'update_position': {
-      return {
-        action: 'update_position',
-        symbol,
-        assetType: matchedPosition?.type || 'crypto',
-        amount,
-        costBasis: args.costBasis ? Number(args.costBasis) : undefined,
-        date: args.date ? String(args.date) : undefined,
-        matchedPositionId: matchedPosition?.id,
-        confidence: 0.9,
-        summary: `Update ${symbol} position`,
-      };
-    }
-    case 'set_price': {
-      const setSymbol = String(args.symbol || '').toUpperCase();
-      return {
-        action: 'set_price',
-        symbol: setSymbol,
-        assetType: 'crypto',
-        newPrice: price,
-        confidence: 0.9,
-        summary: `Set ${setSymbol} price to $${price ?? '?'}`,
-      };
-    }
-    case 'add_cash': {
-      const currency = String(args.currency || 'USD').toUpperCase();
-      // Try to find an existing cash position for this account+currency combo
-      let matchedPosId: string | undefined;
-      if (matchedAccountId) {
-        const cashPos = db.positions.find(p =>
-          p.type === 'cash' && p.accountId === matchedAccountId &&
-          (p.symbol.includes(currency) || p.name.toUpperCase().includes(currency))
-        );
-        if (cashPos) matchedPosId = cashPos.id;
-      }
-      return {
-        action: 'add_cash',
-        symbol: currency,
-        assetType: 'cash',
-        amount,
-        currency,
-        accountName: accountName || accountArg,
-        matchedPositionId: matchedPosId,
-        matchedAccountId,
-        confidence: 0.9,
-        summary: `Add ${amount ?? '?'} ${currency}${accountName ? ` to ${accountName}` : ''}`,
-      };
-    }
-    case 'update_cash': {
-      const currency = String(args.currency || '').toUpperCase();
-      // Find matching cash position
-      const cashPositions = db.positions.filter(p => p.type === 'cash');
-      let matchedCash: Position | undefined;
-      if (accountArg) {
-        const account = db.accounts.find(a => a.name.toLowerCase().includes(accountArg.toLowerCase()));
-        if (account) {
-          matchedCash = cashPositions.find(p => p.accountId === account.id && p.name.toUpperCase().includes(currency));
-        }
-      }
-      if (!matchedCash) {
-        matchedCash = cashPositions.find(p => p.name.toUpperCase().includes(currency) || p.symbol.toUpperCase().includes(currency));
-      }
-      return {
-        action: 'update_cash',
-        symbol: currency,
-        assetType: 'cash',
-        amount,
-        currency,
-        accountName: accountName || accountArg,
-        matchedPositionId: matchedCash?.id,
-        matchedAccountId,
-        confidence: 0.9,
-        summary: `Update ${currency} balance to ${amount ?? '?'}${accountName ? ` in ${accountName}` : ''}`,
-      };
-    }
-    default:
-      return null;
-  }
-}
 
 async function executeTool(name: string, args: Record<string, unknown>): Promise<{ result: unknown; isMutation: boolean }> {
   const toolDef = getToolById(name);
@@ -387,13 +237,18 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
     case 'buy_position': {
       const symbol = String(args.symbol || '').toUpperCase();
       const amount = Number(args.amount || 0);
-      const price = args.price ? Number(args.price) : 0;
+      let price = args.price ? Number(args.price) : 0;
+      const totalCost = args.totalCost ? Number(args.totalCost) : 0;
+      // Derive price from totalCost
+      if (totalCost > 0 && amount > 0 && price <= 0) {
+        price = totalCost / amount;
+      }
       const assetType = String(args.assetType || 'crypto');
       const name = String(args.name || symbol);
       const account = args.account as string | undefined;
 
       if (!symbol) return { result: { error: 'Symbol is required' }, isMutation: true };
-      if (!amount || amount <= 0) return { result: { error: 'Amount must be > 0' }, isMutation: true };
+      if ((!amount || amount <= 0) && (!totalCost || totalCost <= 0)) return { result: { error: 'Amount or totalCost must be > 0' }, isMutation: true };
 
       const effectiveAssetClass = assetClassFromType(assetType as 'crypto' | 'stock' | 'etf' | 'cash' | 'manual');
       const effectiveType = assetType as 'crypto' | 'stock' | 'etf' | 'cash' | 'manual';
@@ -661,10 +516,21 @@ export async function POST(request: NextRequest) {
 
     // Build context from db
     const db = readDb();
-    const systemContent = buildSystemContext(db);
 
-    // Get tools in Ollama native format
-    const tools = toOllamaTools();
+    // Phase 1: Classify intent locally (instant) to reduce tools sent to LLM
+    const classified = classifyIntent(text.trim());
+
+    // Phase 2: Filter tools based on intent — only send relevant 1-3 tools
+    const allTools = toOllamaTools();
+    const tools = classified.toolIds.length > 0
+      ? allTools.filter(t => classified.toolIds.includes(t.function.name))
+      : allTools;
+
+    // Phase 3: Trim context for mutation intents (skip positions, keep accounts)
+    const isMutationIntent = ['buy', 'sell', 'add_cash', 'update_cash', 'remove', 'update', 'set_price', 'toggle', 'add_wallet', 'remove_wallet', 'set_risk_free_rate'].includes(classified.intent);
+    const systemContent = buildSystemContext(db, {
+      includePositions: !isMutationIntent,
+    });
 
     // Initial messages
     const messages: OllamaMessage[] = [

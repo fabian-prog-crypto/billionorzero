@@ -41,6 +41,21 @@ export class StockApiClient {
     return data;
   }
 
+  async searchSymbol(query: string): Promise<Array<{ symbol: string; description: string; type: string }>> {
+    if (!this.apiKey) {
+      throw new ApiError('Stock API key not configured', 401, 'finnhub');
+    }
+    const url = `${BASE_URL}/search?q=${encodeURIComponent(query)}&token=${this.apiKey}`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new ApiError('Failed to search stocks', response.status, 'finnhub');
+    }
+    const data = await response.json();
+    return (data.result || []).filter(
+      (r: { type: string }) => r.type === 'Common Stock' || r.type === 'ETP'
+    );
+  }
+
   async getMultipleQuotes(
     symbols: string[]
   ): Promise<Map<string, StockQuoteResponse>> {

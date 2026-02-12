@@ -2,12 +2,14 @@
 
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
-import { ArrowUpDown, ChevronUp, ChevronDown, Edit2, Download, Coins, EyeOff, Eye } from 'lucide-react';
+import { Edit2, Trash2, Download, Coins, EyeOff, Eye } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import { calculateAllPositionsWithPrices, aggregatePositionsBySymbol, calculateCryptoBreakdown, getCategoryService, ExposureCategoryType, getAllExposureCategoryConfigs, getExposureCategoryConfig, filterDustPositions, DUST_THRESHOLD } from '@/services';
 import CryptoIcon from '@/components/ui/CryptoIcon';
 import CustomPriceModal from '@/components/modals/CustomPriceModal';
+import ConfirmPositionActionModal from '@/components/modals/ConfirmPositionActionModal';
 import SearchInput from '@/components/ui/SearchInput';
+import SortableTableHeader from '@/components/ui/SortableTableHeader';
 import EmptyState from '@/components/ui/EmptyState';
 import {
   formatCurrency,
@@ -15,7 +17,7 @@ import {
   formatNumber,
   getChangeColor,
 } from '@/lib/utils';
-import { AssetWithPrice } from '@/types';
+import { AssetWithPrice, ParsedPositionAction } from '@/types';
 
 type SortField = 'symbol' | 'value' | 'amount' | 'change';
 type SortDirection = 'asc' | 'desc';
@@ -31,8 +33,10 @@ export default function CryptoAssetsPage() {
     isOpen: boolean;
     asset: AssetWithPrice | null;
   }>({ isOpen: false, asset: null });
+  const [editAction, setEditAction] = useState<ParsedPositionAction | null>(null);
 
-  const { positions, prices, customPrices, hideBalances, hideDust, toggleHideDust } = usePortfolioStore();
+  const store = usePortfolioStore();
+  const { positions, prices, customPrices, hideBalances, hideDust, toggleHideDust, removePosition } = store;
   const categoryService = getCategoryService();
 
   // Get exposure category options from service
@@ -140,21 +144,53 @@ export default function CryptoAssetsPage() {
     }
   };
 
-  const renderSortIcon = (field: SortField) => {
-    if (sortField !== field) return <ArrowUpDown className="w-3 h-3 opacity-50" />;
-    return sortDirection === 'asc' ? (
-      <ChevronUp className="w-3 h-3" />
-    ) : (
-      <ChevronDown className="w-3 h-3" />
-    );
-  };
-
   const openCustomPriceModal = (asset: AssetWithPrice) => {
     setCustomPriceModal({ isOpen: true, asset });
   };
 
   const closeCustomPriceModal = () => {
     setCustomPriceModal({ isOpen: false, asset: null });
+  };
+
+  /**
+   * Find the single editable (manual) position for an aggregated asset.
+   * Returns the position if there's exactly one non-synced position, null otherwise.
+   */
+  const getEditablePosition = (asset: AssetWithPrice): AssetWithPrice | null => {
+    const underlyingPositions = breakdownData.cryptoPositions.filter(
+      p => p.symbol.toLowerCase() === asset.symbol.toLowerCase()
+    );
+    // Only show edit for single-position aggregates
+    if (underlyingPositions.length !== 1) return null;
+    const pos = underlyingPositions[0];
+    if (!pos.accountId) return pos;
+    const account = store.accounts.find(a => a.id === pos.accountId);
+    if (!account || account.connection.dataSource === 'manual') return pos;
+    return null;
+  };
+
+  const handleEdit = (pos: AssetWithPrice) => {
+    const editable = getEditablePosition(pos);
+    if (!editable) return;
+    setEditAction({
+      action: 'update_position',
+      symbol: editable.symbol,
+      name: editable.name,
+      assetType: editable.type,
+      amount: editable.amount,
+      costBasis: editable.costBasis,
+      date: editable.purchaseDate,
+      matchedPositionId: editable.id,
+      confidence: 1,
+      summary: `Edit ${editable.symbol.toUpperCase()} position`,
+    });
+  };
+
+  const handleDelete = (pos: AssetWithPrice) => {
+    const editable = getEditablePosition(pos);
+    if (!editable) return;
+    if (!confirm(`Delete ${editable.symbol.toUpperCase()} position?`)) return;
+    removePosition(editable.id);
   };
 
   const exportCSV = () => {
@@ -302,35 +338,28 @@ export default function CryptoAssetsPage() {
             <thead>
               <tr className="border-b border-[var(--border)]">
                 <th className="table-header text-left pb-3">
-                  <button onClick={() => toggleSort('symbol')} className="flex items-center gap-1 hover:text-[var(--foreground)] transition-colors">
-                    Asset {renderSortIcon('symbol')}
-                  </button>
+                  <SortableTableHeader field="symbol" label="Asset" currentField={sortField} direction={sortDirection} onSort={(f) => toggleSort(f as SortField)} />
                 </th>
                 <th className="table-header text-left pb-3">Category</th>
                 <th className="table-header text-right pb-3">
-                  <button onClick={() => toggleSort('amount')} className="flex items-center gap-1 ml-auto hover:text-[var(--foreground)] transition-colors">
-                    Amount {renderSortIcon('amount')}
-                  </button>
+                  <SortableTableHeader field="amount" label="Amount" currentField={sortField} direction={sortDirection} onSort={(f) => toggleSort(f as SortField)} align="right" />
                 </th>
                 <th className="table-header text-right pb-3">Price</th>
                 <th className="table-header text-right pb-3">
-                  <button onClick={() => toggleSort('value')} className="flex items-center gap-1 ml-auto hover:text-[var(--foreground)] transition-colors">
-                    Value {renderSortIcon('value')}
-                  </button>
+                  <SortableTableHeader field="value" label="Value" currentField={sortField} direction={sortDirection} onSort={(f) => toggleSort(f as SortField)} align="right" />
                 </th>
                 <th className="table-header text-right pb-3">
-                  <button onClick={() => toggleSort('change')} className="flex items-center gap-1 ml-auto hover:text-[var(--foreground)] transition-colors">
-                    24h {renderSortIcon('change')}
-                  </button>
+                  <SortableTableHeader field="change" label="24h" currentField={sortField} direction={sortDirection} onSort={(f) => toggleSort(f as SortField)} align="right" />
                 </th>
                 <th className="table-header text-right pb-3">%</th>
+                <th className="table-header text-right pb-3 w-10"></th>
               </tr>
             </thead>
             <tbody>
               {aggregatedAssets.map((asset, index) => (
                 <tr
                   key={`${asset.symbol}-${index}`}
-                  className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--background-secondary)] transition-colors"
+                  className="group border-b border-[var(--border)] last:border-0 hover:bg-[var(--background-secondary)] transition-colors"
                 >
                   <td className="py-2">
                     <Link
@@ -383,6 +412,28 @@ export default function CryptoAssetsPage() {
                   <td className="py-2 text-right text-xs text-[var(--foreground-muted)]">
                     {asset.allocation.toFixed(1)}%
                   </td>
+                  <td className="py-2 text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      {getEditablePosition(asset) && (
+                        <>
+                          <button
+                            onClick={() => handleEdit(asset)}
+                            className="p-1.5 opacity-0 group-hover:opacity-100 hover:bg-[var(--background-tertiary)] transition-all"
+                            title="Edit position"
+                          >
+                            <Edit2 className="w-4 h-4 text-[var(--foreground-muted)]" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(asset)}
+                            className="p-1.5 opacity-0 group-hover:opacity-100 hover:bg-[var(--background-tertiary)] transition-all"
+                            title="Delete position"
+                          >
+                            <Trash2 className="w-4 h-4 text-[var(--foreground-muted)]" />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -404,6 +455,17 @@ export default function CryptoAssetsPage() {
           }
           currentCustomPrice={customPrices[customPriceModal.asset.symbol.toLowerCase()]?.price}
           currentNote={customPrices[customPriceModal.asset.symbol.toLowerCase()]?.note}
+        />
+      )}
+
+      {/* Edit Position Modal */}
+      {editAction && (
+        <ConfirmPositionActionModal
+          isOpen
+          onClose={() => setEditAction(null)}
+          parsedAction={editAction}
+          positions={positions}
+          positionsWithPrices={allPositionsWithPrices}
         />
       )}
     </div>

@@ -69,7 +69,7 @@ export default function PageHeader({
       {/* Main Value Section */}
       <div className="flex items-start justify-between mb-4">
         <div>
-          <p className="text-xs text-[var(--foreground-muted)] uppercase tracking-wide mb-1">{title}</p>
+          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">{title}</p>
           <p className="text-2xl font-semibold">
             {hideBalances ? '••••••••' : formatCurrency(displayValue)}
           </p>

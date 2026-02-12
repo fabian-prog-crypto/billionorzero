@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Plus, Trash2, Wallet, RefreshCw, Eye, EyeOff, ArrowUpDown, Download, Layers, Grid3X3, Edit2, Clock, Lock } from 'lucide-react';
+import { Plus, Trash2, Wallet, RefreshCw, Eye, EyeOff, Download, Layers, Grid3X3, Edit2, Clock, Lock } from 'lucide-react';
 import { format, formatDistanceToNow, isPast } from 'date-fns';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import { calculateAllPositionsWithPrices, calculatePortfolioSummary, aggregatePositionsBySymbol, calculateUnrealizedPnL, filterDustPositions, DUST_THRESHOLD } from '@/services';
@@ -25,6 +25,7 @@ import {
 } from '@/lib/utils';
 import { MainCategory, getCategoryLabel, isPerpProtocol, getCategoryService, AssetCategory, getPerpProtocolsWithPositions, ExposureCategoryType } from '@/services';
 import { AssetWithPrice, ParsedPositionAction, Account, WalletConnection } from '@/types';
+import SortableTableHeader from '@/components/ui/SortableTableHeader';
 import ConfirmPositionActionModal from '@/components/modals/ConfirmPositionActionModal';
 
 type ViewMode = 'positions' | 'assets';
@@ -532,32 +533,20 @@ export default function PositionsPage() {
             <table className="w-full min-w-[700px]">
               <thead>
                 <tr className="border-b border-[var(--border)]">
-                  <th className="table-header text-left pb-3 cursor-pointer" onClick={() => toggleSort('symbol')}>
-                    <span className="flex items-center gap-1">
-                      Asset
-                      {sortField === 'symbol' && <ArrowUpDown className="w-3 h-3" />}
-                    </span>
+                  <th className="table-header text-left pb-3">
+                    <SortableTableHeader field="symbol" label="Asset" currentField={sortField} direction={sortDirection} onSort={(f) => toggleSort(f as SortField)} />
                   </th>
                   <th className="table-header text-left pb-3">Source</th>
-                  <th className="table-header text-right pb-3 cursor-pointer" onClick={() => toggleSort('amount')}>
-                    <span className="flex items-center justify-end gap-1">
-                      Amount
-                      {sortField === 'amount' && <ArrowUpDown className="w-3 h-3" />}
-                    </span>
+                  <th className="table-header text-right pb-3">
+                    <SortableTableHeader field="amount" label="Amount" currentField={sortField} direction={sortDirection} onSort={(f) => toggleSort(f as SortField)} align="right" />
                   </th>
                   <th className="table-header text-right pb-3">Price</th>
-                  <th className="table-header text-right pb-3 cursor-pointer" onClick={() => toggleSort('value')}>
-                    <span className="flex items-center justify-end gap-1">
-                      Value
-                      {sortField === 'value' && <ArrowUpDown className="w-3 h-3" />}
-                    </span>
+                  <th className="table-header text-right pb-3">
+                    <SortableTableHeader field="value" label="Value" currentField={sortField} direction={sortDirection} onSort={(f) => toggleSort(f as SortField)} align="right" />
                   </th>
                   <th className="table-header text-right pb-3">P&L</th>
-                  <th className="table-header text-right pb-3 cursor-pointer" onClick={() => toggleSort('change')}>
-                    <span className="flex items-center justify-end gap-1">
-                      24h
-                      {sortField === 'change' && <ArrowUpDown className="w-3 h-3" />}
-                    </span>
+                  <th className="table-header text-right pb-3">
+                    <SortableTableHeader field="change" label="24h" currentField={sortField} direction={sortDirection} onSort={(f) => toggleSort(f as SortField)} align="right" />
                   </th>
                   <th className="table-header text-right pb-3">%</th>
                   <th className="table-header text-right pb-3 w-10"></th>
@@ -759,31 +748,19 @@ export default function PositionsPage() {
             <table className="w-full min-w-[600px]">
               <thead>
                 <tr className="border-b border-[var(--border)]">
-                  <th className="table-header text-left pb-3 cursor-pointer" onClick={() => toggleSort('symbol')}>
-                    <span className="flex items-center gap-1">
-                      Asset
-                      {sortField === 'symbol' && <ArrowUpDown className="w-3 h-3" />}
-                    </span>
+                  <th className="table-header text-left pb-3">
+                    <SortableTableHeader field="symbol" label="Asset" currentField={sortField} direction={sortDirection} onSort={(f) => toggleSort(f as SortField)} />
                   </th>
                   <th className="table-header text-left pb-3">Category</th>
-                  <th className="table-header text-right pb-3 cursor-pointer" onClick={() => toggleSort('amount')}>
-                    <span className="flex items-center justify-end gap-1">
-                      Amount
-                      {sortField === 'amount' && <ArrowUpDown className="w-3 h-3" />}
-                    </span>
+                  <th className="table-header text-right pb-3">
+                    <SortableTableHeader field="amount" label="Amount" currentField={sortField} direction={sortDirection} onSort={(f) => toggleSort(f as SortField)} align="right" />
                   </th>
                   <th className="table-header text-right pb-3">Price</th>
-                  <th className="table-header text-right pb-3 cursor-pointer" onClick={() => toggleSort('value')}>
-                    <span className="flex items-center justify-end gap-1">
-                      Value
-                      {sortField === 'value' && <ArrowUpDown className="w-3 h-3" />}
-                    </span>
+                  <th className="table-header text-right pb-3">
+                    <SortableTableHeader field="value" label="Value" currentField={sortField} direction={sortDirection} onSort={(f) => toggleSort(f as SortField)} align="right" />
                   </th>
-                  <th className="table-header text-right pb-3 cursor-pointer" onClick={() => toggleSort('change')}>
-                    <span className="flex items-center justify-end gap-1">
-                      24h
-                      {sortField === 'change' && <ArrowUpDown className="w-3 h-3" />}
-                    </span>
+                  <th className="table-header text-right pb-3">
+                    <SortableTableHeader field="change" label="24h" currentField={sortField} direction={sortDirection} onSort={(f) => toggleSort(f as SortField)} align="right" />
                   </th>
                   <th className="table-header text-right pb-3">%</th>
                 </tr>

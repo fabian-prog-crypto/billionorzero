@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { X, AlertCircle, TrendingUp, TrendingDown, DollarSign, Trash2, RefreshCw, Tag, Edit2 } from 'lucide-react';
-import { ParsedPositionAction, Position, AssetWithPrice, WalletConnection } from '@/types';
+import { ParsedPositionAction, Position, Account, AssetWithPrice, WalletConnection } from '@/types';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import {
   executePartialSell,
@@ -20,6 +20,21 @@ interface ConfirmPositionActionModalProps {
 }
 
 const FIAT_CURRENCIES = ['USD', 'EUR', 'GBP', 'CHF', 'JPY', 'CNY', 'CAD', 'AUD', 'NZD', 'HKD', 'SGD', 'SEK', 'NOK', 'DKK', 'KRW', 'INR', 'BRL', 'MXN', 'ZAR', 'AED', 'THB', 'PLN', 'CZK', 'ILS', 'PHP', 'IDR', 'MYR', 'TRY', 'RUB', 'HUF', 'RON', 'BGN', 'HRK', 'ISK', 'TWD', 'VND'];
+
+/**
+ * Get relevant accounts for a given asset type.
+ * Single source of truth for asset type → account type mapping.
+ * Used for both the account dropdown and auto-selection.
+ */
+function getRelevantAccounts(
+  assetType: string | undefined,
+  store: { walletAccounts: () => Account[]; cexAccounts: () => Account[]; brokerageAccounts: () => Account[]; cashAccounts: () => Account[]; manualAccounts: () => Account[] },
+): Account[] {
+  if (assetType === 'stock' || assetType === 'etf') return store.brokerageAccounts();
+  if (assetType === 'crypto') return [...store.walletAccounts(), ...store.cexAccounts()];
+  if (assetType === 'cash') return store.cashAccounts();
+  return store.manualAccounts();
+}
 
 export default function ConfirmPositionActionModal({
   isOpen,
@@ -130,30 +145,34 @@ export default function ConfirmPositionActionModal({
         }
       }
 
-      // Auto-select account for buy/update_position/update_cash/add_cash
-      if (parsedAction.action === 'buy' || parsedAction.action === 'update_position') {
-        const matchedPos = parsedAction.matchedPositionId
-          ? positions.find(p => p.id === parsedAction.matchedPositionId)
-          : null;
-
-        // Priority: matchedAccountId from CMD-K → matched position's accountId → first relevant account
-        const resolvedAccountId =
-          parsedAction.matchedAccountId ||
-          matchedPos?.accountId ||
-          '';
-        setSelectedAccountId(resolvedAccountId);
-      } else if (parsedAction.action === 'update_cash' || parsedAction.action === 'add_cash') {
-        const matchedPos = parsedAction.matchedPositionId
-          ? positions.find(p => p.id === parsedAction.matchedPositionId)
-          : null;
-        setSelectedAccountId(
-          parsedAction.matchedAccountId || matchedPos?.accountId || ''
-        );
-      } else {
-        setSelectedAccountId(parsedAction.matchedAccountId || '');
+      // If totalCost provided but no amount, derive amount from market price
+      if (parsedAction.action === 'buy' && !parsedAction.amount && parsedAction.totalCost && parsedAction.totalCost > 0) {
+        const sym = parsedAction.symbol.toLowerCase();
+        const storePrice = store.prices[sym]?.price;
+        const posPrice = positionsWithPrices.find(
+          p => p.symbol.toLowerCase() === sym
+        )?.currentPrice;
+        const marketPrice = posPrice || storePrice;
+        if (marketPrice && marketPrice > 0) {
+          const derivedAmount = parsedAction.totalCost / marketPrice;
+          setAmount(derivedAmount.toFixed(6));
+          setPricePerUnit(marketPrice.toString());
+        }
       }
+
+      // Auto-select account: matchedAccountId → matched position's account → first relevant account
+      const matchedPos = parsedAction.matchedPositionId
+        ? positions.find(p => p.id === parsedAction.matchedPositionId)
+        : null;
+      const firstRelevant = getRelevantAccounts(parsedAction.assetType, store)[0];
+      const resolvedAccountId =
+        parsedAction.matchedAccountId ||
+        matchedPos?.accountId ||
+        firstRelevant?.id ||
+        '';
+      setSelectedAccountId(resolvedAccountId);
     }
-  }, [isOpen, parsedAction, positionsWithPrices, positions]);
+  }, [isOpen, parsedAction, positionsWithPrices, positions, store]);
 
   // Auto-focus first missing field
   useEffect(() => {
@@ -173,16 +192,7 @@ export default function ConfirmPositionActionModal({
   const isUpdatePosition = action === 'update_position';
 
   // Compute relevant accounts for the account dropdown
-  const relevantAccounts = (() => {
-    if (isBuy || isUpdatePosition) {
-      const assetType = parsedAction.assetType;
-      if (assetType === 'stock' || assetType === 'etf') return store.brokerageAccounts();
-      if (assetType === 'crypto') return [...store.walletAccounts(), ...store.cexAccounts()];
-      return store.manualAccounts();
-    }
-    if (isUpdateCash || isAddCash) return store.cashAccounts();
-    return [];
-  })();
+  const relevantAccounts = getRelevantAccounts(parsedAction.assetType, store);
 
   // Find matched position
   const matchedPosition = matchedPositionId
@@ -209,7 +219,7 @@ export default function ConfirmPositionActionModal({
   const effectiveSellTotal = action === 'sell_all' && matchedPosition
     ? matchedPosition.amount * numSellPrice
     : sellTotal;
-  const buyTotal = numAmount * numPricePerUnit;
+  const buyTotal = (numAmount * numPricePerUnit) || parsedAction.totalCost || 0;
 
   // Cost basis calculation for sells
   let costBasisAtExecution: number | undefined;
@@ -254,8 +264,8 @@ export default function ConfirmPositionActionModal({
     missingFields.push('sellAmount');
   if (isSell && action === 'sell_partial' && matchedPosition && numSellAmount > matchedPosition.amount)
     missingFields.push('sellAmount exceeds position');
-  if (isBuy && !numAmount) missingFields.push('amount');
-  if (isBuy && numPricePerUnit <= 0) missingFields.push('pricePerUnit');
+  if (isBuy && !numAmount && !(parsedAction.totalCost && parsedAction.totalCost > 0)) missingFields.push('amount');
+  if (isBuy && numPricePerUnit <= 0 && !(parsedAction.totalCost && parsedAction.totalCost > 0)) missingFields.push('pricePerUnit');
   if (isAddCash && numAmount <= 0) missingFields.push('amount');
   if (isAddCash && !cashCurrency) missingFields.push('currency');
   if (isAddCash && !matchedPositionId && !accountName.trim()) missingFields.push('accountName');

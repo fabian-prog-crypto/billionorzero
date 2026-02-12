@@ -110,12 +110,28 @@ export const usePortfolioStore = create<PortfolioState>()(
       manualAccounts: () => get().accounts.filter((a) =>
         a.connection.dataSource === 'manual'
       ),
-      brokerageAccounts: () => get().accounts.filter((a) =>
-        a.connection.dataSource === 'manual' && !a.slug
-      ),
-      cashAccounts: () => get().accounts.filter((a) =>
-        a.connection.dataSource === 'manual' && a.slug
-      ),
+      brokerageAccounts: () => {
+        const accounts = get().accounts;
+        const positions = get().positions;
+        return accounts.filter((a) => {
+          if (a.connection.dataSource !== 'manual') return false;
+          return positions.some(p =>
+            p.accountId === a.id &&
+            (p.type === 'stock' || p.type === 'etf' || p.assetClass === 'equity')
+          );
+        });
+      },
+      cashAccounts: () => {
+        const accounts = get().accounts;
+        const positions = get().positions;
+        return accounts.filter((a) => {
+          if (a.connection.dataSource !== 'manual') return false;
+          return a.slug || positions.some(p =>
+            p.accountId === a.id &&
+            (p.type === 'cash' || p.assetClass === 'cash')
+          );
+        });
+      },
       wallets: () => get().walletAccounts(),  // Legacy alias
 
       // Add a manual position

@@ -64,6 +64,19 @@ const POSITIONS = [
     updatedAt: '2024-03-01T00:00:00.000Z',
   },
   {
+    id: 'test-msft-1',
+    type: 'stock',
+    assetClass: 'equity',
+    symbol: 'MSFT',
+    name: 'Microsoft Corporation',
+    amount: 100,
+    costBasis: 30000,
+    purchaseDate: '2024-06-01',
+    addedAt: '2024-06-01T00:00:00.000Z',
+    updatedAt: '2024-06-01T00:00:00.000Z',
+    accountId: 'test-brokerage-1',
+  },
+  {
     id: 'test-cash-usd-1',
     type: 'cash',
     assetClass: 'cash',
@@ -110,6 +123,13 @@ const PRICES: Record<string, object> = {
     price: 190,
     change24h: 2.5,
     changePercent24h: 1.33,
+    lastUpdated: new Date().toISOString(),
+  },
+  msft: {
+    symbol: 'MSFT',
+    price: 378.9,
+    change24h: 5.2,
+    changePercent24h: 1.39,
     lastUpdated: new Date().toISOString(),
   },
   cash_usd_1000000: {

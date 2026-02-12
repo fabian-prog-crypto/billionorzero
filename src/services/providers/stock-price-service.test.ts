@@ -213,25 +213,25 @@ describe('StockPriceService', () => {
 });
 
 describe('searchStocks', () => {
-  it('returns matching stocks by symbol', () => {
-    const results = searchStocks('AAPL');
+  it('returns matching stocks by symbol (fallback)', async () => {
+    const results = await searchStocks('AAPL');
     expect(results).toHaveLength(1);
     expect(results[0].symbol).toBe('AAPL');
   });
 
-  it('returns matching stocks by description', () => {
-    const results = searchStocks('nvidia');
+  it('returns matching stocks by description (fallback)', async () => {
+    const results = await searchStocks('nvidia');
     expect(results).toHaveLength(1);
     expect(results[0].symbol).toBe('NVDA');
   });
 
-  it('returns empty array for no match', () => {
-    const results = searchStocks('xyz123nonexistent');
+  it('returns empty array for no match (fallback)', async () => {
+    const results = await searchStocks('xyz123nonexistent');
     expect(results).toHaveLength(0);
   });
 
-  it('is case-insensitive', () => {
-    const results = searchStocks('apple');
+  it('is case-insensitive (fallback)', async () => {
+    const results = await searchStocks('apple');
     expect(results).toHaveLength(1);
     expect(results[0].symbol).toBe('AAPL');
   });
