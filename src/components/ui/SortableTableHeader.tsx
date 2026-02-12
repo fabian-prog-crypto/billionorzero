@@ -1,6 +1,6 @@
 'use client';
 
-import { ChevronUp, ChevronDown } from 'lucide-react';
+import { ArrowUpDown, ChevronUp, ChevronDown } from 'lucide-react';
 
 interface SortableTableHeaderProps {
   field: string;
@@ -27,35 +27,19 @@ export default function SortableTableHeader({
   return (
     <button
       onClick={() => onSort(field)}
-      className={`flex items-center gap-1 hover:text-[var(--foreground)] transition-colors ${alignClass} ${className}`}
+      className={`flex items-center gap-1 w-full hover:text-[var(--foreground)] transition-colors ${alignClass} ${className}`}
     >
       <span>{label}</span>
       {isActive ? (
         direction === 'asc' ? (
-          <ChevronUp className="w-3.5 h-3.5" />
+          <ChevronUp className="w-3 h-3" />
         ) : (
-          <ChevronDown className="w-3.5 h-3.5" />
+          <ChevronDown className="w-3 h-3" />
         )
       ) : (
-        <ChevronDown className="w-3.5 h-3.5 opacity-30" />
+        <ArrowUpDown className="w-3 h-3 opacity-50" />
       )}
     </button>
   );
 }
 
-// Helper component for non-sortable headers
-export function TableHeader({
-  children,
-  align = 'left',
-  className = '',
-}: {
-  children: React.ReactNode;
-  align?: 'left' | 'right';
-  className?: string;
-}) {
-  const alignClass = align === 'right' ? 'text-right' : 'text-left';
-
-  return (
-    <span className={`${alignClass} ${className}`}>{children}</span>
-  );
-}
