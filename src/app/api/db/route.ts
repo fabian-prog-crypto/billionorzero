@@ -69,7 +69,7 @@ export async function PUT(request: NextRequest) {
 
     const body = await request.text();
 
-    // Guard: refuse to overwrite a populated db with empty/tiny data
+    // Guard 1: refuse to overwrite a populated db with empty/tiny data
     if (fs.existsSync(DB_PATH)) {
       const existingSize = fs.statSync(DB_PATH).size;
       if (existingSize > 1000 && body.length < 100) {
@@ -77,6 +77,26 @@ export async function PUT(request: NextRequest) {
           { error: 'Refusing to wipe database: incoming payload is suspiciously small compared to existing data. This is likely a bug.' },
           { status: 409 }
         );
+      }
+
+      // Guard 2: parse and check position counts to catch partial data loss
+      try {
+        const existingData = JSON.parse(fs.readFileSync(DB_PATH, 'utf-8'));
+        const incomingData = JSON.parse(body);
+        const existingPositions = existingData?.state?.positions ?? existingData?.positions ?? [];
+        const incomingPositions = incomingData?.state?.positions ?? incomingData?.positions ?? [];
+
+        if (
+          existingPositions.length >= 10 &&
+          incomingPositions.length / existingPositions.length < 0.5
+        ) {
+          return NextResponse.json(
+            { error: `Refusing to overwrite database: position count would drop from ${existingPositions.length} to ${incomingPositions.length} (${Math.round(incomingPositions.length / existingPositions.length * 100)}%). This looks like a partial sync failure.` },
+            { status: 409 }
+          );
+        }
+      } catch {
+        // If we can't parse either file, fall through and allow the write
       }
     }
 

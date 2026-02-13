@@ -526,6 +526,7 @@ See `.claude/rules/qa.md` for the mandatory portfolio diff check procedure and `
 
 ## Existing Documentation
 
+- `architecture.md` -- Comprehensive architecture reference with diagrams, data model, API routes, and service layers
 - `docs/SERVICE_ARCHITECTURE.md` -- Detailed architecture diagrams and data flows
 - `ARCHITECTURE_IMPROVEMENTS.md` -- 12 planned improvements
 - `PLAN_UI_REDESIGN.md` -- UI redesign specifications

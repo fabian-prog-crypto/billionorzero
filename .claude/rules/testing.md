@@ -84,6 +84,43 @@ beforeEach(() => {
 
 Use the factory functions in store test files (e.g., `makeWalletAccount()`, `makePosition()`) to create test data with sensible defaults. Add new factories when a new entity type needs repeated test setup.
 
+## Position Integrity (MANDATORY)
+
+Positions are the core data in the app. Any code that writes, syncs, or replaces positions **must** be tested to ensure it does not silently lose data. This section exists because a partial sync once wiped 61% of positions (688 → 270) and deleted all debt positions.
+
+### Runtime guards
+
+The sync pipeline has three guards in `src/app/api/portfolio/sync-guards.ts`. These are the last line of defense:
+
+| Guard | What it catches | Threshold |
+|-------|----------------|-----------|
+| `guardTotalWipe` | Incoming state has 0 positions + 0 accounts | Existing > 0 |
+| `guardPartialLoss` | Position count drops >50% | Existing ≥ 10 positions |
+| `guardDebtLoss` | All debt positions disappear | Existing has any debts |
+
+Both write endpoints (`POST /api/portfolio/sync`, `PUT /api/db`) enforce these guards. **Never bypass or weaken them.**
+
+### What must be tested for position integrity
+
+Any code that modifies position arrays must include tests verifying:
+
+1. **No silent data loss**: Syncing one account must not delete positions from other accounts.
+2. **Debt preservation**: Debt positions (`isDebt: true`) must survive any sync or write operation. They represent real liabilities.
+3. **Cross-account isolation**: `setSyncedPositions(['w1'], newPositions)` must only replace positions with `accountId === 'w1'`. All other positions (other wallets, CEX accounts, manual, orphans) must be untouched.
+4. **Threshold guards**: Any new write path to `db.json` must use `runSyncGuards()` from `sync-guards.ts`. Test that the guard rejects writes that would lose >50% of positions.
+5. **Orphan safety**: Positions with no `accountId` must never be discarded during sync.
+
+### Test files for reference
+
+- `src/app/api/portfolio/sync-guards.test.ts` — Tests for all three guards, including the exact 688→270 bug scenario.
+- `src/store/portfolioStore.test.ts` — `setSyncedPositions (position integrity)` section tests cross-account safety and debt preservation.
+
+### Rules for any new sync/write code
+
+- **Never replace all positions at once.** Use `setSyncedPositions(accountIds, newPositions)` which scopes the replacement to specific accounts.
+- **Never write to db.json without running guards.** Use `writeDb()` through the sync route, or call `runSyncGuards()` before any direct write.
+- **Add a regression test** that seeds the before-state, runs the operation, and asserts all unrelated positions survived.
+
 ## E2E Test Rules
 
 ### Seed data format

@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { readDb, writeDb, type PortfolioData } from '../db-store';
+import { runSyncGuards } from '../sync-guards';
 
 export async function POST(request: NextRequest) {
   try {
@@ -27,15 +28,12 @@ export async function POST(request: NextRequest) {
       riskFreeRate: body.riskFreeRate ?? 0.05,
     };
 
-    // Guard: refuse to overwrite a populated db with empty data
+    // Run all data-loss guards before writing
     const existing = readDb();
-    if (
-      existing.positions.length > 0 &&
-      state.positions.length === 0 &&
-      state.accounts.length === 0
-    ) {
+    const guard = runSyncGuards(existing, state);
+    if (!guard.allowed) {
       return NextResponse.json(
-        { error: 'Refusing to wipe database: incoming state has no positions or accounts but existing db has data. This is likely a bug.' },
+        { error: guard.reason },
         { status: 409 }
       );
     }

@@ -581,6 +581,100 @@ describe('setSyncedPositions (CEX)', () => {
 })
 
 // ---------------------------------------------------------------------------
+// setSyncedPositions: position integrity (prevents data loss)
+// ---------------------------------------------------------------------------
+describe('setSyncedPositions (position integrity)', () => {
+  it('preserves debt positions from other accounts during wallet sync', () => {
+    const debtPos = makePosition({
+      id: 'debt-usdc',
+      accountId: 'w2',
+      symbol: 'USDC',
+      isDebt: true,
+      protocol: 'Morpho',
+      amount: 100000,
+    })
+    usePortfolioStore.setState({
+      accounts: [
+        makeWalletAccount({ id: 'w1', address: '0xaaa', name: 'W1', chains: ['eth'] }),
+        makeWalletAccount({ id: 'w2', address: '0xbbb', name: 'W2', chains: ['eth'] }),
+      ],
+      positions: [
+        makePosition({ id: 'w1-pos', accountId: 'w1' }),
+        debtPos,
+      ],
+    })
+
+    // Sync only w1 — w2's debt must survive
+    usePortfolioStore.getState().setSyncedPositions(
+      ['w1'],
+      [makePosition({ id: 'w1-new', accountId: 'w1' })],
+    )
+
+    const positions = usePortfolioStore.getState().positions
+    const debtIds = positions.filter(p => p.isDebt).map(p => p.id)
+    expect(debtIds).toContain('debt-usdc')
+  })
+
+  it('preserves positions from non-synced accounts in a multi-account portfolio', () => {
+    // Simulate a real portfolio: 3 wallets, 1 CEX, 1 manual
+    usePortfolioStore.setState({
+      accounts: [
+        makeWalletAccount({ id: 'w1', address: '0x1', name: 'Main', chains: ['eth'] }),
+        makeWalletAccount({ id: 'w2', address: '0x2', name: 'DeFi', chains: ['arb'] }),
+        makeWalletAccount({ id: 'w3', address: '0x3', name: 'Sol', chains: ['sol'] }),
+        makeCexAccount({ id: 'cex1', name: 'Binance', exchange: 'binance' }),
+        makeManualAccount({ id: 'manual1', name: 'Brokerage' }),
+      ],
+      positions: [
+        makePosition({ id: 'w1-eth', accountId: 'w1', symbol: 'ETH' }),
+        makePosition({ id: 'w2-arb', accountId: 'w2', symbol: 'ARB' }),
+        makePosition({ id: 'w3-sol', accountId: 'w3', symbol: 'SOL' }),
+        makePosition({ id: 'cex-btc', accountId: 'cex1', symbol: 'BTC' }),
+        makePosition({ id: 'manual-aapl', accountId: 'manual1', symbol: 'AAPL' }),
+        makePosition({ id: 'debt-1', accountId: 'w2', symbol: 'USDC', isDebt: true }),
+      ],
+    })
+
+    // Sync only w1 — everything else must survive
+    usePortfolioStore.getState().setSyncedPositions(
+      ['w1'],
+      [makePosition({ id: 'w1-eth-new', accountId: 'w1', symbol: 'ETH' })],
+    )
+
+    const ids = usePortfolioStore.getState().positions.map(p => p.id)
+    expect(ids).toContain('w2-arb')
+    expect(ids).toContain('w3-sol')
+    expect(ids).toContain('cex-btc')
+    expect(ids).toContain('manual-aapl')
+    expect(ids).toContain('debt-1')
+    expect(ids).toContain('w1-eth-new')
+    expect(ids).not.toContain('w1-eth') // Old w1 position replaced
+    expect(ids).toHaveLength(6) // 5 preserved + 1 new
+  })
+
+  it('never loses positions with no accountId during any sync', () => {
+    const orphan = makePosition({ id: 'orphan', symbol: 'GOLD' })
+    // Remove accountId to simulate a truly orphaned position
+    delete (orphan as Record<string, unknown>).accountId
+
+    usePortfolioStore.setState({
+      accounts: [
+        makeWalletAccount({ id: 'w1', address: '0x1', name: 'W1', chains: ['eth'] }),
+      ],
+      positions: [
+        orphan,
+        makePosition({ id: 'w1-pos', accountId: 'w1' }),
+      ],
+    })
+
+    usePortfolioStore.getState().setSyncedPositions(['w1'], [])
+
+    const ids = usePortfolioStore.getState().positions.map(p => p.id)
+    expect(ids).toContain('orphan')
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Custom prices (3 tests)
 // ---------------------------------------------------------------------------
 describe('Custom prices', () => {
