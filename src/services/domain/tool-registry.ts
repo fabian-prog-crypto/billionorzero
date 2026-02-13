@@ -19,6 +19,7 @@ const mutationTools: ToolDefinition[] = [
       { name: 'amount', type: 'number', required: false, description: 'Quantity to buy. Omit when totalCost is provided instead.' },
       { name: 'price', type: 'number', required: false, description: 'Price per unit (use when user says "at $X")' },
       { name: 'totalCost', type: 'number', required: false, description: 'Total dollar amount to spend (use when user says "$Xk worth of", "for $X", or specifies a dollar amount without per-unit price). When set, leave amount empty.' },
+      { name: 'date', type: 'string', required: false, description: 'Trade date in YYYY-MM-DD format (default today if omitted).' },
       { name: 'assetType', type: 'string', required: false, description: 'Asset type', enum: ['crypto', 'stock', 'etf', 'manual'] },
       { name: 'name', type: 'string', required: false, description: 'Display name for the asset' },
       { name: 'account', type: 'string', required: false, description: 'Account to associate with' },
@@ -34,6 +35,7 @@ const mutationTools: ToolDefinition[] = [
       { name: 'amount', type: 'number', required: false, description: 'Exact quantity to sell' },
       { name: 'percent', type: 'number', required: false, description: 'Percentage of position to sell (0-100)' },
       { name: 'price', type: 'number', required: false, description: 'Sale price per unit' },
+      { name: 'date', type: 'string', required: false, description: 'Trade date in YYYY-MM-DD format (default today if omitted).' },
     ],
     examples: ['sell half my ETH', 'sold 5 AAPL at $190'],
   },
@@ -44,6 +46,7 @@ const mutationTools: ToolDefinition[] = [
     fields: [
       { name: 'symbol', type: 'string', required: true, description: 'Ticker symbol to sell entirely' },
       { name: 'price', type: 'number', required: false, description: 'Sale price per unit' },
+      { name: 'date', type: 'string', required: false, description: 'Trade date in YYYY-MM-DD format (default today if omitted).' },
     ],
     examples: ['sell all my DOGE', 'sold all BTC at $70k'],
   },

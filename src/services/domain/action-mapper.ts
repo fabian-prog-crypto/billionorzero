@@ -12,6 +12,29 @@ export interface ActionMapperData {
   accounts: { id: string; name: string; connection: { dataSource: string } }[];
 }
 
+function resolveDate(input: unknown): string {
+  if (typeof input === 'string') {
+    const normalized = input.trim().toLowerCase();
+    if (normalized === 'today') {
+      return new Date().toISOString().split('T')[0];
+    }
+    if (normalized === 'yesterday') {
+      const d = new Date();
+      d.setDate(d.getDate() - 1);
+      return d.toISOString().split('T')[0];
+    }
+    if (normalized === 'tomorrow') {
+      const d = new Date();
+      d.setDate(d.getDate() + 1);
+      return d.toISOString().split('T')[0];
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(input)) return input;
+    const parsed = new Date(input);
+    if (!isNaN(parsed.getTime())) return parsed.toISOString().split('T')[0];
+  }
+  return new Date().toISOString().split('T')[0];
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Mutation tools that require confirmation via the modal. */
@@ -25,7 +48,7 @@ export const CONFIRM_MUTATION_TOOLS = new Set([
  * Prefers manual position (no accountId) over synced positions.
  */
 export function findPositionBySymbol(positions: Position[], symbol: string): Position | undefined {
-  const s = symbol.toLowerCase();
+  const s = symbol.toLowerCase().trim();
   const matches = positions.filter(p => p.symbol.toLowerCase() === s);
   if (matches.length === 0) return undefined;
   return matches.find(p => !p.accountId) || matches[0];
@@ -66,6 +89,7 @@ export function toolCallToAction(toolName: string, args: Record<string, unknown>
       const assetType = String(args.assetType || 'crypto') as 'crypto' | 'stock' | 'etf' | 'cash' | 'manual';
       const name = String(args.name || symbol);
       const totalCostArg = args.totalCost ? Number(args.totalCost) : undefined;
+      const date = resolveDate(args.date);
 
       // Derive price from totalCost if provided but price is not
       let resolvedPrice = price;
@@ -95,6 +119,7 @@ export function toolCallToAction(toolName: string, args: Record<string, unknown>
         amount,
         pricePerUnit: resolvedPrice,
         totalCost: resolvedTotalCost,
+        date,
         matchedPositionId: matchedPosition?.id,
         matchedAccountId,
         accountName,
@@ -105,6 +130,7 @@ export function toolCallToAction(toolName: string, args: Record<string, unknown>
     case 'sell_partial': {
       const sellAmount = args.amount ? Number(args.amount) : undefined;
       const sellPercent = args.percent ? Number(args.percent) : undefined;
+      const date = resolveDate(args.date);
       return {
         action: 'sell_partial',
         symbol,
@@ -112,17 +138,20 @@ export function toolCallToAction(toolName: string, args: Record<string, unknown>
         sellAmount,
         sellPercent,
         sellPrice: price,
+        date,
         matchedPositionId: matchedPosition?.id,
         confidence: 0.9,
         summary: `Sell ${sellAmount ? sellAmount + ' ' : sellPercent ? sellPercent + '% of ' : ''}${symbol}`,
       };
     }
     case 'sell_all': {
+      const date = resolveDate(args.date);
       return {
         action: 'sell_all',
         symbol,
         assetType: matchedPosition?.type || 'crypto',
         sellPrice: price,
+        date,
         matchedPositionId: matchedPosition?.id,
         confidence: 0.9,
         summary: `Sell all ${symbol}`,

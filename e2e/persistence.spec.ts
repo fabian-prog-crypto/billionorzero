@@ -1,10 +1,13 @@
 import { test, expect, seedEmptyPortfolio, seedLocalStorage, waitForAppLoad } from './fixtures/test-helpers';
-import { test as baseTest } from '@playwright/test';
+import { test as baseTest, type Page } from '@playwright/test';
+
+const sidebarAssetsLink = (page: Page) =>
+  page.locator('aside nav a[href="/positions"]');
 
 test.describe('Persistence', () => {
   test('add position, reload page, position still exists', async ({ seededPage: page }) => {
     // Navigate to positions
-    await page.locator('nav a', { hasText: 'Assets' }).click();
+    await sidebarAssetsLink(page).click();
     await page.waitForURL(/\/positions/);
 
     // Verify our seeded positions exist
@@ -18,7 +21,7 @@ test.describe('Persistence', () => {
     await waitForAppLoad(page);
 
     // Navigate back to positions
-    await page.locator('nav a', { hasText: 'Assets' }).click();
+    await sidebarAssetsLink(page).click();
     await page.waitForURL(/\/positions/);
 
     // Verify positions still exist

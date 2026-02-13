@@ -88,7 +88,6 @@ describe('linkOrphanedCashPositions', () => {
     const result = linkOrphanedCashPositions([pos], [])
     expect(result).not.toBeNull()
     expect(result!.accounts).toHaveLength(1)
-    expect(result!.accounts[0].slug).toBe('wise')
     expect(result!.accounts[0].name).toBe('Wise')
     expect(result!.positions[0].accountId).toBeTruthy()
   })
@@ -103,7 +102,23 @@ describe('linkOrphanedCashPositions', () => {
     expect(result!.accounts).toHaveLength(1)
     // Reuses the UUID from the accountId
     expect(result!.accounts[0].id).toBe('missing-id')
-    expect(result!.accounts[0].slug).toBe('n26')
+  })
+
+  it('matches existing manual account by normalized name (no slug required)', () => {
+    const existing = {
+      id: 'm1',
+      name: 'IBKR Main',
+      isActive: true,
+      connection: { dataSource: 'manual' as const },
+      addedAt: '2024-01-01T00:00:00Z',
+    }
+    const pos = makeCashPosition({
+      name: '  ibkr   main (USD)',
+    })
+    const result = linkOrphanedCashPositions([pos], [existing])
+    expect(result).not.toBeNull()
+    expect(result!.accounts).toHaveLength(1)
+    expect(result!.positions[0].accountId).toBe('m1')
   })
 })
 

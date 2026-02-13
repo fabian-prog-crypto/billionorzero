@@ -213,6 +213,14 @@ describe('toolCallToAction — buy_position', () => {
 
     expect(result!.assetType).toBe('crypto');
   });
+
+  it('buy defaults date to today when missing', () => {
+    const result = toolCallToAction('buy_position', {
+      symbol: 'SOL', totalCost: 10000,
+    }, FIXTURE_DB);
+
+    expect(result!.date).toBe(new Date().toISOString().split('T')[0]);
+  });
 });
 
 // ─── toolCallToAction: sell_partial ─────────────────────────────────────────
@@ -247,6 +255,14 @@ describe('toolCallToAction — sell_partial', () => {
 
     expect(result!.sellPrice).toBe(3200);
     expect(result!.sellAmount).toBe(5);
+  });
+
+  it('sell defaults date to today when missing', () => {
+    const result = toolCallToAction('sell_partial', {
+      symbol: 'ethereum', amount: 5,
+    }, FIXTURE_DB);
+
+    expect(result!.date).toBe(new Date().toISOString().split('T')[0]);
   });
 
   it('sell inherits assetType from matched position', () => {

@@ -11,10 +11,12 @@ import { toOllamaTools, getToolById } from '@/services/domain/tool-registry';
 import { classifyIntent } from '@/services/domain/intent-router';
 import { calculatePortfolioSummary, calculateAllPositionsWithPrices, calculateExposureData, calculateRiskProfile, calculatePerpPageData } from '@/services/domain/portfolio-calculator';
 import { calculatePerformanceMetrics } from '@/services/domain/performance-metrics';
-import { assetClassFromType, typeFromAssetClass } from '@/types';
+import { assetClassFromType } from '@/types';
 import type { Position, Transaction, Account } from '@/types';
 import { toSlug } from '@/services/domain/cash-account-service';
 import { toolCallToAction, findPositionBySymbol, CONFIRM_MUTATION_TOOLS } from '@/services/domain/action-mapper';
+import { getCoinGeckoApiClient, getStockApiClient } from '@/services/api';
+import { getCryptoPriceService } from '@/services/providers/crypto-price-service';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -44,12 +46,447 @@ interface ToolCallResult {
   isMutation: boolean;
 }
 
-const MAX_ROUNDS = 5;
+const MAX_ROUNDS = 3;
 const DEFAULT_MODEL = 'llama3.2:latest';
+
+type AssetTypeHint = 'crypto' | 'stock' | 'etf' | 'cash' | 'manual';
+const QUOTE_FETCH_TIMEOUT_MS = Number(process.env.CMDK_QUOTE_TIMEOUT_MS || 1200);
+const STOCK_API_KEY = process.env.STOCK_API_KEY || process.env.FINNHUB_API_KEY;
+
+function toDateOnlyString(input: unknown): string {
+  if (typeof input === 'string') {
+    const normalized = input.trim().toLowerCase();
+    if (normalized === 'today') {
+      return new Date().toISOString().split('T')[0];
+    }
+    if (normalized === 'yesterday') {
+      const d = new Date();
+      d.setDate(d.getDate() - 1);
+      return d.toISOString().split('T')[0];
+    }
+    if (normalized === 'tomorrow') {
+      const d = new Date();
+      d.setDate(d.getDate() + 1);
+      return d.toISOString().split('T')[0];
+    }
+    // Accept already-normalized YYYY-MM-DD
+    if (/^\d{4}-\d{2}-\d{2}$/.test(input)) return input;
+    const parsed = new Date(input);
+    if (!isNaN(parsed.getTime())) return parsed.toISOString().split('T')[0];
+  }
+  return new Date().toISOString().split('T')[0];
+}
+
+function resolveRelativeDateFromUserText(text: string): string | null {
+  const normalized = text.toLowerCase();
+  if (/\byesterday\b/.test(normalized)) {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().split('T')[0];
+  }
+  if (/\btoday\b/.test(normalized)) {
+    return new Date().toISOString().split('T')[0];
+  }
+  if (/\btomorrow\b/.test(normalized)) {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().split('T')[0];
+  }
+  return null;
+}
+
+function resolveCommandDate(argDate: unknown, userText: string): string {
+  const fromText = resolveRelativeDateFromUserText(userText);
+  if (fromText) return fromText;
+  return toDateOnlyString(argDate);
+}
+
+function asPositiveNumber(value: unknown): number | null {
+  const num = Number(value);
+  return Number.isFinite(num) && num > 0 ? num : null;
+}
+
+function isToday(date: string): boolean {
+  return date === new Date().toISOString().split('T')[0];
+}
+
+function isNearToday(date: string, maxDays: number = 7): boolean {
+  const ts = new Date(`${date}T12:00:00Z`).getTime();
+  if (Number.isNaN(ts)) return false;
+  const now = new Date();
+  const nowMid = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const dayTs = Date.UTC(new Date(ts).getUTCFullYear(), new Date(ts).getUTCMonth(), new Date(ts).getUTCDate());
+  const diffDays = Math.abs(nowMid - dayTs) / (24 * 60 * 60 * 1000);
+  return diffDays <= maxDays;
+}
+
+function withFetchTimeout(ms: number): AbortSignal | undefined {
+  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+    return AbortSignal.timeout(ms);
+  }
+  return undefined;
+}
+
+function isSuspiciousNearDateQuote(quotePrice: number | null, referencePrice: number | null, date: string): boolean {
+  if (!quotePrice || !referencePrice) return false;
+  if (!isNearToday(date, 7)) return false;
+  const ratio = quotePrice / referencePrice;
+  return ratio < 0.3 || ratio > 3.0;
+}
+
+function looksLikeEquityTicker(symbol: string): boolean {
+  return /^[A-Z][A-Z0-9.\-]{0,9}$/.test(symbol.toUpperCase());
+}
+
+function getPortfolioSymbols(db: PortfolioData): string[] {
+  return Array.from(new Set(db.positions.map((p) => p.symbol.toUpperCase())));
+}
+
+function levenshteinDistance(a: string, b: string): number {
+  const rows = a.length + 1;
+  const cols = b.length + 1;
+  const dp = Array.from({ length: rows }, () => new Array<number>(cols).fill(0));
+
+  for (let i = 0; i < rows; i++) dp[i][0] = i;
+  for (let j = 0; j < cols; j++) dp[0][j] = j;
+
+  for (let i = 1; i < rows; i++) {
+    for (let j = 1; j < cols; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(
+        dp[i - 1][j] + 1,
+        dp[i][j - 1] + 1,
+        dp[i - 1][j - 1] + cost,
+      );
+    }
+  }
+
+  return dp[rows - 1][cols - 1];
+}
+
+function resolveClosestPortfolioSymbol(db: PortfolioData, inputSymbol: string): string {
+  const symbol = inputSymbol.trim().toUpperCase();
+  if (!symbol) return symbol;
+
+  const catalog = getPortfolioSymbols(db);
+  if (catalog.includes(symbol)) return symbol;
+  if (catalog.length === 0) return symbol;
+
+  const prefixMatches = catalog.filter((candidate) => candidate.startsWith(symbol) || symbol.startsWith(candidate));
+  if (prefixMatches.length === 1) return prefixMatches[0];
+
+  let best: { symbol: string; score: number } | null = null;
+  let second: { symbol: string; score: number } | null = null;
+
+  for (const candidate of catalog) {
+    const maxLen = Math.max(symbol.length, candidate.length);
+    if (maxLen === 0) continue;
+    const dist = levenshteinDistance(symbol, candidate);
+    const score = 1 - dist / maxLen;
+
+    if (!best || score > best.score) {
+      second = best;
+      best = { symbol: candidate, score };
+      continue;
+    }
+    if (!second || score > second.score) {
+      second = { symbol: candidate, score };
+    }
+  }
+
+  if (!best) return symbol;
+
+  const bestIsStrong = best.score >= 0.75;
+  const hasGap = !second || best.score - second.score >= 0.12;
+  return bestIsStrong && hasGap ? best.symbol : symbol;
+}
+
+function getDbPriceForSymbol(db: PortfolioData, symbol: string): number | null {
+  const lower = symbol.toLowerCase();
+  const upper = symbol.toUpperCase();
+  const direct = db.customPrices[lower]?.price ?? db.prices[lower]?.price ?? db.customPrices[upper]?.price ?? db.prices[upper]?.price;
+  if (typeof direct === 'number' && direct > 0) return direct;
+
+  // Crypto prices are often stored under CoinGecko IDs (e.g., "bitcoin")
+  const coinId = getCryptoPriceService().getCoinId(symbol);
+  const cg = db.customPrices[coinId]?.price ?? db.prices[coinId]?.price;
+  if (typeof cg === 'number' && cg > 0) return cg;
+
+  return null;
+}
+
+async function fetchLiveStockQuote(symbol: string): Promise<number | null> {
+  if (!STOCK_API_KEY) return null;
+  try {
+    const quote = await getStockApiClient(STOCK_API_KEY).getQuote(symbol);
+    return asPositiveNumber(quote.c);
+  } catch {
+    return null;
+  }
+}
+
+async function fetchYahooStockCloseForDate(symbol: string, date: string): Promise<number | null> {
+  try {
+    // Pull a small window around the target day and select the last close on/before date.
+    const d = new Date(`${date}T12:00:00Z`);
+    const from = new Date(d);
+    from.setDate(from.getDate() - 7);
+    const to = new Date(d);
+    to.setDate(to.getDate() + 2);
+    const period1 = Math.floor(from.getTime() / 1000);
+    const period2 = Math.floor(to.getTime() / 1000);
+
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&period1=${period1}&period2=${period2}`;
+    const response = await fetch(url, { signal: withFetchTimeout(QUOTE_FETCH_TIMEOUT_MS) });
+    if (!response.ok) return null;
+
+    const json = await response.json();
+    const result = json?.chart?.result?.[0];
+    const timestamps: number[] = Array.isArray(result?.timestamp) ? result.timestamp : [];
+    const closes: Array<number | null> = result?.indicators?.quote?.[0]?.close || [];
+    if (timestamps.length === 0 || closes.length === 0) return null;
+
+    const targetDay = new Date(`${date}T23:59:59Z`).getTime();
+    let bestClose: number | null = null;
+    let bestTs = -Infinity;
+
+    for (let i = 0; i < Math.min(timestamps.length, closes.length); i++) {
+      const ts = timestamps[i] * 1000;
+      const close = asPositiveNumber(closes[i]);
+      if (!close) continue;
+      if (ts <= targetDay && ts > bestTs) {
+        bestTs = ts;
+        bestClose = close;
+      }
+    }
+
+    return bestClose;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchStockQuoteForDate(symbol: string, buyDate: string): Promise<number | null> {
+  if (STOCK_API_KEY) {
+    try {
+      const start = Math.floor(new Date(`${buyDate}T00:00:00Z`).getTime() / 1000);
+      const end = Math.floor(new Date(`${buyDate}T23:59:59Z`).getTime() / 1000);
+      const url = `https://finnhub.io/api/v1/stock/candle?symbol=${encodeURIComponent(symbol)}&resolution=D&from=${start}&to=${end}&token=${STOCK_API_KEY}`;
+      const response = await fetch(url, { signal: withFetchTimeout(QUOTE_FETCH_TIMEOUT_MS) });
+      if (response.ok) {
+        const data = await response.json();
+        if (data?.s === 'ok' && Array.isArray(data.c) && data.c.length > 0) {
+          const close = asPositiveNumber(data.c[data.c.length - 1]);
+          if (close) return close;
+        }
+      }
+    } catch {
+      // fallback below
+    }
+  } else if (process.env.CMDK_ENABLE_YAHOO_FALLBACK === 'true') {
+    const yahooHistorical = await fetchYahooStockCloseForDate(symbol, buyDate);
+    if (yahooHistorical) return yahooHistorical;
+  }
+
+  if (isToday(buyDate)) {
+    return fetchLiveStockQuote(symbol);
+  }
+
+  return null;
+}
+
+function toCoinGeckoDate(date: string): string {
+  const [year, month, day] = date.split('-');
+  return `${day}-${month}-${year}`;
+}
+
+async function fetchLiveCryptoQuote(symbol: string): Promise<number | null> {
+  try {
+    const coinId = getCryptoPriceService().getCoinId(symbol);
+    const response = await getCoinGeckoApiClient().getPrices([coinId]);
+    return asPositiveNumber(response[coinId]?.usd);
+  } catch {
+    return null;
+  }
+}
+
+async function fetchCryptoQuoteForDate(symbol: string, buyDate: string): Promise<number | null> {
+  if (isToday(buyDate)) {
+    return fetchLiveCryptoQuote(symbol);
+  }
+
+  try {
+    const coinId = getCryptoPriceService().getCoinId(symbol);
+    const date = toCoinGeckoDate(buyDate);
+    const url = `https://api.coingecko.com/api/v3/coins/${encodeURIComponent(coinId)}/history?date=${encodeURIComponent(date)}&localization=false`;
+    const response = await fetch(url, { signal: withFetchTimeout(QUOTE_FETCH_TIMEOUT_MS) });
+    if (response.ok) {
+      const data = await response.json();
+      const historicalPrice = asPositiveNumber(data?.market_data?.current_price?.usd);
+      if (historicalPrice) return historicalPrice;
+    }
+  } catch {
+    // fallback below
+  }
+
+  return fetchLiveCryptoQuote(symbol);
+}
+
+async function resolveQuotePrice(
+  db: PortfolioData,
+  symbol: string,
+  assetType: AssetTypeHint | undefined,
+  buyDate: string,
+): Promise<{ price: number | null; resolvedType: AssetTypeHint | undefined }> {
+  const dbPrice = getDbPriceForSymbol(db, symbol);
+  const shouldUseDbFirst = isToday(buyDate);
+  if (dbPrice && shouldUseDbFirst) {
+    return { price: dbPrice, resolvedType: assetType };
+  }
+
+  // Type-aware lookup first
+  if (assetType === 'stock' || assetType === 'etf') {
+    // Fast path for local mode without stock API key: return cached server-side price.
+    if (!STOCK_API_KEY && dbPrice) {
+      return { price: dbPrice, resolvedType: assetType };
+    }
+    const stockPrice = await fetchStockQuoteForDate(symbol, buyDate);
+    const safeStockPrice =
+      stockPrice && !isSuspiciousNearDateQuote(stockPrice, dbPrice, buyDate)
+        ? stockPrice
+        : null;
+    return { price: safeStockPrice || dbPrice, resolvedType: assetType };
+  }
+  if (assetType === 'crypto') {
+    const cryptoPrice = await fetchCryptoQuoteForDate(symbol, buyDate);
+    if (cryptoPrice) return { price: cryptoPrice, resolvedType: 'crypto' };
+    return { price: dbPrice, resolvedType: assetType };
+  }
+
+  // Unknown type: try stock first, then crypto.
+  const stockPrice = await fetchStockQuoteForDate(symbol, buyDate);
+  const safeStockPrice =
+    stockPrice && !isSuspiciousNearDateQuote(stockPrice, dbPrice, buyDate)
+      ? stockPrice
+      : null;
+  if (safeStockPrice) return { price: safeStockPrice, resolvedType: 'stock' };
+
+  // Avoid expensive crypto fallback for equity-like symbols unless they are known crypto mappings.
+  const cryptoService = getCryptoPriceService();
+  if (looksLikeEquityTicker(symbol) && !cryptoService.hasKnownMapping(symbol)) {
+    return { price: dbPrice, resolvedType: assetType };
+  }
+
+  const cryptoPrice = await fetchCryptoQuoteForDate(symbol, buyDate);
+  if (cryptoPrice) return { price: cryptoPrice, resolvedType: 'crypto' };
+
+  return { price: dbPrice, resolvedType: assetType };
+}
+
+async function enrichBuyToolArgs(
+  args: Record<string, unknown>,
+  db: PortfolioData,
+  userText: string,
+): Promise<Record<string, unknown>> {
+  const symbol = String(args.symbol || '').toUpperCase();
+  const existing = symbol ? findPositionBySymbol(db.positions, symbol) : undefined;
+
+  const date = resolveCommandDate(args.date, userText);
+  const totalCost = asPositiveNumber(args.totalCost);
+  let amount = asPositiveNumber(args.amount);
+  let price = asPositiveNumber(args.price);
+
+  let assetType = (typeof args.assetType === 'string' ? args.assetType : existing?.type) as AssetTypeHint | undefined;
+  if (!assetType && existing) assetType = existing.type;
+
+  if (totalCost && amount && !price) {
+    price = Number((totalCost / amount).toFixed(8));
+  }
+
+  // Server-side fallback: resolve quote + derive amount for totalCost-only buys.
+  if (totalCost && (!amount || !price) && symbol) {
+    const quote = await resolveQuotePrice(db, symbol, assetType, date);
+    if (!price && quote.price) price = quote.price;
+    if (!assetType && quote.resolvedType) assetType = quote.resolvedType;
+    if (!amount && totalCost && price) amount = Number((totalCost / price).toFixed(8));
+  }
+
+  const enriched: Record<string, unknown> = {
+    ...args,
+    symbol,
+    date,
+  };
+
+  if (assetType) enriched.assetType = assetType;
+  if (totalCost) enriched.totalCost = totalCost;
+  if (amount) enriched.amount = amount;
+  if (price) enriched.price = price;
+
+  return enriched;
+}
+
+async function enrichSellToolArgs(
+  args: Record<string, unknown>,
+  db: PortfolioData,
+  userText: string,
+): Promise<Record<string, unknown>> {
+  const rawSymbol = String(args.symbol || '').toUpperCase();
+  const symbol = resolveClosestPortfolioSymbol(db, rawSymbol);
+  const existing = symbol ? findPositionBySymbol(db.positions, symbol) : undefined;
+  const date = resolveCommandDate(args.date, userText);
+  let price = asPositiveNumber(args.price);
+  let assetType = (typeof args.assetType === 'string' ? args.assetType : existing?.type) as AssetTypeHint | undefined;
+  if (!assetType && existing) assetType = existing.type;
+
+  if (!price && symbol) {
+    const quote = await resolveQuotePrice(db, symbol, assetType, date);
+    if (quote.price) price = quote.price;
+    if (!assetType && quote.resolvedType) assetType = quote.resolvedType;
+  }
+  // Last-resort fallback: if quote lookup fails, use average cost to avoid blocking sell confirmation.
+  if (!price && existing?.costBasis && existing.amount > 0) {
+    const avgCost = existing.costBasis / existing.amount;
+    if (avgCost > 0) price = avgCost;
+  }
+
+  const enriched: Record<string, unknown> = {
+    ...args,
+    symbol,
+    date,
+  };
+  if (price) enriched.price = price;
+  if (assetType) enriched.assetType = assetType;
+  return enriched;
+}
+
+function enrichExistingPositionToolArgs(
+  args: Record<string, unknown>,
+  db: PortfolioData,
+): Record<string, unknown> {
+  const rawSymbol = String(args.symbol || '').toUpperCase();
+  if (!rawSymbol) return args;
+  const symbol = resolveClosestPortfolioSymbol(db, rawSymbol);
+  return {
+    ...args,
+    symbol,
+  };
+}
+
+function enrichQueryToolArgs(
+  toolName: string,
+  args: Record<string, unknown>,
+  db: PortfolioData,
+): Record<string, unknown> {
+  if (toolName !== 'query_position_details') return args;
+  const rawSymbol = String(args.symbol || '').toUpperCase();
+  if (!rawSymbol) return args;
+  const symbol = resolveClosestPortfolioSymbol(db, rawSymbol);
+  return { ...args, symbol };
+}
 
 // ─── Portfolio Context Builder ────────────────────────────────────────────────
 
-function buildSystemContext(db: PortfolioData, opts?: { includePositions?: boolean }): string {
+function buildSystemContext(db: PortfolioData, opts?: { includePositions?: boolean; includeSymbolCatalog?: boolean; includeAccounts?: boolean }): string {
   const lines: string[] = [
     'You are a portfolio assistant. ALWAYS respond in English.',
     '',
@@ -57,10 +494,12 @@ function buildSystemContext(db: PortfolioData, opts?: { includePositions?: boole
     '- ALWAYS call a tool before answering. NEVER answer from context alone.',
     '- For any question about portfolio data (net worth, positions, exposure, etc.), call the appropriate query tool FIRST, then summarize the result.',
     '- For mutations, call the mutation tool DIRECTLY — do NOT look up the position first.',
+    '- For confirmable mutations, emit one tool call immediately with minimal prose.',
     '- When the user uses past tense ("bought", "sold", "added", "removed", "updated"), treat it as a mutation.',
     '  "bought 10 AAPL" → call buy_position(symbol: "AAPL", amount: 10, assetType: "stock")',
     '  "sold half my ETH" → call sell_partial(symbol: "ETH", percent: 50)',
     '- For buy_position: if the position does not exist yet, it will be created automatically. Do NOT call query_position_details before buying.',
+    '- Use the symbol provided by the user. The server will resolve close symbol matches when needed.',
     '',
     '## Buy: "at" vs "for" vs "worth of" disambiguation',
     '- "at $X" means per-unit price → use the `price` parameter',
@@ -71,6 +510,7 @@ function buildSystemContext(db: PortfolioData, opts?: { includePositions?: boole
     '  "bought $50k worth of MSFT" → buy_position(symbol: "MSFT", totalCost: 50000, assetType: "stock")',
     '  "bought 50k USD of AAPL" → buy_position(symbol: "AAPL", totalCost: 50000, assetType: "stock")',
     '- IMPORTANT: When the user specifies a dollar amount to spend without quantity, set `totalCost` and omit `amount`. The system will calculate shares from the current price.',
+    '- Include `date` for buy/sell commands when the user specifies one (YYYY-MM-DD). If no date is provided, default to today.',
     '- NEVER put a total dollar value into the `price` field. `price` is ALWAYS per-unit.',
     '- Keep answers concise — 1-3 sentences max.',
     '- Do NOT refuse to call tools. Do NOT ask for confirmation before querying.',
@@ -85,11 +525,18 @@ function buildSystemContext(db: PortfolioData, opts?: { includePositions?: boole
   ];
 
   // Accounts summary
-  if (db.accounts.length > 0) {
+  if (opts?.includeAccounts !== false && db.accounts.length > 0) {
     lines.push(`\nAccounts (${db.accounts.length}):`);
     for (const a of db.accounts) {
       const ds = a.connection.dataSource;
       lines.push(`  - ${a.name} (${ds}, id: ${a.id.slice(0, 8)})`);
+    }
+  }
+
+  if (opts?.includeSymbolCatalog !== false) {
+    const symbolCatalog = Array.from(new Set(db.positions.map((p) => p.symbol.toUpperCase()))).sort();
+    if (symbolCatalog.length > 0) {
+      lines.push(`\nPortfolio symbols (${symbolCatalog.length}): ${symbolCatalog.join(', ')}`);
     }
   }
 
@@ -517,25 +964,30 @@ export async function POST(request: NextRequest) {
     // Build context from db
     const db = readDb();
 
-    // Phase 1: Classify intent locally (instant) to reduce tools sent to LLM
-    const classified = classifyIntent(text.trim());
-
-    // Phase 2: Filter tools based on intent — only send relevant 1-3 tools
+    // LLM-first routing: send full toolset initially.
+    // Regex classifier remains as hard-fail fallback only.
+    const userText = text.trim();
+    const regexFallback = classifyIntent(userText);
     const allTools = toOllamaTools();
-    const tools = classified.toolIds.length > 0
-      ? allTools.filter(t => classified.toolIds.includes(t.function.name))
-      : allTools;
+    let tools = allTools;
+    let usedRegexFallback = false;
+    const mutationIntents = new Set([
+      'buy', 'sell', 'add_cash', 'update_cash', 'remove', 'update', 'set_price',
+      'toggle', 'add_wallet', 'remove_wallet', 'set_risk_free_rate',
+    ]);
+    const likelyMutation = mutationIntents.has(regexFallback.intent);
 
-    // Phase 3: Trim context for mutation intents (skip positions, keep accounts)
-    const isMutationIntent = ['buy', 'sell', 'add_cash', 'update_cash', 'remove', 'update', 'set_price', 'toggle', 'add_wallet', 'remove_wallet', 'set_risk_free_rate'].includes(classified.intent);
+    // Keep runtime fast: avoid expensive priced-position calculations in system context.
     const systemContent = buildSystemContext(db, {
-      includePositions: !isMutationIntent,
+      includePositions: false,
+      includeSymbolCatalog: false,
+      includeAccounts: !likelyMutation,
     });
 
     // Initial messages
     const messages: OllamaMessage[] = [
       { role: 'system', content: systemContent },
-      { role: 'user', content: text.trim() },
+      { role: 'user', content: userText },
     ];
 
     const allToolCalls: ToolCallResult[] = [];
@@ -548,7 +1000,18 @@ export async function POST(request: NextRequest) {
         response = await fetch(`${baseUrl}/api/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model, messages, tools, stream: false }),
+          body: JSON.stringify({
+            model,
+            messages,
+            tools,
+            stream: false,
+            keep_alive: '30m',
+            options: {
+              temperature: 0.1,
+              top_p: 0.9,
+              num_predict: 160,
+            },
+          }),
         });
       } catch (err) {
         if (err instanceof TypeError && (err.message.includes('fetch') || err.message.includes('ECONNREFUSED'))) {
@@ -582,6 +1045,18 @@ export async function POST(request: NextRequest) {
 
       // Check for tool calls
       if (!assistantMsg.tool_calls || assistantMsg.tool_calls.length === 0) {
+        // Hard-fail fallback: no tool call on first pass, retry with regex tool slice.
+        if (!usedRegexFallback && regexFallback.toolIds.length > 0) {
+          usedRegexFallback = true;
+          tools = allTools.filter(t => regexFallback.toolIds.includes(t.function.name));
+          messages.length = 0;
+          messages.push(
+            { role: 'system', content: systemContent },
+            { role: 'user', content: userText },
+          );
+          continue;
+        }
+
         // Final text response
         return NextResponse.json({
           response: assistantMsg.content || '',
@@ -592,11 +1067,22 @@ export async function POST(request: NextRequest) {
 
       // Execute tool calls
       for (const toolCall of assistantMsg.tool_calls) {
-        const { name: toolName, arguments: toolArgs } = toolCall.function;
+        const { name: toolName } = toolCall.function;
+        const rawToolArgs = toolCall.function.arguments || {};
+        const currentDb = readDb();
+        let toolArgs: Record<string, unknown>;
+        if (toolName === 'buy_position') {
+          toolArgs = await enrichBuyToolArgs(rawToolArgs, currentDb, userText);
+        } else if (toolName === 'sell_partial' || toolName === 'sell_all') {
+          toolArgs = await enrichSellToolArgs(rawToolArgs, currentDb, userText);
+        } else if (toolName === 'remove_position' || toolName === 'update_position') {
+          toolArgs = enrichExistingPositionToolArgs(rawToolArgs, currentDb);
+        } else {
+          toolArgs = enrichQueryToolArgs(toolName, rawToolArgs, currentDb);
+        }
 
         // Check if this is a confirmable mutation — return pendingAction instead of executing
         if (CONFIRM_MUTATION_TOOLS.has(toolName)) {
-          const currentDb = readDb();
           const pendingAction = toolCallToAction(toolName, toolArgs || {}, currentDb);
           if (pendingAction) {
             return NextResponse.json({

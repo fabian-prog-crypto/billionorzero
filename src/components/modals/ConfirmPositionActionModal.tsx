@@ -32,8 +32,16 @@ function getRelevantAccounts(
 ): Account[] {
   if (assetType === 'stock' || assetType === 'etf') return store.brokerageAccounts();
   if (assetType === 'crypto') return [...store.walletAccounts(), ...store.cexAccounts()];
-  if (assetType === 'cash') return store.cashAccounts();
+  if (assetType === 'cash') return store.manualAccounts();
   return store.manualAccounts();
+}
+
+function normalizeAccountBaseName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/\bbroker(age)?\b/g, '')
+    .replace(/[^a-z0-9]/g, '')
+    .trim();
 }
 
 export default function ConfirmPositionActionModal({
@@ -46,6 +54,7 @@ export default function ConfirmPositionActionModal({
   const store = usePortfolioStore();
   const { updatePosition, removePosition, addPosition, addTransaction, updatePrice, setCustomPrice } = store;
   const brokerageAccounts = store.brokerageAccounts();
+  const allAccounts = store.accounts;
 
   // Editable fields
   const [action, setAction] = useState(parsedAction.action);
@@ -109,17 +118,33 @@ export default function ConfirmPositionActionModal({
       setEditPurchaseDate(parsedAction.date || '');
 
       // Auto-fill price from current market price when missing
-      const matched = parsedAction.matchedPositionId
+      const matchedById = parsedAction.matchedPositionId
         ? positionsWithPrices.find((p) => p.id === parsedAction.matchedPositionId)
         : null;
+      const matchedBySymbol = positionsWithPrices.find(
+        (p) => p.symbol.toUpperCase() === parsedAction.symbol.toUpperCase()
+      ) || null;
+      const matched = matchedById || matchedBySymbol;
+      const matchedPositionForFallback = parsedAction.matchedPositionId
+        ? positions.find((p) => p.id === parsedAction.matchedPositionId) || null
+        : positions.find((p) => p.symbol.toUpperCase() === parsedAction.symbol.toUpperCase()) || null;
+      if (matched?.id && (!parsedAction.matchedPositionId || !matchedById)) {
+        setMatchedPositionId(matched.id);
+      }
       const marketPrice = matched && matched.currentPrice > 0 ? matched.currentPrice : 0;
 
       const isSellAction = parsedAction.action === 'sell_partial' || parsedAction.action === 'sell_all';
       if (isSellAction) {
+        const fallbackAvgCost = matchedPositionForFallback
+          && matchedPositionForFallback.costBasis !== undefined
+          && matchedPositionForFallback.amount > 0
+          ? matchedPositionForFallback.costBasis / matchedPositionForFallback.amount
+          : 0;
+        const fallbackSellPrice = marketPrice || fallbackAvgCost;
         setSellPrice(
           parsedAction.sellPrice
             ? parsedAction.sellPrice.toString()
-            : marketPrice ? marketPrice.toString() : ''
+            : fallbackSellPrice ? fallbackSellPrice.toString() : ''
         );
       } else {
         setSellPrice(parsedAction.sellPrice?.toString() || '');
@@ -159,6 +184,20 @@ export default function ConfirmPositionActionModal({
           setPricePerUnit(marketPrice.toString());
         }
       }
+      // If totalCost + amount are provided but per-unit price is missing, derive it.
+      if (
+        parsedAction.action === 'buy'
+        && parsedAction.totalCost
+        && parsedAction.totalCost > 0
+        && parsedAction.amount
+        && parsedAction.amount > 0
+        && !parsedAction.pricePerUnit
+      ) {
+        const derivedPrice = parsedAction.totalCost / parsedAction.amount;
+        if (derivedPrice > 0) {
+          setPricePerUnit(derivedPrice.toString());
+        }
+      }
 
       // Auto-select account: matchedAccountId → matched position's account → first relevant account
       const matchedPos = parsedAction.matchedPositionId
@@ -194,45 +233,63 @@ export default function ConfirmPositionActionModal({
   // Compute relevant accounts for the account dropdown
   const relevantAccounts = getRelevantAccounts(parsedAction.assetType, store);
 
-  // Find matched position
-  const matchedPosition = matchedPositionId
-    ? positions.find((p) => p.id === matchedPositionId)
-    : null;
-
-  const matchedWithPrice = matchedPositionId
-    ? positionsWithPrices.find((p) => p.id === matchedPositionId)
-    : null;
-
   // Find all positions with this symbol (for ambiguous matching)
   const symbolMatches = positions.filter(
     (p) => p.symbol.toUpperCase() === symbol.toUpperCase()
   );
 
+  // Find matched position
+  const matchedPositionById = matchedPositionId
+    ? positions.find((p) => p.id === matchedPositionId) || null
+    : null;
+  const matchedPosition = matchedPositionById || (symbolMatches.length === 1 ? symbolMatches[0] : null);
+
+  const matchedWithPrice = matchedPosition
+    ? positionsWithPrices.find((p) => p.id === matchedPosition.id) || null
+    : null;
+
   // Calculate preview values
   const numSellAmount = parseFloat(sellAmount) || 0;
+  const numSellPercent = parseFloat(sellPercent) || 0;
   const numSellPrice = parseFloat(sellPrice) || 0;
   const numAmount = parseFloat(amount) || 0;
   const numPricePerUnit = parseFloat(pricePerUnit) || 0;
   const numNewPrice = parseFloat(newPrice) || 0;
 
-  const sellTotal = numSellAmount * numSellPrice;
+  const derivedSellAmountFromPercent = matchedPosition && numSellPercent > 0
+    ? matchedPosition.amount * (numSellPercent / 100)
+    : 0;
+  const effectiveSellAmount = action === 'sell_all' && matchedPosition
+    ? matchedPosition.amount
+    : numSellAmount > 0
+      ? numSellAmount
+      : derivedSellAmountFromPercent;
+
+  const fallbackSellPrice = matchedWithPrice && matchedWithPrice.currentPrice > 0
+    ? matchedWithPrice.currentPrice
+    : matchedPosition?.costBasis !== undefined && matchedPosition.amount > 0
+      ? matchedPosition.costBasis / matchedPosition.amount
+      : 0;
+  const effectiveSellPrice = numSellPrice > 0 ? numSellPrice : fallbackSellPrice;
+
+  const sellTotal = effectiveSellAmount * effectiveSellPrice;
   const effectiveSellTotal = action === 'sell_all' && matchedPosition
-    ? matchedPosition.amount * numSellPrice
+    ? matchedPosition.amount * effectiveSellPrice
     : sellTotal;
   const buyTotal = (numAmount * numPricePerUnit) || parsedAction.totalCost || 0;
 
   // Cost basis calculation for sells
   let costBasisAtExecution: number | undefined;
   let realizedPnL: number | undefined;
-  if (isSell && matchedPosition?.costBasis !== undefined && (numSellAmount > 0 || action === 'sell_all')) {
+  if (isSell && matchedPosition?.costBasis !== undefined && (effectiveSellAmount > 0 || action === 'sell_all')) {
     if (action === 'sell_all') {
       costBasisAtExecution = matchedPosition.costBasis;
     } else {
       costBasisAtExecution = matchedPosition.amount > 0
-        ? matchedPosition.costBasis * (numSellAmount / matchedPosition.amount)
+        ? matchedPosition.costBasis * (effectiveSellAmount / matchedPosition.amount)
         : 0;
     }
-    if (numSellPrice > 0) {
+    if (effectiveSellPrice > 0) {
       realizedPnL = effectiveSellTotal - costBasisAtExecution;
     }
   }
@@ -241,7 +298,7 @@ export default function ConfirmPositionActionModal({
   const afterAmount = matchedPosition
     ? action === 'sell_all'
       ? 0
-      : matchedPosition.amount - numSellAmount
+      : matchedPosition.amount - effectiveSellAmount
     : 0;
   const afterCostBasis =
     matchedPosition?.costBasis !== undefined && action !== 'sell_all'
@@ -250,21 +307,18 @@ export default function ConfirmPositionActionModal({
         : 0
       : 0;
 
-  const effectiveSellAmount = action === 'sell_all' && matchedPosition
-    ? matchedPosition.amount
-    : numSellAmount;
   const sellPercentOfPosition = matchedPosition && matchedPosition.amount > 0
     ? (effectiveSellAmount / matchedPosition.amount) * 100
     : 0;
 
   // Check for missing required fields
   const missingFields: string[] = [];
-  if (isSell && numSellPrice <= 0) missingFields.push('sellPrice');
-  if (isSell && action === 'sell_partial' && !numSellAmount)
+  if (isSell && effectiveSellPrice <= 0) missingFields.push('sellPrice');
+  if (isSell && action === 'sell_partial' && effectiveSellAmount <= 0)
     missingFields.push('sellAmount');
-  if (isSell && action === 'sell_partial' && matchedPosition && numSellAmount > matchedPosition.amount)
+  if (isSell && action === 'sell_partial' && matchedPosition && effectiveSellAmount > matchedPosition.amount)
     missingFields.push('sellAmount exceeds position');
-  if (isBuy && !numAmount && !(parsedAction.totalCost && parsedAction.totalCost > 0)) missingFields.push('amount');
+  if (isBuy && !numAmount) missingFields.push('amount');
   if (isBuy && numPricePerUnit <= 0 && !(parsedAction.totalCost && parsedAction.totalCost > 0)) missingFields.push('pricePerUnit');
   if (isAddCash && numAmount <= 0) missingFields.push('amount');
   if (isAddCash && !cashCurrency) missingFields.push('currency');
@@ -299,16 +353,60 @@ export default function ConfirmPositionActionModal({
     ? (brokerageAccounts.some(a => a.id === matchedPosition.accountId) ? matchedPosition.accountId : null)
     : null;
 
+  const usdCashAccountIds = new Set(
+    positions
+      .filter((p) => p.type === 'cash' && !!p.accountId && p.symbol.toUpperCase().includes('USD'))
+      .map((p) => p.accountId as string)
+  );
+
+  // Fallback brokerage account for equity settlement if the matched position is linked to a non-brokerage account.
+  const fallbackBrokerageId = brokerageAccounts.length > 0
+    ? (
+      brokerageAccounts.find((a) => usdCashAccountIds.has(a.id))?.id || brokerageAccounts[0].id
+    )
+    : null;
+  const isEquitySell = isSell && !!matchedPosition
+    && (matchedPosition.type === 'stock' || matchedPosition.type === 'etf' || matchedPosition.assetClass === 'equity');
+  const matchedAccount = matchedPosition?.accountId
+    ? allAccounts.find((a) => a.id === matchedPosition.accountId) || null
+    : null;
+  const sellSettlementBrokerageId = (() => {
+    if (!isEquitySell) return brokerageAccountId;
+
+    if (brokerageAccountId && usdCashAccountIds.has(brokerageAccountId)) {
+      return brokerageAccountId;
+    }
+
+    const usdCashAccounts = allAccounts.filter((a) => usdCashAccountIds.has(a.id));
+    if (matchedAccount) {
+      const base = normalizeAccountBaseName(matchedAccount.name);
+      if (base) {
+        const nameMatched = usdCashAccounts.find((a) => {
+          const candidate = normalizeAccountBaseName(a.name);
+          return candidate.includes(base) || base.includes(candidate);
+        });
+        if (nameMatched) return nameMatched.id;
+      }
+    }
+
+    const brokerNamed = usdCashAccounts.find((a) => /\bbroker|trading|ibkr\b/i.test(a.name));
+    if (brokerNamed) return brokerNamed.id;
+
+    return fallbackBrokerageId || brokerageAccountId;
+  })();
+
   // For buys of equities, we can infer brokerage context even without a matched position
   const buyBrokerageContext = isBuy && !brokerageAccountId
     && (parsedAction.assetType === 'stock' || parsedAction.assetType === 'etf')
     && brokerageAccounts.length > 0;
 
-  const hasBrokerageContext = !!brokerageAccountId || buyBrokerageContext;
+  const hasBrokerageContext = isSell
+    ? !!sellSettlementBrokerageId
+    : (!!brokerageAccountId || buyBrokerageContext);
 
   // Replicate the execution-time brokerage ID logic for accurate preview.
   const previewBrokerageId: string | null = isSell
-    ? brokerageAccountId
+    ? sellSettlementBrokerageId
     : isBuy
       ? (addToExisting && matchedPosition?.accountId && brokerageAccounts.some(a => a.id === matchedPosition.accountId)
         ? matchedPosition.accountId
@@ -324,7 +422,7 @@ export default function ConfirmPositionActionModal({
 
   // Brokerage account name for display
   const previewBrokerageAccount = previewBrokerageId
-    ? brokerageAccounts.find(a => a.id === previewBrokerageId) ?? null
+    ? allAccounts.find(a => a.id === previewBrokerageId) ?? null
     : null;
 
   // Projected cash balance (for negative warning)
@@ -426,7 +524,7 @@ export default function ConfirmPositionActionModal({
       if (action === 'sell_all' && matchedPosition) {
         const result = executeFullSell(
           matchedPosition,
-          numSellPrice,
+          effectiveSellPrice,
           date,
           notes || undefined
         );
@@ -436,14 +534,14 @@ export default function ConfirmPositionActionModal({
         }
         // Cash side-effect: add proceeds
         if (hasBrokerageContext) {
-          const warned = handleCashSideEffect(result.transaction.totalValue, brokerageAccountId);
+          const warned = handleCashSideEffect(result.transaction.totalValue, sellSettlementBrokerageId);
           if (warned) return;
         }
       } else if (action === 'sell_partial' && matchedPosition) {
         const result = executePartialSell(
           matchedPosition,
-          numSellAmount,
-          numSellPrice,
+          effectiveSellAmount,
+          effectiveSellPrice,
           date,
           notes || undefined
         );
@@ -455,7 +553,7 @@ export default function ConfirmPositionActionModal({
         }
         // Cash side-effect: add proceeds
         if (hasBrokerageContext) {
-          const warned = handleCashSideEffect(result.transaction.totalValue, brokerageAccountId);
+          const warned = handleCashSideEffect(result.transaction.totalValue, sellSettlementBrokerageId);
           if (warned) return;
         }
       } else if (action === 'buy') {
@@ -1480,7 +1578,7 @@ export default function ConfirmPositionActionModal({
               <div className="flex items-center justify-between text-sm">
                 <span className="text-[var(--foreground-muted)]">Exec Price</span>
                 <span className="font-mono">
-                  {formatCurrency(isSell ? numSellPrice : numPricePerUnit)} / unit
+                  {formatCurrency(isSell ? effectiveSellPrice : numPricePerUnit)} / unit
                 </span>
               </div>
 
@@ -1513,7 +1611,7 @@ export default function ConfirmPositionActionModal({
                     </div>
                   )}
                   {/* P&L highlight */}
-                  {realizedPnL !== undefined && numSellPrice > 0 && (
+                  {realizedPnL !== undefined && effectiveSellPrice > 0 && (
                     <div className={`flex items-center justify-between p-2 mt-1.5 ${
                       realizedPnL >= 0
                         ? 'bg-[var(--positive-light)]'

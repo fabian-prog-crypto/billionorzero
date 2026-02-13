@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import { getBackupDir } from '@/lib/server-data-path';
 
-const BACKUP_DIR = path.join(process.cwd(), 'data', 'backups');
+const BACKUP_DIR = getBackupDir();
 const MAX_DAILY_BACKUPS = 30;
 
 function ensureBackupDir() {

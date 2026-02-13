@@ -53,16 +53,24 @@ async function executeRefresh(forceRefresh: boolean = false): Promise<void> {
   try {
     const portfolioService = getPortfolioService();
 
-    // Get only standalone manual positions (not linked to any account)
-    const manualPositions = store.positions.filter(
-      (p) => !p.accountId
+    // Refresh pricing for all locally-managed positions:
+    // - standalone manual positions (no accountId)
+    // - positions linked to manual accounts (brokerage/cash/manual)
+    // Exclude wallet/CEX synced positions because providers already return their prices.
+    const manualAccountIds = new Set(
+      store.accounts
+        .filter((a) => a.connection.dataSource === 'manual')
+        .map((a) => a.id)
+    );
+    const localManagedPositions = store.positions.filter(
+      (p) => !p.accountId || manualAccountIds.has(p.accountId)
     );
 
     console.log('[executeRefresh] Calling portfolioService.refreshPortfolio with', walletAccounts.length, 'wallet accounts');
 
     // Use the portfolio service to refresh wallets and prices
     const result = await portfolioService.refreshPortfolio(
-      manualPositions,
+      localManagedPositions,
       walletAccounts,
       forceRefresh
     );
@@ -119,7 +127,7 @@ async function executeRefresh(forceRefresh: boolean = false): Promise<void> {
     const today = new Date().toISOString().split('T')[0];
     const latestStore = usePortfolioStore.getState();
     if (refreshState.lastSnapshotDate !== today && shouldTakeSnapshot(latestStore.snapshots)) {
-      const allPositions = [...manualPositions, ...result.walletPositions, ...cexPositions];
+      const allPositions = [...localManagedPositions, ...result.walletPositions, ...cexPositions];
       const allPrices = { ...latestStore.prices, ...result.prices, ...cexPrices };
       const snapshot = createDailySnapshot(allPositions, allPrices);
       latestStore.addSnapshot(snapshot);

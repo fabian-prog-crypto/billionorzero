@@ -84,6 +84,25 @@ interface PortfolioState {
   clearAll: () => void;
 }
 
+function buildManualAccountHoldings(positions: Position[]): Map<string, { hasAny: boolean; hasCash: boolean; hasEquity: boolean }> {
+  const holdings = new Map<string, { hasAny: boolean; hasCash: boolean; hasEquity: boolean }>();
+
+  for (const p of positions) {
+    if (!p.accountId) continue;
+
+    const effectiveClass = p.assetClass ?? assetClassFromType(p.type);
+    const current = holdings.get(p.accountId) || { hasAny: false, hasCash: false, hasEquity: false };
+    current.hasAny = true;
+
+    if (effectiveClass === 'cash') current.hasCash = true;
+    if (effectiveClass === 'equity') current.hasEquity = true;
+
+    holdings.set(p.accountId, current);
+  }
+
+  return holdings;
+}
+
 export const usePortfolioStore = create<PortfolioState>()(
   persist(
     (set, get) => ({
@@ -113,23 +132,23 @@ export const usePortfolioStore = create<PortfolioState>()(
       brokerageAccounts: () => {
         const accounts = get().accounts;
         const positions = get().positions;
+        const holdings = buildManualAccountHoldings(positions);
         return accounts.filter((a) => {
           if (a.connection.dataSource !== 'manual') return false;
-          return positions.some(p =>
-            p.accountId === a.id &&
-            (p.type === 'stock' || p.type === 'etf' || p.assetClass === 'equity')
-          );
+          const flags = holdings.get(a.id);
+          if (!flags) return true; // Empty manual accounts are selectable until they hold positions
+          return flags.hasEquity;
         });
       },
       cashAccounts: () => {
         const accounts = get().accounts;
         const positions = get().positions;
+        const holdings = buildManualAccountHoldings(positions);
         return accounts.filter((a) => {
           if (a.connection.dataSource !== 'manual') return false;
-          return a.slug || positions.some(p =>
-            p.accountId === a.id &&
-            (p.type === 'cash' || p.assetClass === 'cash')
-          );
+          const flags = holdings.get(a.id);
+          if (!flags) return true; // Empty manual accounts are selectable until they hold positions
+          return flags.hasCash;
         });
       },
       wallets: () => get().walletAccounts(),  // Legacy alias
@@ -170,6 +189,17 @@ export const usePortfolioStore = create<PortfolioState>()(
 
       // Generic account CRUD
       addAccount: (account) => {
+        // Dedup manual accounts by normalized name to prevent accidental duplicates
+        if (account.connection.dataSource === 'manual') {
+          const normalizedName = account.name.trim().toLowerCase();
+          const existingByName = get().accounts.find(
+            (a) =>
+              a.connection.dataSource === 'manual' &&
+              a.name.trim().toLowerCase() === normalizedName
+          );
+          if (existingByName) return existingByName.id;
+        }
+
         // Special handling for accounts with slug: dedup by slug
         if (account.slug) {
           const slug = toSlug(account.name);
@@ -754,7 +784,6 @@ export const usePortfolioStore = create<PortfolioState>()(
 
           accounts.forEach(a => {
             const id = String(a.id || '');
-            const types = accountPositionTypes.get(id) || new Set<string>();
 
             // --- Fix already-migrated accounts that were misclassified as manual ---
             if (a.connection && typeof a.connection === 'object') {
@@ -808,11 +837,6 @@ export const usePortfolioStore = create<PortfolioState>()(
             else {
               a.connection = { dataSource: 'manual' };
               a.isActive = a.isActive ?? true;
-
-              // Preserve slug for cash-like accounts
-              if (!a.slug && types.has('cash')) {
-                a.slug = toSlug(String(a.name || ''));
-              }
             }
 
             // Clean up old type-based fields (keep address on wallet connections for reference)
@@ -823,14 +847,6 @@ export const usePortfolioStore = create<PortfolioState>()(
             delete a.lastSync;
             delete a.chains;
             delete a.perpExchanges;
-          });
-
-          // Ensure all manual accounts have a slug (fixes accounts that had connection:{} and skipped slug assignment)
-          (state.accounts as Array<Record<string, unknown>>).forEach(a => {
-            const conn = a.connection as Record<string, unknown>;
-            if (conn?.dataSource === 'manual' && !a.slug) {
-              a.slug = toSlug(String(a.name || ''));
-            }
           });
 
           // --- Step 2: Merge duplicate-name manual accounts ---
@@ -913,28 +929,7 @@ export const usePortfolioStore = create<PortfolioState>()(
       },
       onRehydrateStorage: () => {
         return () => {
-          const state = usePortfolioStore.getState();
-
-          // Repair slug only for manual accounts that hold cash positions (not brokerage accounts)
-          const cashAccountIds = new Set(
-            state.positions
-              .filter(p => p.assetClass === 'cash' || p.type === 'cash')
-              .map(p => p.accountId)
-              .filter(Boolean)
-          );
-          let accountsChanged = false;
-          const repairedAccounts = state.accounts.map((a) => {
-            if (a.connection.dataSource === 'manual' && !a.slug && cashAccountIds.has(a.id)) {
-              accountsChanged = true;
-              return { ...a, slug: toSlug(a.name) };
-            }
-            return a;
-          });
-          if (accountsChanged) {
-            usePortfolioStore.setState({ accounts: repairedAccounts });
-          }
-
-          // linkOrphanedCashPositions now accepts Account[] directly (uses repaired accounts)
+          // Link legacy/orphan cash positions back to account IDs.
           const currentState = usePortfolioStore.getState();
           const result = linkOrphanedCashPositions(currentState.positions, currentState.accounts);
           if (result) {

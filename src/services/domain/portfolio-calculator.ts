@@ -62,11 +62,8 @@ function getAccountType(
     case 'kraken':
     case 'okx':
       return 'cex';
-    case 'manual': {
-      // Check if it has a slug (cash account) otherwise brokerage
-      const acct = accountMap?.get(accountId!);
-      return acct?.slug ? 'cash' : 'brokerage';
-    }
+    case 'manual':
+      return 'brokerage';
     default:
       return undefined;
   }

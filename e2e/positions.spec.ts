@@ -1,16 +1,22 @@
 import { test, expect, seedLocalStorage, seedEmptyPortfolio, waitForAppLoad } from './fixtures/test-helpers';
+import type { Page } from '@playwright/test';
+
+async function gotoPositions(page: Page) {
+  await page.goto('/positions');
+  await expect(page).toHaveURL(/\/positions/);
+  await expect(page.locator('table')).toBeVisible();
+}
 
 test.describe('Positions', () => {
   test('add manual position: open modal, fill form, submit, appears in list', async ({ seededPage: page }) => {
     // Navigate to positions page
-    await page.locator('a', { hasText: 'Assets' }).first().click();
-    await page.waitForURL(/\/positions/);
+    await gotoPositions(page);
 
     // Click Add button on the positions page
-    await page.locator('button', { hasText: 'Add' }).click();
+    await page.getByRole('button', { name: 'Add', exact: true }).click();
 
     // Modal should open
-    await expect(page.locator('text=Add Position')).toBeVisible();
+    await expect(page.locator('.modal-content h2', { hasText: 'Add Position' })).toBeVisible();
 
     // Switch to Manual tab
     await page.locator('button', { hasText: 'Manual' }).click();
@@ -42,21 +48,22 @@ test.describe('Positions', () => {
 
     // Modal should open
     await expect(page.locator('h2', { hasText: 'Add Position' })).toBeVisible();
+    const modal = page.locator('.modal-content');
 
     // Switch to Cash tab
-    await page.locator('button', { hasText: 'Cash' }).click();
+    await modal.getByRole('button', { name: 'Cash', exact: true }).click();
 
     // The existing "Test Bank" account button should be visible
-    await expect(page.locator('button', { hasText: 'Test Bank' })).toBeVisible();
+    await expect(modal.locator('button', { hasText: 'Test Bank' })).toBeVisible();
 
     // Click on the existing account
-    await page.locator('button', { hasText: 'Test Bank' }).click();
+    await modal.locator('button', { hasText: 'Test Bank' }).click();
 
     // Currency should default to USD - fill balance
-    await page.locator('input[placeholder="0.00"]').fill('5000');
+    await modal.locator('input[placeholder="0.00"]').fill('5000');
 
     // Submit
-    await page.locator('button[type="submit"]', { hasText: 'Add Position' }).click();
+    await modal.locator('button[type="submit"]', { hasText: 'Add Position' }).click();
 
     // Modal should close
     await expect(page.locator('h2', { hasText: 'Add Position' })).not.toBeVisible();
@@ -64,8 +71,7 @@ test.describe('Positions', () => {
 
   test('edit manual position: click edit, change amount, save', async ({ seededPage: page }) => {
     // Navigate to positions page
-    await page.locator('a', { hasText: 'Assets' }).first().click();
-    await page.waitForURL(/\/positions/);
+    await gotoPositions(page);
 
     // Find an edit button on a manual position row (GOLD is manual)
     const goldRow = page.locator('tr', { hasText: 'GOLD' });
@@ -84,8 +90,7 @@ test.describe('Positions', () => {
 
   test('delete position: click delete, confirm, removed', async ({ seededPage: page }) => {
     // Navigate to positions page
-    await page.locator('a', { hasText: 'Assets' }).first().click();
-    await page.waitForURL(/\/positions/);
+    await gotoPositions(page);
 
     // The GOLD position should be visible
     await expect(page.locator('tr', { hasText: 'GOLD' })).toBeVisible();
@@ -103,8 +108,7 @@ test.describe('Positions', () => {
 
   test('custom price: set custom price on position', async ({ seededPage: page }) => {
     // Navigate to positions page
-    await page.locator('a', { hasText: 'Assets' }).first().click();
-    await page.waitForURL(/\/positions/);
+    await gotoPositions(page);
 
     // Click on a price cell to open custom price modal
     // The price cells have title="Click to set custom price"
@@ -120,8 +124,7 @@ test.describe('Positions', () => {
 
   test('search/filter: type in search, list filters', async ({ seededPage: page }) => {
     // Navigate to positions page
-    await page.locator('a', { hasText: 'Assets' }).first().click();
-    await page.waitForURL(/\/positions/);
+    await gotoPositions(page);
 
     // Count initial positions
     const initialRows = await page.locator('tbody tr').count();
@@ -144,8 +147,7 @@ test.describe('Positions', () => {
 
   test('view mode toggle: switch between positions and assets views', async ({ seededPage: page }) => {
     // Navigate to positions page
-    await page.locator('a', { hasText: 'Assets' }).first().click();
-    await page.waitForURL(/\/positions/);
+    await gotoPositions(page);
 
     // Should start in positions view
     await expect(page.locator('button', { hasText: 'Positions' })).toBeVisible();
@@ -164,8 +166,7 @@ test.describe('Positions', () => {
 
   test('hide dust toggle', async ({ seededPage: page }) => {
     // Navigate to positions page
-    await page.locator('a', { hasText: 'Assets' }).first().click();
-    await page.waitForURL(/\/positions/);
+    await gotoPositions(page);
 
     // Find and click the Dust toggle button
     const dustButton = page.locator('button', { hasText: 'Dust' });

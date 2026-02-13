@@ -16,20 +16,34 @@ export function toSlug(name: string): string {
   return name.toLowerCase().trim().replace(/\s+/g, '-');
 }
 
+/** Normalize an account name for human-friendly matching (case/whitespace insensitive). */
+export function normalizeAccountName(name: string): string {
+  return name.toLowerCase().trim().replace(/\s+/g, ' ');
+}
+
 /** Extract account name from a cash position's display name (e.g., "Revolut (EUR)" → "Revolut"). */
 export function extractCashAccountName(positionName: string): string {
   const match = positionName.match(/^(.+?)\s*\(/);
   return (match ? match[1].trim() : positionName) || 'Manual';
 }
 
-/** Check if a slug derived from `name` already exists in the given accounts list. */
+/** Check if a normalized manual account name already exists in the given accounts list. */
+export function isManualAccountNameTaken(name: string, accounts: Account[]): boolean {
+  const normalized = normalizeAccountName(name);
+  return accounts
+    .filter((a) => a.connection.dataSource === 'manual')
+    .some((a) => normalizeAccountName(a.name) === normalized);
+}
+
+/** @deprecated Use isManualAccountNameTaken. Kept for backwards compatibility. */
 export function isCashAccountSlugTaken(name: string, accounts: Account[]): boolean {
-  const slug = toSlug(name);
-  return accounts.filter((a) => a.slug).some((a) => a.slug === slug);
+  // Legacy alias kept for compatibility with older callers.
+  return isManualAccountNameTaken(name, accounts);
 }
 
 /**
- * Pure function that links orphaned cash positions to Account entities using slug-based matching.
+ * Pure function that links orphaned cash positions to Account entities using
+ * normalized account names (with legacy slug fallback).
  *
  * Returns updated `{ positions, accounts }` if any changes were made, or `null` if nothing changed.
  * The caller (store) is responsible for applying the result via setState.
@@ -38,15 +52,18 @@ export function linkOrphanedCashPositions(
   positions: Position[],
   accounts: Account[]
 ): { positions: Position[]; accounts: Account[] } | null {
-  // Filter to accounts with slugs (cash-like manual accounts)
-  const cashAccounts = accounts.filter((a) => a.slug);
+  const manualAccounts = accounts.filter((a) => a.connection.dataSource === 'manual');
   const updatedAccounts = [...accounts];
   const updatedPositions = [...positions];
   let changed = false;
 
-  // Build lookup: slug → Account id
+  // Build lookup: normalized name/legacy slug → Account id
+  const nameToId = new Map<string, string>();
   const slugToId = new Map<string, string>();
-  cashAccounts.forEach((a) => slugToId.set(a.slug!, a.id));
+  manualAccounts.forEach((a) => {
+    nameToId.set(normalizeAccountName(a.name), a.id);
+    if (a.slug) slugToId.set(a.slug, a.id);
+  });
 
   // Build set of existing account IDs for fast lookup
   const existingIds = new Set(accounts.map((a) => a.id));
@@ -56,15 +73,17 @@ export function linkOrphanedCashPositions(
     if (effectiveClass !== 'cash') return;
 
     const accountName = extractCashAccountName(p.name);
+    const normalizedName = normalizeAccountName(accountName);
     const slug = toSlug(accountName);
+    const matchedAccountId = nameToId.get(normalizedName) || slugToId.get(slug);
 
     if (p.accountId) {
       if (existingIds.has(p.accountId)) {
         // Valid accountId + matching account -> nothing to do
         return;
       }
-      // accountId points to missing account -> find by slug or create
-      let targetId = slugToId.get(slug);
+      // accountId points to missing account -> find by name/slug or create
+      let targetId = matchedAccountId;
       if (!targetId) {
         targetId = p.accountId; // Reuse the UUID from accountId
         updatedAccounts.push({
@@ -72,11 +91,12 @@ export function linkOrphanedCashPositions(
           name: accountName,
           isActive: true,
           connection: { dataSource: 'manual' },
-          slug,
           addedAt: new Date().toISOString(),
         });
+        nameToId.set(normalizedName, targetId);
         slugToId.set(slug, targetId);
         existingIds.add(targetId);
+        changed = true;
       }
       if (targetId !== p.accountId) {
         // Re-point position to the correct account
@@ -85,23 +105,24 @@ export function linkOrphanedCashPositions(
           accountId: targetId,
           updatedAt: new Date().toISOString(),
         };
+        changed = true;
       }
-      changed = true;
     } else {
-      // No accountId -> find by slug or create, then tag position
-      let accountId = slugToId.get(slug);
+      // No accountId -> find by name/slug or create, then tag position
+      let accountId = matchedAccountId;
       if (!accountId) {
         accountId = uuidv4();
+        nameToId.set(normalizedName, accountId);
         slugToId.set(slug, accountId);
         updatedAccounts.push({
           id: accountId,
           name: accountName,
           isActive: true,
           connection: { dataSource: 'manual' },
-          slug,
           addedAt: new Date().toISOString(),
         });
         existingIds.add(accountId);
+        changed = true;
       }
 
       updatedPositions[i] = {

@@ -15,8 +15,7 @@ vi.mock('@/services', () => ({
     const match = symbol.match(/CASH_([A-Z]+)/)
     return match ? match[1] : symbol
   }),
-  isCashAccountSlugTaken: vi.fn().mockReturnValue(false),
-  toSlug: vi.fn((name: string) => name.toLowerCase().replace(/\s+/g, '-')),
+  isManualAccountNameTaken: vi.fn().mockReturnValue(false),
 }))
 
 // Mock currencies
@@ -60,7 +59,6 @@ const mockStoreState = {
   addAccount: mockAddAccount,
   manualAccounts: () => _accounts.filter(a => a.connection.dataSource === 'manual'),
   brokerageAccounts: () => _accounts.filter(a => a.connection.dataSource === 'manual' && !a.slug),
-  cashAccounts: () => _accounts.filter(a => a.connection.dataSource === 'manual' && a.slug),
   accounts: _accounts,
   positions: [] as unknown[],
 }

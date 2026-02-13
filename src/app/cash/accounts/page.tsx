@@ -9,7 +9,7 @@ import {
   calculateCashBreakdown,
   extractCurrencyCode,
   extractAccountName,
-  toSlug,
+  normalizeAccountName,
 } from '@/services';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import CurrencyIcon from '@/components/ui/CurrencyIcon';
@@ -53,7 +53,7 @@ export default function CashAccountsPage() {
     addPosition,
     updatePrice,
   } = store;
-  const cashAccounts = useMemo(() => store.cashAccounts(), [store.accounts]);
+  const cashAccounts = useMemo(() => store.cashAccounts(), [store]);
   const [includeStablecoins, setIncludeStablecoins] = useState(false);
   const [editingPositionId, setEditingPositionId] = useState<string | null>(null);
   const [editBalance, setEditBalance] = useState('');
@@ -124,10 +124,10 @@ export default function CashAccountsPage() {
           orphanGroup.entries.push(entry);
         }
       } else {
-        // Legacy position without accountId — match by slug
+        // Legacy position without accountId — match by normalized name
         const accountName = extractAccountName(p);
         const matchingAccount = cashAccounts.find(
-          (a) => a.slug === toSlug(accountName)
+          (a) => normalizeAccountName(a.name) === normalizeAccountName(accountName)
         );
         if (matchingAccount) {
           const group = accountMap.get(matchingAccount.id)!;
@@ -245,7 +245,7 @@ export default function CashAccountsPage() {
 
   const handleCreateAccount = () => {
     if (!newAccountName.trim()) return;
-    addAccount({ name: newAccountName.trim(), isActive: true, connection: { dataSource: 'manual' }, slug: toSlug(newAccountName.trim()) });
+    addAccount({ name: newAccountName.trim(), isActive: true, connection: { dataSource: 'manual' } });
     setAddingNewAccount(false);
     setNewAccountName('');
   };

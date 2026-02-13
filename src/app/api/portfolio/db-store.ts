@@ -4,9 +4,9 @@
  */
 
 import fs from 'fs';
-import path from 'path';
 import type { Position, Account, PriceData, NetWorthSnapshot, Transaction } from '@/types';
 import type { CustomPrice } from '@/store/portfolioStore';
+import { getDataDir, getDbPath } from '@/lib/server-data-path';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -31,8 +31,8 @@ interface ZustandPersistWrapper {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const DATA_DIR = path.join(process.cwd(), 'data');
-const DB_PATH = path.join(DATA_DIR, 'db.json');
+const DATA_DIR = getDataDir();
+const DB_PATH = getDbPath();
 const STORE_VERSION = 13;
 
 const EMPTY_DATA: PortfolioData = {

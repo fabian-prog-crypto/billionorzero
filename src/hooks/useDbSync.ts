@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { usePortfolioStore } from '@/store/portfolioStore';
+import { getOrRefreshToken, refreshToken } from '@/lib/api-token';
 
 const DEBOUNCE_MS = 2_000;
 
@@ -37,11 +38,32 @@ export function useDbSync() {
           riskFreeRate: state.riskFreeRate,
         };
 
-        fetch('/api/portfolio/sync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        }).catch(() => {
+        const sync = async () => {
+          const makeRequest = async (token: string | null) => {
+            const headers: Record<string, string> = {
+              'Content-Type': 'application/json',
+            };
+            if (token) {
+              headers.Authorization = `Bearer ${token}`;
+            }
+            return fetch('/api/portfolio/sync', {
+              method: 'POST',
+              headers,
+              body: JSON.stringify(payload),
+            });
+          };
+
+          const token = await getOrRefreshToken();
+          let response = await makeRequest(token);
+          if (response.status === 401) {
+            const freshToken = await refreshToken();
+            if (freshToken) {
+              response = await makeRequest(freshToken);
+            }
+          }
+        };
+
+        sync().catch(() => {
           // Silently ignore sync failures — not critical path
         });
       }, DEBOUNCE_MS);

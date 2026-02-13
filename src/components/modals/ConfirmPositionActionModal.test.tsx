@@ -223,7 +223,7 @@ describe('ConfirmPositionActionModal — account relationship fixes', () => {
       expect(screen.queryByText('Revolut')).not.toBeInTheDocument();
     });
 
-    it('shows cash accounts for update_cash action', () => {
+    it('shows manual accounts for update_cash action', () => {
       const cashAcct = makeAccount({
         id: 'cash1',
         name: 'Revolut',
@@ -264,12 +264,12 @@ describe('ConfirmPositionActionModal — account relationship fixes', () => {
         />
       );
 
-      // Cash account dropdown should appear with "Account" label
+      // Account dropdown should appear with "Account" label
       const accountLabels = screen.getAllByText('Account');
       expect(accountLabels.length).toBeGreaterThan(0);
       expect(screen.getByText('Revolut')).toBeInTheDocument();
-      // Brokerage should NOT appear
-      expect(screen.queryByText('IBKR')).not.toBeInTheDocument();
+      // Brokerage/manual accounts are selectable for cash movements
+      expect(screen.getByText('IBKR')).toBeInTheDocument();
     });
 
     it('shows cash accounts for add_cash action', () => {

@@ -169,6 +169,40 @@ function buildPortfolioStorage() {
   });
 }
 
+async function mockDbStorage(page: Page, initialState: string) {
+  let currentState = initialState;
+
+  await page.route('**/api/db', async (route, request) => {
+    const method = request.method();
+
+    if (method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: currentState,
+      });
+      return;
+    }
+
+    if (method === 'PUT') {
+      const nextState = request.postData() || currentState;
+      currentState = nextState;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: '{}',
+      });
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: '{}',
+    });
+  });
+}
+
 function buildThemeStorage(theme: 'light' | 'dark' | 'system' = 'dark') {
   return JSON.stringify({
     state: { theme },
@@ -207,12 +241,21 @@ async function seedApiToken(page: Page) {
  * Must be called before navigating to the app.
  */
 export async function seedLocalStorage(page: Page, options?: { theme?: 'light' | 'dark' | 'system' }) {
+  const portfolio = buildPortfolioStorage();
+  await mockDbStorage(page, portfolio);
+
   await page.addInitScript((data) => {
-    localStorage.setItem('portfolio-storage', data.portfolio);
-    localStorage.setItem('theme-storage', data.theme);
-    localStorage.setItem('auth-storage', data.auth);
+    if (!localStorage.getItem('portfolio-storage')) {
+      localStorage.setItem('portfolio-storage', data.portfolio);
+    }
+    if (!localStorage.getItem('theme-storage')) {
+      localStorage.setItem('theme-storage', data.theme);
+    }
+    if (!localStorage.getItem('auth-storage')) {
+      localStorage.setItem('auth-storage', data.auth);
+    }
   }, {
-    portfolio: buildPortfolioStorage(),
+    portfolio,
     theme: buildThemeStorage(options?.theme ?? 'dark'),
     auth: buildAuthStorage(),
   });
@@ -239,10 +282,18 @@ export async function seedEmptyPortfolio(page: Page) {
     version: 13,
   });
 
+  await mockDbStorage(page, emptyPortfolio);
+
   await page.addInitScript((data) => {
-    localStorage.setItem('portfolio-storage', data.portfolio);
-    localStorage.setItem('theme-storage', data.theme);
-    localStorage.setItem('auth-storage', data.auth);
+    if (!localStorage.getItem('portfolio-storage')) {
+      localStorage.setItem('portfolio-storage', data.portfolio);
+    }
+    if (!localStorage.getItem('theme-storage')) {
+      localStorage.setItem('theme-storage', data.theme);
+    }
+    if (!localStorage.getItem('auth-storage')) {
+      localStorage.setItem('auth-storage', data.auth);
+    }
   }, {
     portfolio: emptyPortfolio,
     theme: buildThemeStorage('dark'),

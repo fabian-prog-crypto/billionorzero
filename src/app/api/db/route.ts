@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import { getDataDir, getDbPath, getBackupDir } from '@/lib/server-data-path';
 
-const DATA_DIR = path.join(process.cwd(), 'data');
-const DB_PATH = path.join(DATA_DIR, 'db.json');
-const BACKUP_DIR = path.join(DATA_DIR, 'backups');
+const DATA_DIR = getDataDir();
+const DB_PATH = getDbPath();
+const BACKUP_DIR = getBackupDir();
 
 function ensureDataDir() {
   if (!fs.existsSync(DATA_DIR)) {

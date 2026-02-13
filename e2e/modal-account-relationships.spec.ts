@@ -330,8 +330,8 @@ test.describe('Modal Account Relationships', () => {
       // The account selector has "Revolut" and "N26" as distinct options
       if (options.includes('Revolut') && options.includes('N26')) {
         foundAccountSelect = true;
-        // Brokerage should NOT appear
-        expect(options.some(o => o === 'IBKR')).toBe(false);
+        // Brokerage/manual accounts should be selectable for cash updates
+        expect(options.some(o => o === 'IBKR')).toBe(true);
       }
     }
     expect(foundAccountSelect).toBe(true);

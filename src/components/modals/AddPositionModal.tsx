@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { X, Search, Loader2, Plus } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
-import { searchCoins, searchStocks, extractCurrencyCode, isCashAccountSlugTaken, toSlug } from '@/services';
+import { searchCoins, searchStocks, extractCurrencyCode, isManualAccountNameTaken } from '@/services';
 import StockIcon from '@/components/ui/StockIcon';
 import { useRefresh } from '@/components/PortfolioProvider';
 import { AssetType, assetClassFromType } from '@/types';
@@ -18,6 +18,13 @@ interface AddPositionModalProps {
 
 type Tab = 'crypto' | 'stock' | 'cash' | 'manual';
 type EquityType = 'stock' | 'etf';
+type SearchResult = {
+  id?: string;
+  symbol: string;
+  name?: string;
+  description?: string;
+  image?: string;
+};
 
 export default function AddPositionModal({
   isOpen,
@@ -27,9 +34,9 @@ export default function AddPositionModal({
   const [tab, setTab] = useState<Tab>(defaultTab || 'crypto');
   const [equityType, setEquityType] = useState<EquityType>('stock');
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const [selectedAsset, setSelectedAsset] = useState<any | null>(null);
+  const [selectedAsset, setSelectedAsset] = useState<SearchResult | null>(null);
   const [amount, setAmount] = useState('');
   const [costBasis, setCostBasis] = useState('');
   const [purchaseDate, setPurchaseDate] = useState('');
@@ -53,8 +60,8 @@ export default function AddPositionModal({
   const { refresh } = useRefresh();
 
   // Get accounts using new API - memoize to avoid infinite useEffect loops
-  const brokerageAccounts = useMemo(() => store.brokerageAccounts(), [accounts]);
-  const cashAccounts = useMemo(() => store.cashAccounts(), [accounts]);
+  const brokerageAccounts = useMemo(() => store.brokerageAccounts(), [store, accounts]);
+  const manualAccounts = useMemo(() => store.manualAccounts(), [store, accounts]);
 
   // Reset form when modal opens
   useEffect(() => {
@@ -73,13 +80,13 @@ export default function AddPositionModal({
       setCashCurrency('USD');
       setCashBalance('');
       setSelectedBrokerageId(brokerageAccounts.length === 1 ? brokerageAccounts[0].id : '');
-      setSelectedCashAccountId(cashAccounts.length === 1 ? cashAccounts[0].id : '');
+      setSelectedCashAccountId(manualAccounts.length === 1 ? manualAccounts[0].id : '');
       setNewCashAccountName('');
-      setIsCreatingNewAccount(cashAccounts.length === 0);
+      setIsCreatingNewAccount(manualAccounts.length === 0);
       setCurrencySearch('');
       setIsCurrencyPickerOpen(false);
     }
-  }, [isOpen, defaultTab, brokerageAccounts, cashAccounts]);
+  }, [isOpen, defaultTab, brokerageAccounts, manualAccounts]);
 
   // Close currency picker on outside click
   useEffect(() => {
@@ -151,11 +158,11 @@ export default function AddPositionModal({
     );
   }, [selectedCashAccountId, cashCurrency, positions]);
 
-  // Check if new account name duplicates existing (by slug)
+  // Check if new account name duplicates existing manual accounts (case-insensitive)
   const isDuplicateAccountName = useMemo(() => {
     if (!newCashAccountName.trim()) return false;
-    return isCashAccountSlugTaken(newCashAccountName.trim(), cashAccounts);
-  }, [newCashAccountName, cashAccounts]);
+    return isManualAccountNameTaken(newCashAccountName.trim(), manualAccounts);
+  }, [newCashAccountName, manualAccounts]);
 
   const selectedCurrencyInfo = FIAT_CURRENCY_MAP[cashCurrency];
 
@@ -168,11 +175,11 @@ export default function AddPositionModal({
 
       if (isCreatingNewAccount) {
         if (!newCashAccountName.trim() || isDuplicateAccountName) return;
-        accountId = addAccount({ name: newCashAccountName.trim(), isActive: true, connection: { dataSource: 'manual' }, slug: toSlug(newCashAccountName.trim()) });
+        accountId = addAccount({ name: newCashAccountName.trim(), isActive: true, connection: { dataSource: 'manual' } });
         accountName = newCashAccountName.trim();
       } else {
         if (!accountId) return;
-        const account = cashAccounts.find((a) => a.id === accountId);
+        const account = manualAccounts.find((a) => a.id === accountId);
         if (!account) return;
         accountName = account.name;
       }
@@ -223,7 +230,9 @@ export default function AddPositionModal({
 
       const type: AssetType = tab === 'stock' ? equityType : tab;
       const symbol = selectedAsset.symbol;
-      const name = tab === 'crypto' ? selectedAsset.name : selectedAsset.description;
+      const name = tab === 'crypto'
+        ? (selectedAsset.name || selectedAsset.symbol.toUpperCase())
+        : (selectedAsset.description || selectedAsset.symbol);
 
       const brokerageAccountId = tab === 'stock' && brokerageAccounts.length > 0
         ? brokerageAccounts.length === 1
@@ -345,7 +354,7 @@ export default function AddPositionModal({
               <div>
                 <label className="block text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">Account</label>
                 <div className="flex flex-wrap gap-2">
-                  {cashAccounts.map((a) => (
+                  {manualAccounts.map((a) => (
                     <button
                       key={a.id}
                       type="button"
@@ -537,7 +546,7 @@ export default function AddPositionModal({
               {existingPosition && (
                 <div className="px-3 py-2 bg-[var(--background-secondary)] text-[12px] text-[var(--foreground-muted)]">
                   Existing: {formatNumber(existingPosition.amount)} {cashCurrency} at{' '}
-                  {cashAccounts.find((a) => a.id === selectedCashAccountId)?.name}. This will add a new entry.
+                  {manualAccounts.find((a) => a.id === selectedCashAccountId)?.name}. This will add a new entry.
                 </div>
               )}
             </>

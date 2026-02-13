@@ -2,11 +2,34 @@ import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { readDb, withDb } from '@/app/api/portfolio/db-store';
 import { toSlug } from '@/services/domain/cash-account-service';
-import type { Account, AccountConnection } from '@/types';
+import { assetClassFromType, type Account, type AccountConnection, type Position } from '@/types';
 
 type AccountTypeFilter = 'wallet' | 'cex' | 'brokerage' | 'cash';
 
-function matchesTypeFilter(account: Account, type: AccountTypeFilter): boolean {
+function buildManualAccountHoldings(positions: Position[]): Map<string, { hasAny: boolean; hasCash: boolean; hasEquity: boolean }> {
+  const holdings = new Map<string, { hasAny: boolean; hasCash: boolean; hasEquity: boolean }>();
+
+  for (const p of positions) {
+    if (!p.accountId) continue;
+
+    const effectiveClass = p.assetClass ?? assetClassFromType(p.type);
+    const current = holdings.get(p.accountId) || { hasAny: false, hasCash: false, hasEquity: false };
+    current.hasAny = true;
+
+    if (effectiveClass === 'cash') current.hasCash = true;
+    if (effectiveClass === 'equity') current.hasEquity = true;
+
+    holdings.set(p.accountId, current);
+  }
+
+  return holdings;
+}
+
+function matchesTypeFilter(
+  account: Account,
+  type: AccountTypeFilter,
+  manualHoldings: Map<string, { hasAny: boolean; hasCash: boolean; hasEquity: boolean }>
+): boolean {
   const ds = account.connection.dataSource;
   switch (type) {
     case 'wallet':
@@ -14,9 +37,13 @@ function matchesTypeFilter(account: Account, type: AccountTypeFilter): boolean {
     case 'cex':
       return ds === 'binance' || ds === 'coinbase' || ds === 'kraken' || ds === 'okx';
     case 'brokerage':
-      return ds === 'manual' && !account.slug;
+      if (ds !== 'manual') return false;
+      if (!manualHoldings.has(account.id)) return true;
+      return manualHoldings.get(account.id)!.hasEquity;
     case 'cash':
-      return ds === 'manual' && !!account.slug;
+      if (ds !== 'manual') return false;
+      if (!manualHoldings.has(account.id)) return true;
+      return manualHoldings.get(account.id)!.hasCash;
     default:
       return false;
   }
@@ -42,7 +69,8 @@ export async function GET(request: NextRequest) {
           { status: 400 }
         );
       }
-      accounts = accounts.filter((a) => matchesTypeFilter(a, typeFilter));
+      const manualHoldings = buildManualAccountHoldings(data.positions);
+      accounts = accounts.filter((a) => matchesTypeFilter(a, typeFilter, manualHoldings));
     }
 
     const total = data.accounts.length;
@@ -78,12 +106,25 @@ export async function POST(request: NextRequest) {
     }
 
     const account = await withDb<{ duplicate: boolean; account: Account }>((data) => {
-      // Dedup by slug for manual/cash accounts
-      if (connection.dataSource === 'manual' && slug) {
-        const normalizedSlug = toSlug(slug);
-        const existing = data.accounts.find((a) => a.slug === normalizedSlug);
-        if (existing) {
-          return { data, result: { duplicate: true as const, account: existing } };
+      // Dedup manual accounts by normalized name first.
+      if (connection.dataSource === 'manual') {
+        const normalizedName = name.trim().toLowerCase();
+        const existingByName = data.accounts.find(
+          (a) =>
+            a.connection.dataSource === 'manual' &&
+            a.name.trim().toLowerCase() === normalizedName
+        );
+        if (existingByName) {
+          return { data, result: { duplicate: true as const, account: existingByName } };
+        }
+
+        // Legacy dedup by slug (for older clients still sending slug).
+        if (slug) {
+          const normalizedSlug = toSlug(slug);
+          const existingBySlug = data.accounts.find((a) => a.slug === normalizedSlug);
+          if (existingBySlug) {
+            return { data, result: { duplicate: true as const, account: existingBySlug } };
+          }
         }
       }
 

@@ -1537,6 +1537,8 @@ test.describe('CMD-K — Click Every Suggestion', () => {
     await buyItem.click();
     const input = page.locator('[cmdk-input]');
     await expect(input).toHaveValue('Buy ');
+    await input.click();
+    await expect(input).toBeFocused();
     await page.keyboard.type('2 ETH at 3500');
     await page.keyboard.press('Enter');
     await expect(page.locator('.modal-content')).toBeVisible({ timeout: 10000 });
@@ -1563,6 +1565,8 @@ test.describe('CMD-K — Click Every Suggestion', () => {
     await sellItem.click();
     const input = page.locator('[cmdk-input]');
     await expect(input).toHaveValue('Sell ');
+    await input.click();
+    await expect(input).toBeFocused();
     await page.keyboard.type('half my ETH');
     await page.keyboard.press('Enter');
     await expect(page.locator('.modal-content')).toBeVisible({ timeout: 10000 });
@@ -1589,6 +1593,8 @@ test.describe('CMD-K — Click Every Suggestion', () => {
     await addCashItem.click();
     const input = page.locator('[cmdk-input]');
     await expect(input).toHaveValue('Add cash ');
+    await input.click();
+    await expect(input).toBeFocused();
     await page.keyboard.type('5000 EUR');
     await page.keyboard.press('Enter');
     await expect(page.locator('.modal-content')).toBeVisible({ timeout: 10000 });
@@ -1615,6 +1621,8 @@ test.describe('CMD-K — Click Every Suggestion', () => {
     await updateItem.click();
     const input = page.locator('[cmdk-input]');
     await expect(input).toHaveValue('Update ');
+    await input.click();
+    await expect(input).toBeFocused();
     await page.keyboard.type('BTC to 2');
     await page.keyboard.press('Enter');
     await expect(page.locator('.modal-content')).toBeVisible({ timeout: 10000 });
@@ -1639,6 +1647,8 @@ test.describe('CMD-K — Click Every Suggestion', () => {
     await removeItem.click();
     const input = page.locator('[cmdk-input]');
     await expect(input).toHaveValue('Remove ');
+    await input.click();
+    await expect(input).toBeFocused();
     await page.keyboard.type('DOGE');
     await page.keyboard.press('Enter');
     await expect(page.locator('.modal-content')).toBeVisible({ timeout: 10000 });
