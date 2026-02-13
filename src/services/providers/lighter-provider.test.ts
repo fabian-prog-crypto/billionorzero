@@ -1,5 +1,6 @@
 import { LighterProvider } from './lighter-provider';
 import type { LighterAccount, LighterAssetDetails } from '../api/lighter-api';
+import { toChecksumAddress } from '@/lib/eip55';
 
 // Mock the lighter-api module
 vi.mock('../api/lighter-api', () => {
@@ -270,7 +271,7 @@ describe('LighterProvider', () => {
 
       const result = await provider.fetchPositions('0xabc', 'wallet-1');
 
-      expect(mockClient.getAccountByAddress).toHaveBeenCalledWith('0xabc');
+      expect(mockClient.getAccountByAddress).toHaveBeenCalledWith(toChecksumAddress('0xabc'));
       const usdcPos = result.positions.find(p => p.name.includes('Margin'));
       expect(usdcPos).toBeDefined();
       expect(usdcPos!.amount).toBe(8000);
@@ -299,6 +300,35 @@ describe('LighterProvider', () => {
       expect(result.prices).toEqual({});
       expect(result.accountValue).toBe(0);
       expect(result.error).toBe('Network error');
+    });
+  });
+
+  describe('fetchPositions - EIP-55 checksumming', () => {
+    it('checksums lowercase address before calling Lighter API', async () => {
+      const lowercase = '0x7fda5a2fe9bf63d2f073bbbad04adafefa50a927';
+      const expected = '0x7fda5a2fe9Bf63d2F073BbBaD04adaFEfA50A927';
+
+      mockClient.getAssetDetails.mockResolvedValue([]);
+      mockClient.getAccountsByL1Address.mockResolvedValue([
+        makeAccount({ total_asset_value: '100000' }),
+      ]);
+
+      await provider.fetchPositions(lowercase, 'wallet-1');
+
+      expect(mockClient.getAccountsByL1Address).toHaveBeenCalledWith(expected);
+    });
+
+    it('checksums address for fallback single-account lookup too', async () => {
+      const lowercase = '0x7fda5a2fe9bf63d2f073bbbad04adafefa50a927';
+      const expected = '0x7fda5a2fe9Bf63d2F073BbBaD04adaFEfA50A927';
+
+      mockClient.getAssetDetails.mockResolvedValue([]);
+      mockClient.getAccountsByL1Address.mockResolvedValue([]);
+      mockClient.getAccountByAddress.mockResolvedValue(null);
+
+      await provider.fetchPositions(lowercase, 'wallet-1');
+
+      expect(mockClient.getAccountByAddress).toHaveBeenCalledWith(expected);
     });
   });
 
@@ -334,6 +364,18 @@ describe('LighterProvider', () => {
 
       const result = await provider.hasActivity('0xabc');
       expect(result).toBe(false);
+    });
+
+    it('checksums address before calling Lighter API', async () => {
+      const lowercase = '0x7fda5a2fe9bf63d2f073bbbad04adafefa50a927';
+      const expected = '0x7fda5a2fe9Bf63d2F073BbBaD04adaFEfA50A927';
+
+      mockClient.getAccountsByL1Address.mockResolvedValue([]);
+      mockClient.getAccountByAddress.mockResolvedValue(null);
+
+      await provider.hasActivity(lowercase);
+
+      expect(mockClient.getAccountsByL1Address).toHaveBeenCalledWith(expected);
     });
   });
 });

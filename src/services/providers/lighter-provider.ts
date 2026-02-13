@@ -4,6 +4,7 @@
  */
 
 import { Position } from '@/types';
+import { toChecksumAddress } from '@/lib/eip55';
 import { getLighterApiClient, LighterAccount } from '../api/lighter-api';
 
 export interface LighterPositionsResult {
@@ -24,6 +25,8 @@ export class LighterProvider {
     const positions: Position[] = [];
     const prices: Record<string, { price: number; symbol: string }> = {};
     let accountValue = 0;
+    // Lighter API is case-sensitive — requires EIP-55 checksummed addresses
+    const checksummed = toChecksumAddress(walletAddress);
 
     try {
       // Fetch asset details to get prices
@@ -34,11 +37,11 @@ export class LighterProvider {
       }
 
       // Fetch all accounts for this wallet (user may have multiple sub-accounts)
-      const accounts = await this.client.getAccountsByL1Address(walletAddress);
+      const accounts = await this.client.getAccountsByL1Address(checksummed);
 
       if (!accounts || accounts.length === 0) {
         // Try single account lookup as fallback
-        const singleAccount = await this.client.getAccountByAddress(walletAddress);
+        const singleAccount = await this.client.getAccountByAddress(checksummed);
         if (singleAccount) {
           return this.processAccount(singleAccount, walletAddress, walletId, assetPrices);
         }
@@ -201,7 +204,9 @@ export class LighterProvider {
    */
   async hasActivity(walletAddress: string): Promise<boolean> {
     try {
-      const accounts = await this.client.getAccountsByL1Address(walletAddress);
+      // Lighter API is case-sensitive — requires EIP-55 checksummed addresses
+      const checksummed = toChecksumAddress(walletAddress);
+      const accounts = await this.client.getAccountsByL1Address(checksummed);
       if (accounts && accounts.length > 0) {
         // If any account has value or positions, there's activity
         return accounts.some(
@@ -209,7 +214,7 @@ export class LighterProvider {
         );
       }
       // Fallback to single account lookup
-      const account = await this.client.getAccountByAddress(walletAddress);
+      const account = await this.client.getAccountByAddress(checksummed);
       return account !== null && parseFloat(account.total_asset_value) > 0;
     } catch {
       return false;
