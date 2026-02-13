@@ -1,0 +1,14 @@
+{
+  "generatedAt": "2026-02-13T13:33:24.246Z",
+  "base": "http://localhost:3001",
+  "bz008": {
+    "percentageCount": 0,
+    "percentagesOver100": [],
+    "samplePercentages": []
+  },
+  "bz009": {
+    "rows": 217,
+    "hasValueLikeCell": true,
+    "sampleRowText": "PT-SNUSD-5MAR20260xef...248aethMorpho450,632.73$0.9935$447,716--+0.00%15.6%"
+  }
+}

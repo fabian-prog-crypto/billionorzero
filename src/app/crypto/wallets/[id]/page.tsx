@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Wallet, ExternalLink, Copy, Check, ChevronRight } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
-import { calculateAllPositionsWithPrices, calculatePortfolioSummary } from '@/services';
+import { calculateAllPositionsWithPrices, calculatePortfolioSummary, isPositionInAssetClass } from '@/services';
 import CryptoIcon from '@/components/ui/CryptoIcon';
 import SearchInput from '@/components/ui/SearchInput';
 import {
@@ -27,7 +27,7 @@ export default function WalletDetailPage() {
   const [searchQuery, setSearchQuery] = useState('');
 
   const store = usePortfolioStore();
-  const { positions, prices, customPrices, hideBalances, updateAccount } = store;
+  const { positions, prices, customPrices, fxRates, hideBalances, updateAccount } = store;
   const wallets = store.wallets();
 
   const wallet = wallets.find((w) => w.id === walletId);
@@ -52,13 +52,13 @@ export default function WalletDetailPage() {
   // Get positions for this wallet
   const walletPositions = useMemo(() => {
     if (!wallet) return [];
-    return positions.filter((p) => p.accountId === wallet.id);
+    return positions.filter((p) => p.accountId === wallet.id && isPositionInAssetClass(p, 'crypto'));
   }, [positions, wallet]);
 
   // Calculate positions with prices
   const positionsWithPrices = useMemo(() => {
-    return calculateAllPositionsWithPrices(walletPositions, prices, customPrices);
-  }, [walletPositions, prices, customPrices]);
+    return calculateAllPositionsWithPrices(walletPositions, prices, customPrices, fxRates);
+  }, [walletPositions, prices, customPrices, fxRates]);
 
   // Filter positions by search query
   const filteredPositions = useMemo(() => {
@@ -75,8 +75,8 @@ export default function WalletDetailPage() {
 
   // Get wallet summary from centralized service (single source of truth)
   const walletSummary = useMemo(() => {
-    return calculatePortfolioSummary(walletPositions, prices, customPrices);
-  }, [walletPositions, prices, customPrices]);
+    return calculatePortfolioSummary(walletPositions, prices, customPrices, fxRates);
+  }, [walletPositions, prices, customPrices, fxRates]);
 
   // Extract values from service - no local calculations
   const totalValue = walletSummary.totalValue;

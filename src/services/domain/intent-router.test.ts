@@ -75,16 +75,18 @@ describe('classifyIntent', () => {
     });
   });
 
-  // ─── Update Cash ───────────────────────────────────────────────────────────
-  describe('update_cash intent', () => {
+  // ─── Cash Balance Updates (canonical update_position) ────────────────────
+  describe('cash balance update intent', () => {
     it('classifies "balance" commands', () => {
       const r = classifyIntent('N26 EUR balance 4810');
-      expect(r.intent).toBe('update_cash');
-      expect(r.toolIds).toEqual(['update_cash']);
+      expect(r.intent).toBe('update');
+      expect(r.toolIds).toEqual(['update_position']);
     });
 
     it('classifies "set cash"', () => {
-      expect(classifyIntent('set cash EUR to 5000').intent).toBe('update_cash');
+      const r = classifyIntent('set cash EUR to 5000');
+      expect(r.intent).toBe('update');
+      expect(r.toolIds).toEqual(['update_position']);
     });
   });
 

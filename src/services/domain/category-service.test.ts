@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import { getCategoryService } from './category-service'
+import {
+  CATEGORY_COLORS,
+  SUBCATEGORY_COLORS,
+  EXPOSURE_CATEGORY_CONFIG,
+} from '@/lib/colors'
 
 const service = getCategoryService()
 
@@ -286,5 +291,27 @@ describe('token coverage', () => {
     for (const etf of knownEtfs) {
       expect(service.getSubCategory(etf, 'stock')).toBe('etfs')
     }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Color source-of-truth alignment
+// ---------------------------------------------------------------------------
+describe('color alignment', () => {
+  it('uses shared category color tokens for main categories', () => {
+    expect(service.getCategoryColor('crypto')).toBe(CATEGORY_COLORS.crypto)
+    expect(service.getCategoryColor('equities')).toBe(CATEGORY_COLORS.equities)
+    expect(service.getCategoryColor('cash')).toBe(CATEGORY_COLORS.cash)
+  })
+
+  it('uses shared subcategory color tokens for crypto/equities subcategories', () => {
+    expect(service.getCategoryColor('crypto_btc')).toBe(SUBCATEGORY_COLORS.crypto_btc)
+    expect(service.getCategoryColor('crypto_tokens')).toBe(SUBCATEGORY_COLORS.crypto_tokens)
+    expect(service.getCategoryColor('equities_stocks')).toBe(SUBCATEGORY_COLORS.equities_stocks)
+  })
+
+  it('uses shared exposure color config (including RWA)', () => {
+    expect(service.getExposureCategoryConfig('rwa').color).toBe(EXPOSURE_CATEGORY_CONFIG.rwa.color)
+    expect(service.getExposureCategoryConfig('meme').color).toBe(EXPOSURE_CATEGORY_CONFIG.meme.color)
   })
 })

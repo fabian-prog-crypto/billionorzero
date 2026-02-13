@@ -2,8 +2,9 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
 import { jsonFileStorage } from './json-storage';
-import { Position, Account, WalletAccount, BrokerageAccount, CashAccount, CexAccount, AssetClass, AssetType, WalletConnection, CexConnection, ManualConnection, AccountConnection, PriceData, NetWorthSnapshot, Transaction, assetClassFromType, typeFromAssetClass } from '@/types';
+import { Position, Account, WalletAccount, BrokerageAccount, CashAccount, CexAccount, AssetClass, AssetType, WalletConnection, CexConnection, ManualConnection, AccountConnection, PriceData, NetWorthSnapshot, Transaction, typeFromAssetClass } from '@/types';
 import { toSlug, extractCashAccountName, linkOrphanedCashPositions } from '@/services/domain/cash-account-service';
+import { buildManualAccountHoldings, isManualAccountInScope } from '@/services/domain/account-role-service';
 
 // Custom price entry
 export interface CustomPrice {
@@ -84,25 +85,6 @@ interface PortfolioState {
   clearAll: () => void;
 }
 
-function buildManualAccountHoldings(positions: Position[]): Map<string, { hasAny: boolean; hasCash: boolean; hasEquity: boolean }> {
-  const holdings = new Map<string, { hasAny: boolean; hasCash: boolean; hasEquity: boolean }>();
-
-  for (const p of positions) {
-    if (!p.accountId) continue;
-
-    const effectiveClass = p.assetClass ?? assetClassFromType(p.type);
-    const current = holdings.get(p.accountId) || { hasAny: false, hasCash: false, hasEquity: false };
-    current.hasAny = true;
-
-    if (effectiveClass === 'cash') current.hasCash = true;
-    if (effectiveClass === 'equity') current.hasEquity = true;
-
-    holdings.set(p.accountId, current);
-  }
-
-  return holdings;
-}
-
 export const usePortfolioStore = create<PortfolioState>()(
   persist(
     (set, get) => ({
@@ -135,9 +117,7 @@ export const usePortfolioStore = create<PortfolioState>()(
         const holdings = buildManualAccountHoldings(positions);
         return accounts.filter((a) => {
           if (a.connection.dataSource !== 'manual') return false;
-          const flags = holdings.get(a.id);
-          if (!flags) return true; // Empty manual accounts are selectable until they hold positions
-          return flags.hasEquity;
+          return isManualAccountInScope(holdings.get(a.id), 'brokerage');
         });
       },
       cashAccounts: () => {
@@ -146,9 +126,7 @@ export const usePortfolioStore = create<PortfolioState>()(
         const holdings = buildManualAccountHoldings(positions);
         return accounts.filter((a) => {
           if (a.connection.dataSource !== 'manual') return false;
-          const flags = holdings.get(a.id);
-          if (!flags) return true; // Empty manual accounts are selectable until they hold positions
-          return flags.hasCash;
+          return isManualAccountInScope(holdings.get(a.id), 'cash');
         });
       },
       wallets: () => get().walletAccounts(),  // Legacy alias

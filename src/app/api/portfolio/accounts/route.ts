@@ -2,33 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { readDb, withDb } from '@/app/api/portfolio/db-store';
 import { toSlug } from '@/services/domain/cash-account-service';
-import { assetClassFromType, type Account, type AccountConnection, type Position } from '@/types';
+import { buildManualAccountHoldings, isManualAccountInScope } from '@/services/domain/account-role-service';
+import { type Account, type AccountConnection } from '@/types';
 
 type AccountTypeFilter = 'wallet' | 'cex' | 'brokerage' | 'cash';
-
-function buildManualAccountHoldings(positions: Position[]): Map<string, { hasAny: boolean; hasCash: boolean; hasEquity: boolean }> {
-  const holdings = new Map<string, { hasAny: boolean; hasCash: boolean; hasEquity: boolean }>();
-
-  for (const p of positions) {
-    if (!p.accountId) continue;
-
-    const effectiveClass = p.assetClass ?? assetClassFromType(p.type);
-    const current = holdings.get(p.accountId) || { hasAny: false, hasCash: false, hasEquity: false };
-    current.hasAny = true;
-
-    if (effectiveClass === 'cash') current.hasCash = true;
-    if (effectiveClass === 'equity') current.hasEquity = true;
-
-    holdings.set(p.accountId, current);
-  }
-
-  return holdings;
-}
 
 function matchesTypeFilter(
   account: Account,
   type: AccountTypeFilter,
-  manualHoldings: Map<string, { hasAny: boolean; hasCash: boolean; hasEquity: boolean }>
+  manualHoldings: ReturnType<typeof buildManualAccountHoldings>
 ): boolean {
   const ds = account.connection.dataSource;
   switch (type) {
@@ -38,12 +20,10 @@ function matchesTypeFilter(
       return ds === 'binance' || ds === 'coinbase' || ds === 'kraken' || ds === 'okx';
     case 'brokerage':
       if (ds !== 'manual') return false;
-      if (!manualHoldings.has(account.id)) return true;
-      return manualHoldings.get(account.id)!.hasEquity;
+      return isManualAccountInScope(manualHoldings.get(account.id), 'brokerage');
     case 'cash':
       if (ds !== 'manual') return false;
-      if (!manualHoldings.has(account.id)) return true;
-      return manualHoldings.get(account.id)!.hasCash;
+      return isManualAccountInScope(manualHoldings.get(account.id), 'cash');
     default:
       return false;
   }

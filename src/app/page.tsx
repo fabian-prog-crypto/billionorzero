@@ -21,17 +21,17 @@ import {
 } from '@/lib/utils';
 
 export default function OverviewPage() {
-  const { positions, prices, customPrices, snapshots, hideBalances, accounts } = usePortfolioStore();
+  const { positions, prices, customPrices, fxRates, snapshots, hideBalances, accounts } = usePortfolioStore();
 
   // Calculate portfolio summary (including custom price overrides)
   const summary = useMemo(() => {
-    return calculatePortfolioSummary(positions, prices, customPrices);
-  }, [positions, prices, customPrices]);
+    return calculatePortfolioSummary(positions, prices, customPrices, fxRates);
+  }, [positions, prices, customPrices, fxRates]);
 
   // Calculate all positions for exposure chart
   const allAssetsWithPrices = useMemo(() => {
-    return calculateAllPositionsWithPrices(positions, prices, customPrices);
-  }, [positions, prices, customPrices]);
+    return calculateAllPositionsWithPrices(positions, prices, customPrices, fxRates);
+  }, [positions, prices, customPrices, fxRates]);
 
   // Use centralized exposure calculation
   const exposureData = useMemo(() => {

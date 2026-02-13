@@ -293,13 +293,13 @@ test.describe('Modal Account Relationships', () => {
     expect(options.some(o => o === 'Revolut')).toBe(false);
   });
 
-  test('update_cash modal shows bank account dropdown', async ({ seededPage: page }) => {
+  test('update_position modal shows bank account dropdown', async ({ seededPage: page }) => {
     await mockChatSuccess(page, {
       response: '',
       toolCalls: [],
       mutations: false,
       pendingAction: {
-        action: 'update_cash',
+        action: 'update_position',
         symbol: 'CASH_CHF_100',
         name: 'Revolut (CHF)',
         assetType: 'cash',

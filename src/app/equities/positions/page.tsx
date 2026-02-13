@@ -41,12 +41,12 @@ export default function EquitiesPositionsPage() {
   const [editAction, setEditAction] = useState<ParsedPositionAction | null>(null);
 
   const store = usePortfolioStore();
-  const { positions, prices, customPrices, hideBalances, hideDust, toggleHideDust, removePosition } = store;
+  const { positions, prices, customPrices, fxRates, hideBalances, hideDust, toggleHideDust, removePosition } = store;
   const categoryService = getCategoryService();
 
   const allPositionsWithPrices = useMemo(() => {
-    return calculateAllPositionsWithPrices(positions, prices, customPrices);
-  }, [positions, prices, customPrices]);
+    return calculateAllPositionsWithPrices(positions, prices, customPrices, fxRates);
+  }, [positions, prices, customPrices, fxRates]);
 
   const breakdownData = useMemo(() => {
     return calculateEquitiesBreakdown(allPositionsWithPrices);
@@ -244,7 +244,7 @@ export default function EquitiesPositionsPage() {
 
       {/* Controls Row */}
       <div className="flex flex-wrap items-center gap-3 mb-4">
-        <div className="flex-1" />
+        <div className="hidden sm:block flex-1" />
 
         <SearchInput
           value={searchQuery}

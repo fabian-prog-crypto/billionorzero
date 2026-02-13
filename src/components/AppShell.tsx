@@ -209,7 +209,7 @@ export default function AppShell({ children }: AppShellProps) {
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2 py-3">
             <Logo size={20} />
-            <span className="text-base tracking-tight" style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}>
+            <span className="font-display text-base tracking-tight">
               billionorzero
             </span>
           </Link>
@@ -293,35 +293,32 @@ export default function AppShell({ children }: AppShellProps) {
         </div>
 
         {/* Row 2: Sub Tabs (Category Navigation) */}
-        <div className="flex items-center justify-between px-6 lg:px-8 pt-5 pb-4">
-          <div className="flex items-baseline gap-7">
-            {subTabs.map((tab) => (
-              <button
-                key={tab.id}
-                className={`transition-colors relative pb-2 ${
-                  activeSubTab !== tab.id ? 'hover:text-[var(--foreground-muted)]' : ''
-                }`}
-                style={{
-                  fontFamily: 'Georgia, "Times New Roman", serif',
-                  fontSize: '28px',
-                  lineHeight: '1.2',
-                  fontWeight: activeSubTab === tab.id ? 500 : 400,
-                  color: activeSubTab === tab.id ? 'var(--foreground)' : 'var(--foreground-muted)',
-                }}
-                onClick={() => handleSubTabClick(tab.id)}
-              >
-                {tab.label}
-                {activeSubTab === tab.id && (
-                  <div className="absolute bottom-0 left-0 right-0 h-[1.5px] bg-[var(--foreground)]" />
-                )}
-              </button>
-            ))}
+        <div className="px-4 sm:px-6 lg:px-8 pt-5 pb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="w-full overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none]">
+            <div className="flex items-baseline gap-5 sm:gap-7 min-w-max pr-2">
+              {subTabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  className={`font-display transition-colors relative pb-2 text-[16px] sm:text-[28px] leading-[1.2] ${
+                    activeSubTab === tab.id
+                      ? 'font-medium text-[var(--foreground)]'
+                      : 'font-normal text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
+                  }`}
+                  onClick={() => handleSubTabClick(tab.id)}
+                >
+                  {tab.label}
+                  {activeSubTab === tab.id && (
+                    <div className="absolute bottom-0 left-0 right-0 h-[1.5px] bg-[var(--foreground)]" />
+                  )}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Contextual Add Button */}
           <button
             onClick={() => setShowAddPosition(true)}
-            className="btn btn-primary"
+            className="btn btn-primary self-start sm:self-auto whitespace-nowrap"
           >
             <Plus className="w-4 h-4" />
             <span>Add {activeSubTab === 'overview' ? 'Position' : subTabs.find(t => t.id === activeSubTab)?.label || 'Position'}</span>

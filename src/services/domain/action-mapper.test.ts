@@ -17,25 +17,34 @@ const FIXTURE_POSITIONS: Position[] = [
   makePosition({ id: 'pos-btc', symbol: 'bitcoin', name: 'Bitcoin', amount: 1.5, type: 'crypto', assetClass: 'crypto', costBasis: 45000 }),
   makePosition({ id: 'pos-eth', symbol: 'ethereum', name: 'Ethereum', amount: 10, type: 'crypto', assetClass: 'crypto', costBasis: 20000 }),
   makePosition({ id: 'pos-aapl', symbol: 'AAPL', name: 'Apple Inc.', amount: 50, type: 'stock', assetClass: 'equity', accountId: 'acct-revolut', costBasis: 8500 }),
+  makePosition({ id: 'pos-googl', symbol: 'GOOGL', name: 'Alphabet', amount: 12, type: 'stock', assetClass: 'equity', accountId: 'acct-revolut', costBasis: 1800 }),
   makePosition({ id: 'pos-cash-usd', symbol: 'CASH_USD_1000000', name: 'Test Bank (USD)', amount: 10000, type: 'cash', assetClass: 'cash', accountId: 'acct-bank', costBasis: 10000 }),
+  makePosition({ id: 'pos-cash-eur-revolut', symbol: 'CASH_EUR_2000000', name: 'Revolut (EUR)', amount: 5000, type: 'cash', assetClass: 'cash', accountId: 'acct-revolut', costBasis: 5000 }),
+  makePosition({ id: 'pos-cash-eur-broker', symbol: 'CASH_EUR_2000001', name: 'Revolut Broker (EUR)', amount: 3000, type: 'cash', assetClass: 'cash', accountId: 'acct-revolut-broker', costBasis: 3000 }),
   makePosition({ id: 'pos-gold', symbol: 'GOLD', name: 'Gold', amount: 5, type: 'manual', assetClass: 'other', costBasis: 9500 }),
 ];
 
 const FIXTURE_ACCOUNTS = [
   { id: 'acct-revolut', name: 'Revolut', connection: { dataSource: 'manual' } },
+  { id: 'acct-revolut-broker', name: 'Revolut Broker', connection: { dataSource: 'manual' } },
   { id: 'acct-bank', name: 'Test Bank', connection: { dataSource: 'manual' } },
 ];
 
 const FIXTURE_DB: ActionMapperData = {
   positions: FIXTURE_POSITIONS,
   accounts: FIXTURE_ACCOUNTS,
+  prices: {
+    bitcoin: { price: 70000 },
+    ethereum: { price: 3200 },
+    googl: { price: 175 },
+  },
 };
 
 // ─── CONFIRM_MUTATION_TOOLS ─────────────────────────────────────────────────
 
 describe('CONFIRM_MUTATION_TOOLS', () => {
-  it('contains all 8 confirmable mutation tools', () => {
-    expect(CONFIRM_MUTATION_TOOLS.size).toBe(8);
+  it('contains all 7 confirmable mutation tools', () => {
+    expect(CONFIRM_MUTATION_TOOLS.size).toBe(7);
     expect(CONFIRM_MUTATION_TOOLS.has('buy_position')).toBe(true);
     expect(CONFIRM_MUTATION_TOOLS.has('sell_partial')).toBe(true);
     expect(CONFIRM_MUTATION_TOOLS.has('sell_all')).toBe(true);
@@ -43,7 +52,7 @@ describe('CONFIRM_MUTATION_TOOLS', () => {
     expect(CONFIRM_MUTATION_TOOLS.has('update_position')).toBe(true);
     expect(CONFIRM_MUTATION_TOOLS.has('set_price')).toBe(true);
     expect(CONFIRM_MUTATION_TOOLS.has('add_cash')).toBe(true);
-    expect(CONFIRM_MUTATION_TOOLS.has('update_cash')).toBe(true);
+    expect(CONFIRM_MUTATION_TOOLS.has('update_cash')).toBe(false);
   });
 });
 
@@ -58,6 +67,11 @@ describe('findPositionBySymbol', () => {
   it('matches lowercase symbol against uppercase', () => {
     const result = findPositionBySymbol(FIXTURE_POSITIONS, 'aapl');
     expect(result?.id).toBe('pos-aapl');
+  });
+
+  it('matches known aliases (GOOG -> GOOGL)', () => {
+    const result = findPositionBySymbol(FIXTURE_POSITIONS, 'GOOG');
+    expect(result?.id).toBe('pos-googl');
   });
 
   it('prefers manual position (no accountId) over synced', () => {
@@ -131,11 +145,11 @@ describe('toolCallToAction — buy_position', () => {
 
   it('buy with account substring match (case-insensitive)', () => {
     const result = toolCallToAction('buy_position', {
-      symbol: 'AAPL', amount: 10, price: 185, account: 'rev',
+      symbol: 'AAPL', amount: 10, price: 185, account: 'brok',
     }, FIXTURE_DB);
 
-    expect(result!.matchedAccountId).toBe('acct-revolut');
-    expect(result!.accountName).toBe('Revolut');
+    expect(result!.matchedAccountId).toBe('acct-revolut-broker');
+    expect(result!.accountName).toBe('Revolut Broker');
   });
 
   it('buy with unmatched account preserves accountName string', () => {
@@ -281,6 +295,18 @@ describe('toolCallToAction — sell_partial', () => {
     expect(result!.assetType).toBe('crypto');
     expect(result!.matchedPositionId).toBeUndefined();
   });
+
+  it('resolves GOOG to existing GOOGL and infers price from DB', () => {
+    const result = toolCallToAction('sell_partial', {
+      symbol: 'GOOG',
+      percent: 50,
+    }, FIXTURE_DB);
+
+    expect(result).not.toBeNull();
+    expect(result!.symbol).toBe('GOOGL');
+    expect(result!.matchedPositionId).toBe('pos-googl');
+    expect(result!.sellPrice).toBe(175);
+  });
 });
 
 // ─── toolCallToAction: sell_all ─────────────────────────────────────────────
@@ -300,6 +326,71 @@ describe('toolCallToAction — sell_all', () => {
 
     expect(result!.sellPrice).toBe(70000);
     expect(result!.matchedPositionId).toBe('pos-btc');
+  });
+
+  it('sell all resolves relative date and infers price when missing', () => {
+    const result = toolCallToAction('sell_all', { symbol: 'GOOG', date: 'yesterday' }, FIXTURE_DB);
+
+    const expectedYesterday = new Date();
+    expectedYesterday.setDate(expectedYesterday.getDate() - 1);
+
+    expect(result).not.toBeNull();
+    expect(result!.symbol).toBe('GOOGL');
+    expect(result!.matchedPositionId).toBe('pos-googl');
+    expect(result!.sellPrice).toBe(175);
+    expect(result!.date).toBe(expectedYesterday.toISOString().split('T')[0]);
+  });
+
+  it('prefers account-linked equity match over accountless duplicate', () => {
+    const duplicateDb: ActionMapperData = {
+      ...FIXTURE_DB,
+      positions: [
+        ...FIXTURE_POSITIONS,
+        makePosition({
+          id: 'pos-googl-manual',
+          symbol: 'GOOGL',
+          name: 'Alphabet Manual',
+          amount: 1,
+          type: 'stock',
+          assetClass: 'equity',
+        }),
+      ],
+    };
+
+    const result = toolCallToAction('sell_all', { symbol: 'GOOG' }, duplicateDb);
+
+    expect(result).not.toBeNull();
+    expect(result!.symbol).toBe('GOOGL');
+    expect(result!.matchedPositionId).toBe('pos-googl');
+    expect(result!.matchedAccountId).toBe('acct-revolut');
+  });
+
+  it('respects explicit account match when multiple linked positions share a symbol', () => {
+    const duplicateDb: ActionMapperData = {
+      ...FIXTURE_DB,
+      positions: [
+        ...FIXTURE_POSITIONS,
+        makePosition({
+          id: 'pos-googl-broker',
+          symbol: 'GOOGL',
+          name: 'Alphabet (Broker)',
+          amount: 7,
+          type: 'stock',
+          assetClass: 'equity',
+          accountId: 'acct-revolut-broker',
+        }),
+      ],
+    };
+
+    const result = toolCallToAction('sell_all', {
+      symbol: 'GOOG',
+      account: 'Revolut Broker',
+    }, duplicateDb);
+
+    expect(result).not.toBeNull();
+    expect(result!.symbol).toBe('GOOGL');
+    expect(result!.matchedPositionId).toBe('pos-googl-broker');
+    expect(result!.matchedAccountId).toBe('acct-revolut-broker');
   });
 });
 
@@ -346,17 +437,27 @@ describe('toolCallToAction — add_cash', () => {
 
     expect(result!.summary).toBe('Add 5000 EUR to Test Bank');
   });
+
+  it('does not resolve ambiguous partial account names', () => {
+    const result = toolCallToAction('add_cash', {
+      currency: 'EUR', amount: 2500, account: 'revol',
+    }, FIXTURE_DB);
+
+    expect(result!.matchedAccountId).toBeUndefined();
+    expect(result!.matchedPositionId).toBeUndefined();
+    expect(result!.accountName).toBe('revol');
+  });
 });
 
-// ─── toolCallToAction: update_cash ──────────────────────────────────────────
+// ─── toolCallToAction: legacy update_cash alias ─────────────────────────────
 
-describe('toolCallToAction — update_cash', () => {
-  it('basic update cash', () => {
+describe('toolCallToAction — legacy update_cash alias', () => {
+  it('maps update_cash to canonical update_position action', () => {
     const result = toolCallToAction('update_cash', {
       currency: 'USD', amount: 15000,
     }, FIXTURE_DB);
 
-    expect(result!.action).toBe('update_cash');
+    expect(result!.action).toBe('update_position');
     expect(result!.symbol).toBe('USD');
     expect(result!.amount).toBe(15000);
     // Should match the USD cash position by symbol/name
@@ -379,6 +480,24 @@ describe('toolCallToAction — update_cash', () => {
     }, FIXTURE_DB);
 
     expect(result!.matchedPositionId).toBe('pos-cash-usd');
+  });
+
+  it('does not fall back to a different account when account has no matching currency', () => {
+    const result = toolCallToAction('update_cash', {
+      currency: 'USD', amount: 20000, account: 'Revolut',
+    }, FIXTURE_DB);
+
+    expect(result!.matchedAccountId).toBe('acct-revolut');
+    expect(result!.matchedPositionId).toBeUndefined();
+  });
+
+  it('does not resolve ambiguous partial account names for cash updates', () => {
+    const result = toolCallToAction('update_cash', {
+      currency: 'EUR', amount: 20000, account: 'revol',
+    }, FIXTURE_DB);
+
+    expect(result!.matchedAccountId).toBeUndefined();
+    expect(result!.matchedPositionId).toBeUndefined();
   });
 });
 
@@ -430,6 +549,49 @@ describe('toolCallToAction — update_position', () => {
 
     expect(result!.date).toBe('2024-01-15');
     expect(result!.matchedPositionId).toBe('pos-eth');
+  });
+
+  it('normalizes relative update date strings', () => {
+    const result = toolCallToAction('update_position', {
+      symbol: 'ethereum', date: 'yesterday',
+    }, FIXTURE_DB);
+
+    const expectedYesterday = new Date();
+    expectedYesterday.setDate(expectedYesterday.getDate() - 1);
+
+    expect(result!.date).toBe(expectedYesterday.toISOString().split('T')[0]);
+  });
+
+  it('does not preselect matched position when symbol is ambiguous', () => {
+    const duplicatePositions: Position[] = [
+      ...FIXTURE_POSITIONS,
+      makePosition({ id: 'pos-aapl-2', symbol: 'AAPL', name: 'Apple Alt', amount: 20, type: 'stock', assetClass: 'equity', accountId: 'acct-bank', costBasis: 3000 }),
+    ];
+    const duplicateDb: ActionMapperData = {
+      ...FIXTURE_DB,
+      positions: duplicatePositions,
+    };
+
+    const result = toolCallToAction('update_position', {
+      symbol: 'AAPL',
+      amount: 10,
+    }, duplicateDb);
+
+    expect(result!.matchedPositionId).toBeUndefined();
+  });
+
+  it('resolves cash symbol variants to the same cash currency match', () => {
+    const result = toolCallToAction('update_position', {
+      symbol: 'CASH_USD',
+      amount: 12000,
+      assetType: 'cash',
+    }, FIXTURE_DB);
+
+    expect(result).not.toBeNull();
+    expect(result!.action).toBe('update_position');
+    expect(result!.assetType).toBe('cash');
+    expect(result!.currency).toBe('USD');
+    expect(result!.matchedPositionId).toBe('pos-cash-usd');
   });
 });
 
@@ -489,10 +651,10 @@ describe('toolCallToAction — account resolution', () => {
 
   it('substring match resolves account', () => {
     const result = toolCallToAction('buy_position', {
-      symbol: 'AAPL', amount: 10, account: 'Rev',
+      symbol: 'AAPL', amount: 10, account: 'brok',
     }, FIXTURE_DB);
 
-    expect(result!.matchedAccountId).toBe('acct-revolut');
+    expect(result!.matchedAccountId).toBe('acct-revolut-broker');
   });
 
   it('case-insensitive match resolves account', () => {
@@ -522,7 +684,7 @@ describe('toolCallToAction — account resolution', () => {
     expect(result!.accountName).toBeUndefined();
   });
 
-  it('multiple accounts with similar names: first match wins', () => {
+  it('multiple accounts with similar names stay unresolved', () => {
     const db: ActionMapperData = {
       positions: [],
       accounts: [
@@ -535,6 +697,7 @@ describe('toolCallToAction — account resolution', () => {
       symbol: 'ETH', amount: 1, account: 'My Bank',
     }, db);
 
-    expect(result!.matchedAccountId).toBe('acct-1');
+    expect(result!.matchedAccountId).toBeUndefined();
+    expect(result!.accountName).toBe('My Bank');
   });
 });

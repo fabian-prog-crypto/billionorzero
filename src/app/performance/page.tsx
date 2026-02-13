@@ -15,11 +15,11 @@ export default function PerformancePage() {
   const [period, setPeriod] = useState<TimePeriod>('1mon');
   const [viewMode, setViewMode] = useState<ViewMode>('value');
 
-  const { positions, prices, customPrices, snapshots, riskFreeRate, hideBalances } = usePortfolioStore();
+  const { positions, prices, customPrices, fxRates, snapshots, riskFreeRate, hideBalances } = usePortfolioStore();
 
   const summary = useMemo(() => {
-    return calculatePortfolioSummary(positions, prices, customPrices);
-  }, [positions, prices, customPrices]);
+    return calculatePortfolioSummary(positions, prices, customPrices, fxRates);
+  }, [positions, prices, customPrices, fxRates]);
 
   // Filter snapshots based on time period
   const filteredSnapshots = useMemo(() => {

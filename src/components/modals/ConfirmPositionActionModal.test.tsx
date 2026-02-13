@@ -223,7 +223,7 @@ describe('ConfirmPositionActionModal — account relationship fixes', () => {
       expect(screen.queryByText('Revolut')).not.toBeInTheDocument();
     });
 
-    it('shows manual accounts for update_cash action', () => {
+    it('shows manual accounts for update_position action', () => {
       const cashAcct = makeAccount({
         id: 'cash1',
         name: 'Revolut',
@@ -253,7 +253,7 @@ describe('ConfirmPositionActionModal — account relationship fixes', () => {
           isOpen={true}
           onClose={noop}
           parsedAction={baseParsedAction({
-            action: 'update_cash',
+            action: 'update_position',
             symbol: 'CASH_CHF_123',
             assetType: 'cash',
             amount: 6000,
@@ -306,8 +306,8 @@ describe('ConfirmPositionActionModal — account relationship fixes', () => {
 
   // ========== Change 2: selectedAccountId initialization ==========
 
-  describe('selectedAccountId initialization for update_cash', () => {
-    it('pre-selects account from matched position for update_cash', () => {
+  describe('selectedAccountId initialization for update_position', () => {
+    it('pre-selects account from matched position for update_position', () => {
       const cashAcct = makeAccount({
         id: 'cash1',
         name: 'Revolut',
@@ -332,7 +332,7 @@ describe('ConfirmPositionActionModal — account relationship fixes', () => {
           isOpen={true}
           onClose={noop}
           parsedAction={baseParsedAction({
-            action: 'update_cash',
+            action: 'update_position',
             symbol: 'CASH_CHF_123',
             assetType: 'cash',
             amount: 6000,
@@ -398,11 +398,51 @@ describe('ConfirmPositionActionModal — account relationship fixes', () => {
         })
       );
     });
+
+    it('allows selected account without free-text account name and uses account label', async () => {
+      const user = userEvent.setup();
+      const cashAcct = makeAccount({
+        id: 'cash1',
+        name: 'Revolut',
+        slug: 'revolut',
+        connection: { dataSource: 'manual' } as Account['connection'],
+      });
+      _accounts = [cashAcct];
+      mockStoreState.accounts = _accounts;
+
+      render(
+        <ConfirmPositionActionModal
+          isOpen={true}
+          onClose={noop}
+          parsedAction={baseParsedAction({
+            action: 'add_cash',
+            symbol: 'CASH_EUR',
+            assetType: 'cash',
+            amount: 1000,
+            currency: 'EUR',
+            accountName: '',
+            matchedAccountId: 'cash1',
+          })}
+          positions={[]}
+          positionsWithPrices={[]}
+        />
+      );
+
+      const confirmBtn = screen.getByRole('button', { name: /Add/i });
+      await user.click(confirmBtn);
+
+      expect(mockAddPosition).toHaveBeenCalledWith(
+        expect.objectContaining({
+          accountId: 'cash1',
+          name: 'Revolut (EUR)',
+        })
+      );
+    });
   });
 
-  // ========== Change 5: update_cash moves position between accounts ==========
+  // ========== Change 5: update_position moves position between accounts ==========
 
-  describe('update_cash account change', () => {
+  describe('update_position account change', () => {
     it('updates accountId when user selects a different bank account', async () => {
       const user = userEvent.setup();
       const cashAcct1 = makeAccount({
@@ -435,7 +475,7 @@ describe('ConfirmPositionActionModal — account relationship fixes', () => {
           isOpen={true}
           onClose={noop}
           parsedAction={baseParsedAction({
-            action: 'update_cash',
+            action: 'update_position',
             symbol: 'CASH_CHF_123',
             assetType: 'cash',
             amount: 6000,
@@ -493,7 +533,7 @@ describe('ConfirmPositionActionModal — account relationship fixes', () => {
           isOpen={true}
           onClose={noop}
           parsedAction={baseParsedAction({
-            action: 'update_cash',
+            action: 'update_position',
             symbol: 'CASH_CHF_123',
             assetType: 'cash',
             amount: 6000,
@@ -512,6 +552,45 @@ describe('ConfirmPositionActionModal — account relationship fixes', () => {
         amount: 6000,
         costBasis: 6000,
       });
+    });
+  });
+
+  describe('update_position ambiguity handling', () => {
+    it('shows position selector when multiple positions share a symbol', () => {
+      const aapl1 = makePosition({
+        id: 'pos-aapl-1',
+        symbol: 'AAPL',
+        name: 'Apple IBKR',
+        amount: 10,
+        type: 'stock',
+        assetClass: 'equity',
+      });
+      const aapl2 = makePosition({
+        id: 'pos-aapl-2',
+        symbol: 'AAPL',
+        name: 'Apple Revolut',
+        amount: 20,
+        type: 'stock',
+        assetClass: 'equity',
+      });
+
+      render(
+        <ConfirmPositionActionModal
+          isOpen={true}
+          onClose={noop}
+          parsedAction={baseParsedAction({
+            action: 'update_position',
+            symbol: 'AAPL',
+            assetType: 'stock',
+          })}
+          positions={[aapl1, aapl2]}
+          positionsWithPrices={[makeAssetWithPrice(aapl1, 100), makeAssetWithPrice(aapl2, 100)]}
+        />
+      );
+
+      expect(screen.getByText(/Multiple positions found/)).toBeInTheDocument();
+      expect(screen.getByText(/AAPL — 10 units/)).toBeInTheDocument();
+      expect(screen.getByText(/AAPL — 20 units/)).toBeInTheDocument();
     });
   });
 
@@ -582,6 +661,94 @@ describe('ConfirmPositionActionModal — account relationship fixes', () => {
       );
 
       expect(screen.queryByText(/Account:/)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('sell cash settlement account', () => {
+    it('credits cash in the same account as the sold equity position', async () => {
+      const user = userEvent.setup();
+
+      const ibkrAccount = makeAccount({
+        id: 'b1',
+        name: 'IBKR',
+        connection: { dataSource: 'manual' } as Account['connection'],
+      });
+      const revolutAccount = makeAccount({
+        id: 'cash1',
+        name: 'Revolut',
+        slug: 'revolut',
+        connection: { dataSource: 'manual' } as Account['connection'],
+      });
+      _accounts = [ibkrAccount, revolutAccount];
+      mockStoreState.accounts = _accounts;
+
+      const googPos = makePosition({
+        id: 'pos-goog',
+        symbol: 'GOOG',
+        name: 'Alphabet',
+        type: 'stock',
+        assetClass: 'equity',
+        amount: 10,
+        accountId: 'b1',
+      });
+      const ibkrCashChf = makePosition({
+        id: 'pos-ibkr-chf',
+        symbol: 'CASH_CHF_1',
+        name: 'IBKR (CHF)',
+        type: 'cash',
+        assetClass: 'cash',
+        amount: 5000,
+        accountId: 'b1',
+      });
+      const revolutCashUsd = makePosition({
+        id: 'pos-revolut-usd',
+        symbol: 'CASH_USD_1',
+        name: 'Revolut (USD)',
+        type: 'cash',
+        assetClass: 'cash',
+        amount: 1000,
+        accountId: 'cash1',
+      });
+
+      render(
+        <ConfirmPositionActionModal
+          isOpen={true}
+          onClose={noop}
+          parsedAction={baseParsedAction({
+            action: 'sell_all',
+            symbol: 'GOOG',
+            assetType: 'stock',
+            matchedPositionId: 'pos-goog',
+            sellPrice: 200,
+          })}
+          positions={[googPos, ibkrCashChf, revolutCashUsd]}
+          positionsWithPrices={[makeAssetWithPrice(googPos, 200)]}
+        />
+      );
+
+      expect(screen.getByText('Will create Cash (USD)')).toBeInTheDocument();
+
+      const confirmBtn = screen.getByRole('button', { name: /Sell/i });
+      await user.click(confirmBtn);
+
+      expect(mockAddPosition).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'cash',
+          assetClass: 'cash',
+          accountId: 'b1',
+          amount: 1000,
+          costBasis: 1000,
+          name: 'IBKR (USD)',
+        })
+      );
+      expect(mockUpdatePosition).not.toHaveBeenCalledWith(
+        'pos-ibkr-chf',
+        expect.anything()
+      );
+      expect(mockUpdatePosition).not.toHaveBeenCalledWith(
+        'pos-revolut-usd',
+        expect.anything()
+      );
     });
   });
 
@@ -734,9 +901,9 @@ describe('ConfirmPositionActionModal — account relationship fixes', () => {
     });
   });
 
-  // ========== Change 3 + 10: update_cash preview shows bank name ==========
+  // ========== Change 3 + 10: update_position preview shows bank name ==========
 
-  describe('update_cash preview shows bank account name', () => {
+  describe('update_position preview shows bank account name', () => {
     it('shows bank account name in balance change preview', () => {
       const cashAcct = makeAccount({
         id: 'cash1',
@@ -762,7 +929,7 @@ describe('ConfirmPositionActionModal — account relationship fixes', () => {
           isOpen={true}
           onClose={noop}
           parsedAction={baseParsedAction({
-            action: 'update_cash',
+            action: 'update_position',
             symbol: 'CASH_CHF_123',
             assetType: 'cash',
             amount: 6000,

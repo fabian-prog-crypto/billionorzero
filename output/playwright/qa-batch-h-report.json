@@ -1,0 +1,103 @@
+{
+  "generatedAt": "2026-02-13T12:56:38.202Z",
+  "base": "http://localhost:3001",
+  "desktop": {
+    "typography": {
+      "bodyFontFamily": "Geist, \"Geist Fallback\", -apple-system, \"system-ui\", \"Segoe UI\", system-ui, sans-serif",
+      "bodyFontSize": "16px",
+      "topTabFontFamily": "Geist, \"Geist Fallback\", -apple-system, \"system-ui\", \"Segoe UI\", system-ui, sans-serif",
+      "topTabFontSize": "16px",
+      "activeTabFontFamily": "Geist, \"Geist Fallback\", -apple-system, \"system-ui\", \"Segoe UI\", system-ui, sans-serif",
+      "activeTabFontWeight": "500"
+    },
+    "rwaAssets": {
+      "chipCount": 3,
+      "chips": [
+        {
+          "text": "RWA",
+          "color": "rgb(121, 85, 72)",
+          "backgroundColor": "rgba(121, 85, 72, 0.1)",
+          "fontSize": "10px"
+        },
+        {
+          "text": "RWA",
+          "color": "rgb(121, 85, 72)",
+          "backgroundColor": "rgba(121, 85, 72, 0.1)",
+          "fontSize": "10px"
+        },
+        {
+          "text": "RWA",
+          "color": "rgb(121, 85, 72)",
+          "backgroundColor": "rgba(121, 85, 72, 0.1)",
+          "fontSize": "10px"
+        }
+      ]
+    },
+    "rwaExposure": {
+      "chipCount": 2,
+      "chips": [
+        {
+          "text": "RWA",
+          "color": "rgb(26, 26, 26)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "16px"
+        },
+        {
+          "text": "RWA",
+          "color": "rgb(26, 26, 26)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "12px"
+        }
+      ]
+    },
+    "modalLabels": {
+      "labelCount": 4,
+      "requiredCount": 0,
+      "labelMinPx": 12,
+      "labelMaxPx": 12,
+      "requiredMinPx": null,
+      "requiredMaxPx": null
+    }
+  },
+  "mobile": {
+    "typography": {
+      "bodyFontFamily": "Geist, \"Geist Fallback\", -apple-system, \"system-ui\", \"Segoe UI\", system-ui, sans-serif",
+      "bodyFontSize": "16px",
+      "topTabFontFamily": "Geist, \"Geist Fallback\", -apple-system, \"system-ui\", \"Segoe UI\", system-ui, sans-serif",
+      "topTabFontSize": "16px",
+      "activeTabFontFamily": "Geist, \"Geist Fallback\", -apple-system, \"system-ui\", \"Segoe UI\", system-ui, sans-serif",
+      "activeTabFontWeight": "500"
+    },
+    "rwaAssets": {
+      "chipCount": 3,
+      "chips": [
+        {
+          "text": "RWA",
+          "color": "rgb(121, 85, 72)",
+          "backgroundColor": "rgba(121, 85, 72, 0.1)",
+          "fontSize": "10px"
+        },
+        {
+          "text": "RWA",
+          "color": "rgb(121, 85, 72)",
+          "backgroundColor": "rgba(121, 85, 72, 0.1)",
+          "fontSize": "10px"
+        },
+        {
+          "text": "RWA",
+          "color": "rgb(121, 85, 72)",
+          "backgroundColor": "rgba(121, 85, 72, 0.1)",
+          "fontSize": "10px"
+        }
+      ]
+    },
+    "modalLabels": {
+      "labelCount": 4,
+      "requiredCount": 0,
+      "labelMinPx": 12,
+      "labelMaxPx": 12,
+      "requiredMinPx": null,
+      "requiredMaxPx": null
+    }
+  }
+}

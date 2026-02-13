@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import { Plus, Trash2, Eye, EyeOff, X } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
-import { calculateAllPositionsWithPrices } from '@/services';
+import { calculateAllPositionsWithPrices, filterPositionsByAccountAndAssetClass } from '@/services';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 
 export default function BrokerageAccountsPage() {
@@ -12,6 +12,7 @@ export default function BrokerageAccountsPage() {
     positions,
     prices,
     customPrices,
+    fxRates,
     addAccount,
     removeAccount,
     hideBalances,
@@ -23,9 +24,9 @@ export default function BrokerageAccountsPage() {
   // Calculate brokerage positions with prices
   const brokerageAccountIds = useMemo(() => new Set(brokerageAccounts.map(a => a.id)), [brokerageAccounts]);
   const brokeragePositions = useMemo(() => {
-    const filtered = positions.filter((p) => p.accountId && brokerageAccountIds.has(p.accountId));
-    return calculateAllPositionsWithPrices(filtered, prices, customPrices);
-  }, [positions, prices, customPrices, brokerageAccountIds]);
+    const filtered = filterPositionsByAccountAndAssetClass(positions, brokerageAccountIds, 'equity');
+    return calculateAllPositionsWithPrices(filtered, prices, customPrices, fxRates);
+  }, [positions, prices, customPrices, fxRates, brokerageAccountIds]);
 
   // Group positions by account
   const positionsByAccount = useMemo(() => {

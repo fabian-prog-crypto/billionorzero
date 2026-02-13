@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { readDb, withDb } from '../db-store';
-import { calculatePositionValue } from '@/services/domain/portfolio-calculator';
+import { calculateAllPositionsWithPrices } from '@/services/domain/portfolio-calculator';
 import { assetClassFromType, typeFromAssetClass } from '@/types';
 import type { Position, AssetClass } from '@/types';
 
@@ -30,10 +30,22 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // Enrich with prices
-  const enriched = positions.map(p => {
-    const withPrice = calculatePositionValue(p, db.prices, db.customPrices, db.fxRates);
-    return { ...p, currentPrice: withPrice.currentPrice, value: withPrice.value, change24h: withPrice.change24h, changePercent24h: withPrice.changePercent24h, allocation: withPrice.allocation };
+  // Enrich with prices and consistent allocation semantics for the filtered set.
+  const pricedPositions = calculateAllPositionsWithPrices(positions, db.prices, db.customPrices, db.fxRates);
+  const pricedById = new Map(pricedPositions.map((asset) => [asset.id, asset]));
+  const enriched = positions.map((p) => {
+    const withPrice = pricedById.get(p.id);
+    if (!withPrice) {
+      return { ...p, currentPrice: 0, value: 0, change24h: 0, changePercent24h: 0, allocation: 0 };
+    }
+    return {
+      ...p,
+      currentPrice: withPrice.currentPrice,
+      value: withPrice.value,
+      change24h: withPrice.change24h,
+      changePercent24h: withPrice.changePercent24h,
+      allocation: withPrice.allocation,
+    };
   });
 
   // Sort

@@ -6,16 +6,23 @@
 import { Position, PriceData, AssetWithPrice, PortfolioSummary, AssetClass, AssetType, Account, WalletAccount, CexAccount, WalletConnection, DataSourceType, assetClassFromType } from '@/types';
 import { getPriceProvider } from '../providers';
 import {
+  CRYPTO_COLORS,
+  SUBCATEGORY_COLORS,
+  DEFAULT_COLOR,
+} from '@/lib/colors';
+import {
   AssetCategory,
   MainCategory,
   getAssetCategory,
   getMainCategory,
   getCategoryLabel,
-  CATEGORY_COLORS,
   isPerpProtocol,
   getCategoryService,
   getExposureCategoryConfig,
 } from './category-service';
+
+const getCryptoSubCategoryColor = (subCategory: string): string =>
+  CRYPTO_COLORS[subCategory as keyof typeof CRYPTO_COLORS] ?? DEFAULT_COLOR;
 
 /**
  * Build a lookup map from account ID to Account for efficient repeated access.
@@ -124,6 +131,8 @@ export function filterDustPositions<T extends { value: number }>(
   if (!hideDust) return positions;
 
   return positions.filter((p) => {
+    // Keep zero-valued positions visible (missing price / unresolved quote cases)
+    if (p.value === 0) return true;
     const absValue = Math.abs(p.value);
     // Keep if above threshold
     if (absValue >= threshold) return true;
@@ -1421,15 +1430,6 @@ export function calculateCryptoAllocation(assets: AssetWithPrice[]): CryptoAlloc
 
   const allocationMap: Record<string, { value: number; color: string }> = {};
 
-  const categoryColors: Record<string, string> = {
-    btc: '#F7931A',
-    eth: '#627EEA',
-    sol: '#9945FF',
-    stablecoins: '#4CAF50',
-    tokens: '#00BCD4',
-    perps: '#FF5722',
-  };
-
   const categoryLabels: Record<string, string> = {
     btc: 'BTC',
     eth: 'ETH',
@@ -1448,7 +1448,7 @@ export function calculateCryptoAllocation(assets: AssetWithPrice[]): CryptoAlloc
     if (!allocationMap[subCat]) {
       allocationMap[subCat] = {
         value: 0,
-        color: categoryColors[subCat] || '#6B7280',
+        color: getCryptoSubCategoryColor(subCat),
       };
     }
     allocationMap[subCat].value += value;
@@ -2316,14 +2316,14 @@ export function calculateEquitiesBreakdown(assets: AssetWithPrice[]): EquitiesBr
     const subCat = categoryService.getSubCategory(p.symbol, p.type);
     if (subCat === 'etfs') {
       etfsValue += p.value; // Can be negative for debt
+      etfsCount++; // Count holdings, independent from current valuation
       if (p.value > 0) {
-        etfsCount++;
         etfPositions.push(p);
       }
     } else {
       stocksValue += p.value; // Can be negative for debt
+      stocksCount++; // Count holdings, independent from current valuation
       if (p.value > 0) {
-        stocksCount++;
         stockPositions.push(p);
       }
     }
@@ -2350,7 +2350,7 @@ export function calculateEquitiesBreakdown(assets: AssetWithPrice[]): EquitiesBr
     chartData.push({
       label: 'Stocks',
       value: stocksValue,
-      color: '#E91E63',
+      color: SUBCATEGORY_COLORS.equities_stocks,
       breakdown: aggregateBySymbol(stockPositions),
     });
   }
@@ -2358,7 +2358,7 @@ export function calculateEquitiesBreakdown(assets: AssetWithPrice[]): EquitiesBr
     chartData.push({
       label: 'ETFs',
       value: etfsValue,
-      color: '#9C27B0',
+      color: SUBCATEGORY_COLORS.equities_etfs,
       breakdown: aggregateBySymbol(etfPositions),
     });
   }
@@ -2397,16 +2397,6 @@ export function calculateCryptoBreakdown(assets: AssetWithPrice[]): CryptoBreakd
     const mainCat = categoryService.getMainCategory(p.symbol, p.type);
     return mainCat === 'crypto';
   });
-
-  // Category colors
-  const categoryColors: Record<string, string> = {
-    'btc': '#F7931A',
-    'eth': '#627EEA',
-    'sol': '#9945FF',
-    'stablecoins': '#4CAF50',
-    'tokens': '#00BCD4',
-    'perps': '#FF5722',
-  };
 
   const categoryLabels: Record<string, string> = {
     'btc': 'Bitcoin',
@@ -2457,7 +2447,7 @@ export function calculateCryptoBreakdown(assets: AssetWithPrice[]): CryptoBreakd
     .map(([category, data]) => ({
       label: categoryLabels[category] || category,
       value: data.value,
-      color: categoryColors[category] || '#6B7280',
+      color: getCryptoSubCategoryColor(category),
       breakdown: aggregateBySymbol(data.positions),
     }))
     .sort((a, b) => b.value - a.value);

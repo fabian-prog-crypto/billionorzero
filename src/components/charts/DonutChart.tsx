@@ -158,7 +158,7 @@ export default function DonutChart({
           {/* Hover tooltip with breakdown */}
           {hoveredItem && (
             <div
-              className="absolute z-50 bg-[var(--background-tertiary)] border border-[var(--border)] px-2.5 py-1.5 pointer-events-none text-[10px] shadow-lg"
+              className="absolute z-50 bg-[var(--background-tertiary)] border border-[var(--border)] px-2.5 py-1.5 pointer-events-none text-[11px] shadow-lg"
               style={{
                 left: size + 10,
                 top: '50%',
@@ -176,13 +176,13 @@ export default function DonutChart({
               {hoveredItem.breakdown && hoveredItem.breakdown.length > 0 ? (
                 <div className="space-y-px">
                   {hoveredItem.breakdown.slice(0, 5).map((item, idx) => (
-                    <div key={idx} className="flex justify-between gap-2 text-[9px]">
+                    <div key={idx} className="flex justify-between gap-2 text-[10px]">
                       <span className="truncate text-[var(--foreground-subtle)]">{item.label}</span>
                       <span className="flex-shrink-0 text-[var(--foreground-muted)]">{hideValues ? '••••' : formatCurrency(item.value)}</span>
                     </div>
                   ))}
                   {hoveredItem.breakdown.length > 5 && (
-                    <div className="text-[var(--foreground-subtle)] text-[8px] mt-0.5">
+                    <div className="text-[var(--foreground-subtle)] text-[10px] mt-0.5">
                       +{hoveredItem.breakdown.length - 5} more
                     </div>
                   )}

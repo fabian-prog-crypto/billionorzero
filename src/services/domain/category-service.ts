@@ -8,6 +8,12 @@
  * - Exposure Categories: More granular breakdown for crypto exposure (stablecoins, eth, defi, btc, rwa, sol, privacy, ai, tokens)
  */
 
+import {
+  CATEGORY_COLORS as UI_CATEGORY_COLORS,
+  SUBCATEGORY_COLORS as UI_SUBCATEGORY_COLORS,
+  EXPOSURE_CATEGORY_CONFIG,
+} from '@/lib/colors';
+
 // Main category types
 export type MainCategory = 'crypto' | 'equities' | 'cash' | 'other';
 
@@ -236,24 +242,15 @@ export class CategoryService {
 
   // Main category colors
   private mainCategoryColors: Record<MainCategory, string> = {
-    crypto: '#627EEA',     // Ethereum blue as main crypto color
-    equities: '#E91E63',   // Pink for equities
-    cash: '#4CAF50',       // Green for cash
-    other: '#8B7355',      // Neutral brown
+    crypto: UI_CATEGORY_COLORS.crypto,
+    equities: UI_CATEGORY_COLORS.equities,
+    cash: UI_CATEGORY_COLORS.cash,
+    other: UI_CATEGORY_COLORS.other,
   };
 
   // Sub-category colors
   private subCategoryColors: Record<string, string> = {
-    // Crypto sub-categories
-    crypto_btc: '#F7931A',         // Bitcoin orange
-    crypto_eth: '#627EEA',         // Ethereum blue
-    crypto_sol: '#9945FF',         // Solana purple
-    crypto_stablecoins: '#4CAF50', // Green for stable
-    crypto_tokens: '#00BCD4',      // Cyan for tokens
-    crypto_perps: '#FF5722',       // Deep orange for perps
-    // Equities sub-categories
-    equities_stocks: '#E91E63',    // Pink for individual stocks
-    equities_etfs: '#9C27B0',      // Purple for ETFs
+    ...UI_SUBCATEGORY_COLORS,
   };
 
   // Category labels
@@ -278,16 +275,16 @@ export class CategoryService {
   // Exposure category configuration (more granular breakdown for crypto)
   // Perp positions count towards their underlying asset exposure (e.g., BTC perp -> BTC)
   private exposureCategoryConfig: Record<ExposureCategoryType, ExposureCategoryConfig> = {
-    stablecoins: { color: '#4CAF50', label: 'Stablecoins' },  // Green - stability
-    eth: { color: '#627EEA', label: 'ETH' },                  // Ethereum blue
-    defi: { color: '#9C27B0', label: 'DeFi' },                // Purple
-    btc: { color: '#F7931A', label: 'BTC' },                  // Bitcoin orange
-    rwa: { color: '#8D6E63', label: 'RWA' },                  // Brown - real world/physical assets
-    sol: { color: '#9945FF', label: 'SOL' },                  // Solana purple
-    privacy: { color: '#37474F', label: 'Privacy' },          // Dark gray - hidden
-    ai: { color: '#2196F3', label: 'AI' },                    // Blue - tech/digital
-    meme: { color: '#E91E63', label: 'Meme' },                // Pink - playful
-    tokens: { color: '#00BCD4', label: 'Tokens' },            // Cyan - generic
+    stablecoins: { ...EXPOSURE_CATEGORY_CONFIG.stablecoins },
+    eth: { ...EXPOSURE_CATEGORY_CONFIG.eth },
+    defi: { ...EXPOSURE_CATEGORY_CONFIG.defi },
+    btc: { ...EXPOSURE_CATEGORY_CONFIG.btc },
+    rwa: { ...EXPOSURE_CATEGORY_CONFIG.rwa },
+    sol: { ...EXPOSURE_CATEGORY_CONFIG.sol },
+    privacy: { ...EXPOSURE_CATEGORY_CONFIG.privacy },
+    ai: { ...EXPOSURE_CATEGORY_CONFIG.ai },
+    meme: { ...EXPOSURE_CATEGORY_CONFIG.meme },
+    tokens: { ...EXPOSURE_CATEGORY_CONFIG.tokens },
   };
 
   /**

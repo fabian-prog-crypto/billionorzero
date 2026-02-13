@@ -16,7 +16,7 @@ export default function SearchInput({
   className = '',
 }: SearchInputProps) {
   return (
-    <div className={`relative ${className}`} style={{ width: '120px' }}>
+    <div className={`relative w-full sm:w-[160px] max-w-full ${className}`}>
       <Search className="absolute left-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-[var(--foreground-muted)]" />
       <input
         type="text"

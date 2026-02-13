@@ -35,14 +35,14 @@ export default function CategoryView({
   emptyIcon,
   emptyMessage,
 }: CategoryViewProps) {
-  const { positions, prices, customPrices, hideBalances, accounts } = usePortfolioStore();
+  const { positions, prices, customPrices, fxRates, hideBalances, accounts } = usePortfolioStore();
 
   const categoryService = getCategoryService();
 
   // Calculate all positions with prices
   const allPositions = useMemo(() => {
-    return calculateAllPositionsWithPrices(positions, prices, customPrices);
-  }, [positions, prices, customPrices]);
+    return calculateAllPositionsWithPrices(positions, prices, customPrices, fxRates);
+  }, [positions, prices, customPrices, fxRates]);
 
   // Filter by category
   const categoryPositions = useMemo(() => {
@@ -256,7 +256,7 @@ function CryptoAllocationSection({
               {item.percentage.toFixed(1)}%
             </span>
             <span className="text-[13px] text-[var(--foreground-muted)] w-16 text-right">
-              {hideBalances ? '••••' : ''}
+              {hideBalances ? '••••' : formatCurrency(item.value)}
             </span>
           </div>
         ))}

@@ -13,12 +13,12 @@ import StockIcon from '@/components/ui/StockIcon';
 import { TrendingUp } from 'lucide-react';
 
 export default function EquitiesExposurePage() {
-  const { positions, prices, customPrices, hideBalances } = usePortfolioStore();
+  const { positions, prices, customPrices, fxRates, hideBalances } = usePortfolioStore();
   const categoryService = getCategoryService();
 
   const allPositionsWithPrices = useMemo(() => {
-    return calculateAllPositionsWithPrices(positions, prices, customPrices);
-  }, [positions, prices, customPrices]);
+    return calculateAllPositionsWithPrices(positions, prices, customPrices, fxRates);
+  }, [positions, prices, customPrices, fxRates]);
 
   const breakdownData = useMemo(() => {
     return calculateEquitiesBreakdown(allPositionsWithPrices);

@@ -91,7 +91,7 @@ export default function PositionsPage() {
   // Edit position modal state
   const [editAction, setEditAction] = useState<ParsedPositionAction | null>(null);
 
-  const { positions, prices, customPrices, removePosition, wallets: getWallets, accounts, hideBalances, toggleHideBalances, hideDust, toggleHideDust } = usePortfolioStore();
+  const { positions, prices, customPrices, fxRates, removePosition, wallets: getWallets, accounts, hideBalances, toggleHideBalances, hideDust, toggleHideDust } = usePortfolioStore();
   const walletAccounts = useMemo(() => getWallets(), [accounts]);
 
   // Helper to extract address from Account via connection
@@ -150,13 +150,13 @@ export default function PositionsPage() {
 
   // Calculate all positions with current prices (including custom price overrides)
   const allPositionsWithPrices = useMemo(() => {
-    return calculateAllPositionsWithPrices(positions, prices, customPrices);
-  }, [positions, prices, customPrices]);
+    return calculateAllPositionsWithPrices(positions, prices, customPrices, fxRates);
+  }, [positions, prices, customPrices, fxRates]);
 
   // Get portfolio summary from centralized service
   const portfolioSummary = useMemo(() => {
-    return calculatePortfolioSummary(positions, prices, customPrices);
-  }, [positions, prices, customPrices]);
+    return calculatePortfolioSummary(positions, prices, customPrices, fxRates);
+  }, [positions, prices, customPrices, fxRates]);
 
   const totalNAV = portfolioSummary.totalValue;
   const totalChange24h = portfolioSummary.change24h;
@@ -462,7 +462,7 @@ export default function PositionsPage() {
           />
 
           {/* Spacer */}
-          <div className="flex-1" />
+          <div className="hidden sm:block flex-1" />
 
           {/* Search */}
           <SearchInput

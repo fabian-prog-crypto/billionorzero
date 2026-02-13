@@ -117,8 +117,23 @@ export const TOKEN_CATEGORY_COLORS: Record<string, { color: string; label: strin
   rwa: { color: '#795548', label: 'RWA' },
   privacy: { color: '#37474F', label: 'Privacy' },
   ai: { color: '#2196F3', label: 'AI' },
+  meme: { color: '#E91E63', label: 'Meme' },
   other: { color: '#6B7280', label: 'Other' },
 };
+
+// Canonical exposure category styling shared by domain + UI.
+export const EXPOSURE_CATEGORY_CONFIG = {
+  stablecoins: TOKEN_CATEGORY_COLORS.stablecoins,
+  eth: TOKEN_CATEGORY_COLORS.eth,
+  defi: TOKEN_CATEGORY_COLORS.defi,
+  btc: TOKEN_CATEGORY_COLORS.btc,
+  rwa: TOKEN_CATEGORY_COLORS.rwa,
+  sol: TOKEN_CATEGORY_COLORS.sol,
+  privacy: TOKEN_CATEGORY_COLORS.privacy,
+  ai: TOKEN_CATEGORY_COLORS.ai,
+  meme: TOKEN_CATEGORY_COLORS.meme,
+  tokens: TOKEN_CATEGORY_COLORS.tokens,
+} as const;
 
 // Exchange colors
 export const EXCHANGE_COLORS: Record<string, string> = {

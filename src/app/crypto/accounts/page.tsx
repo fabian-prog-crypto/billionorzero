@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import { Plus, Trash2, RefreshCw, Eye, EyeOff, AlertCircle, CheckCircle } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
-import { calculateAllPositionsWithPrices } from '@/services';
+import { calculateAllPositionsWithPrices, filterPositionsByAccountAndAssetClass } from '@/services';
 import { fetchAllCexPositions } from '@/services/providers/cex-provider';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import { CexExchange, CexConnection } from '@/types';
@@ -17,7 +17,18 @@ const EXCHANGE_INFO: Record<CexExchange, { name: string; logo: string; supported
 
 export default function AccountsPage() {
   const store = usePortfolioStore();
-  const { positions, prices, addAccount, removeAccount, updateAccount, setSyncedPositions, hideBalances, toggleHideBalances } = store;
+  const {
+    positions,
+    prices,
+    customPrices,
+    fxRates,
+    addAccount,
+    removeAccount,
+    updateAccount,
+    setSyncedPositions,
+    hideBalances,
+    toggleHideBalances,
+  } = store;
   const accounts = store.cexAccounts();
   const [showAddModal, setShowAddModal] = useState(false);
   const [isSyncing, setSyncing] = useState(false);
@@ -26,9 +37,9 @@ export default function AccountsPage() {
   // Calculate CEX positions with prices
   const cexAccountIds = useMemo(() => new Set(accounts.map(a => a.id)), [accounts]);
   const cexPositions = useMemo(() => {
-    const filtered = positions.filter((p) => p.accountId && cexAccountIds.has(p.accountId));
-    return calculateAllPositionsWithPrices(filtered, prices);
-  }, [positions, prices, cexAccountIds]);
+    const filtered = filterPositionsByAccountAndAssetClass(positions, cexAccountIds, 'crypto');
+    return calculateAllPositionsWithPrices(filtered, prices, customPrices, fxRates);
+  }, [positions, prices, customPrices, fxRates, cexAccountIds]);
 
   // Group positions by account
   const positionsByAccount = useMemo(() => {

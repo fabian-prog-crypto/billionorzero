@@ -176,7 +176,7 @@ export default function CashCurrencyDetailPage() {
             {hideBalances ? '••••••••' : formatCurrency(totalValue)}
           </p>
           <p className="text-xs text-[var(--foreground-muted)]">
-            {(totalAllocation * 100).toFixed(1)}% of portfolio
+            {totalAllocation.toFixed(1)}% of portfolio
           </p>
         </div>
       </div>

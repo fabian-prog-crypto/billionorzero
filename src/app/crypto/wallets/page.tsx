@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Trash2, Wallet, ExternalLink, Copy, Check, ChevronRight } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
-import { calculatePortfolioSummary } from '@/services';
+import { calculatePortfolioSummary, isPositionInAssetClass } from '@/services';
 import AddWalletModal from '@/components/modals/AddWalletModal';
 import SortableTableHeader from '@/components/ui/SortableTableHeader';
 import { formatAddress, formatCurrency } from '@/lib/utils';
@@ -22,7 +22,7 @@ export default function WalletsPage() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
   const store = usePortfolioStore();
-  const { positions, prices, removeAccount, hideBalances } = store;
+  const { positions, prices, customPrices, fxRates, removeAccount, hideBalances } = store;
   const wallets = store.wallets();
 
   const getAddress = (account: Account): string => {
@@ -49,13 +49,13 @@ export default function WalletsPage() {
 
   // Get positions for a wallet by wallet ID
   const getWalletPositions = (walletId: string) => {
-    return positions.filter((p) => p.accountId === walletId);
+    return positions.filter((p) => p.accountId === walletId && isPositionInAssetClass(p, 'crypto'));
   };
 
   // Get wallet value - using centralized service
   const getWalletValue = (walletId: string) => {
     const walletPositions = getWalletPositions(walletId);
-    const summary = calculatePortfolioSummary(walletPositions, prices);
+    const summary = calculatePortfolioSummary(walletPositions, prices, customPrices, fxRates);
     return summary.totalValue;
   };
 
@@ -94,7 +94,7 @@ export default function WalletsPage() {
 
       return sortDirection === 'asc' ? comparison : -comparison;
     });
-  }, [wallets, positions, prices, sortField, sortDirection]);
+  }, [wallets, positions, prices, customPrices, fxRates, sortField, sortDirection]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -228,7 +228,7 @@ export default function WalletsPage() {
                               {perpExchanges.map((exchangeId) => (
                                 <span
                                   key={exchangeId}
-                                  className="text-[10px] px-1 py-0  bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
+                                  className="text-[10px] px-1 py-0 bg-[var(--warning-light)] text-[var(--warning)]"
                                 >
                                   {getPerpExchangeName(exchangeId)}
                                 </span>

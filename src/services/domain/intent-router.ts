@@ -6,7 +6,7 @@
  */
 
 export type Intent =
-  | 'buy' | 'sell' | 'add_cash' | 'update_cash'
+  | 'buy' | 'sell' | 'add_cash'
   | 'remove' | 'update' | 'set_price'
   | 'toggle' | 'query' | 'navigate'
   | 'add_wallet' | 'remove_wallet'
@@ -39,9 +39,9 @@ export function classifyIntent(text: string): ClassifiedIntent {
     return { intent: 'add_cash', toolIds: ['add_cash'] };
   }
 
-  // Update cash (balance set)
+  // Update cash (balance set) -> canonical update_position
   if (/\b(balance)\b/.test(t) || /\bset\s+cash\b/.test(t)) {
-    return { intent: 'update_cash', toolIds: ['update_cash'] };
+    return { intent: 'update', toolIds: ['update_position'] };
   }
 
   // Add wallet

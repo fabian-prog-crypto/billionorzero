@@ -108,6 +108,12 @@ describe('filterDustPositions', () => {
     expect(filterDustPositions(positions, false)).toHaveLength(3)
   })
 
+  it('keeps zero-valued positions when hideDust is true', () => {
+    const positions = [{ value: 0 }, { value: 50 }, { value: 150 }]
+    const result = filterDustPositions(positions, true)
+    expect(result).toEqual([{ value: 0 }, { value: 150 }])
+  })
+
   it('filters positions below default threshold ($100)', () => {
     const positions = [{ value: 50 }, { value: 150 }, { value: 99 }]
     const result = filterDustPositions(positions, true)
@@ -1643,6 +1649,19 @@ describe('calculateEquitiesBreakdown', () => {
     const result = calculateEquitiesBreakdown(assets)
     expect(result.stocks.count).toBe(2)
     expect(result.etfs.count).toBe(1)
+  })
+
+  it('counts unpriced equities while keeping chart values positive-only', () => {
+    const assets: AssetWithPrice[] = [
+      makeAssetWithPrice({ symbol: 'AAPL', type: 'stock', value: 9000 }),
+      makeAssetWithPrice({ symbol: 'CRM', type: 'stock', value: 0 }),
+    ]
+    const result = calculateEquitiesBreakdown(assets)
+    const stocksChart = result.chartData.find(c => c.label === 'Stocks')
+
+    expect(result.stocks.count).toBe(2)
+    expect(result.stocks.value).toBe(9000)
+    expect(stocksChart?.breakdown).toEqual([{ label: 'AAPL', value: 9000 }])
   })
 
   it('calculates total equities value', () => {

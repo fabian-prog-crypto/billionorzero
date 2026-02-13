@@ -9,11 +9,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { readDb, withDb, type PortfolioData } from '../portfolio/db-store';
 import { toOllamaTools, getToolById } from '@/services/domain/tool-registry';
 import { classifyIntent } from '@/services/domain/intent-router';
-import { calculatePortfolioSummary, calculateAllPositionsWithPrices, calculateExposureData, calculateRiskProfile, calculatePerpPageData } from '@/services/domain/portfolio-calculator';
+import { calculatePortfolioSummary, calculateAllPositionsWithPrices, calculateExposureData, calculateRiskProfile, calculatePerpPageData, extractCurrencyCode } from '@/services/domain/portfolio-calculator';
 import { calculatePerformanceMetrics } from '@/services/domain/performance-metrics';
+import { isPositionInAssetClass } from '@/services/domain/account-role-service';
 import { assetClassFromType } from '@/types';
 import type { Position, Transaction, Account } from '@/types';
-import { toSlug } from '@/services/domain/cash-account-service';
+import { normalizeAccountName } from '@/services/domain/cash-account-service';
 import { toolCallToAction, findPositionBySymbol, CONFIRM_MUTATION_TOOLS } from '@/services/domain/action-mapper';
 import { getCoinGeckoApiClient, getStockApiClient } from '@/services/api';
 import { getCryptoPriceService } from '@/services/providers/crypto-price-service';
@@ -104,6 +105,34 @@ function resolveCommandDate(argDate: unknown, userText: string): string {
 function asPositiveNumber(value: unknown): number | null {
   const num = Number(value);
   return Number.isFinite(num) && num > 0 ? num : null;
+}
+
+function findSingleManualAccountByName(accounts: Account[], accountName: string): Account | null {
+  const normalized = normalizeAccountName(accountName);
+  const matches = accounts.filter(
+    (account) =>
+      account.connection.dataSource === 'manual' &&
+      normalizeAccountName(account.name) === normalized
+  );
+  if (matches.length !== 1) return null;
+  return matches[0];
+}
+
+function findSingleAccountByName(accounts: Account[], accountName: string): Account | null {
+  const normalized = normalizeAccountName(accountName);
+  if (!normalized) return null;
+
+  const exactMatches = accounts.filter(
+    (account) => normalizeAccountName(account.name) === normalized
+  );
+  if (exactMatches.length === 1) return exactMatches[0];
+  if (exactMatches.length > 1) return null;
+
+  const partialMatches = accounts.filter(
+    (account) => normalizeAccountName(account.name).includes(normalized)
+  );
+  if (partialMatches.length !== 1) return null;
+  return partialMatches[0];
 }
 
 function isToday(date: string): boolean {
@@ -199,6 +228,145 @@ function resolveClosestPortfolioSymbol(db: PortfolioData, inputSymbol: string): 
   const bestIsStrong = best.score >= 0.75;
   const hasGap = !second || best.score - second.score >= 0.12;
   return bestIsStrong && hasGap ? best.symbol : symbol;
+}
+
+function guessPortfolioSymbolFromUserText(db: PortfolioData, userText: string): string | null {
+  const tokens = userText.toUpperCase().match(/[A-Z][A-Z0-9.\-]{0,9}/g) || [];
+  if (tokens.length === 0) return null;
+
+  const stopwords = new Set([
+    'SOLD', 'SELL', 'ALL', 'OF', 'MY', 'AT',
+    'TODAY', 'YESTERDAY', 'TOMORROW', 'POSITION',
+    'HALF', 'PERCENT',
+  ]);
+  const catalog = new Set(getPortfolioSymbols(db));
+
+  for (const token of tokens) {
+    if (stopwords.has(token)) continue;
+    const resolved = resolveClosestPortfolioSymbol(db, token);
+    if (catalog.has(resolved)) return resolved;
+  }
+  return null;
+}
+
+type PositionUpdateMode = 'position' | 'cash';
+
+interface PositionUpdateTarget {
+  position?: Position;
+  error?: string;
+}
+
+function resolvePositionUpdateTarget(
+  data: PortfolioData,
+  args: Record<string, unknown>,
+  mode: PositionUpdateMode,
+): PositionUpdateTarget {
+  const explicitId = typeof args.matchedPositionId === 'string'
+    ? args.matchedPositionId
+    : typeof args.positionId === 'string'
+      ? args.positionId
+      : '';
+  if (explicitId) {
+    const byId = data.positions.find((p) => p.id === explicitId);
+    if (!byId) return { error: `No position found for id ${explicitId}` };
+    if (mode === 'cash' && byId.type !== 'cash') {
+      return { error: `Position ${explicitId} is not a cash position` };
+    }
+    return { position: byId };
+  }
+
+  if (mode === 'cash') {
+    const currencyArg = String(args.currency || args.symbol || '').toUpperCase().trim();
+    const currency = extractCurrencyCode(currencyArg).toUpperCase();
+    if (!currency) return { error: 'Currency is required' };
+
+    const currencyMatches = data.positions.filter(
+      (position) =>
+        position.type === 'cash' &&
+        extractCurrencyCode(position.symbol).toUpperCase() === currency
+    );
+
+    const accountArg = typeof args.account === 'string' ? args.account.trim() : '';
+    if (accountArg) {
+      const account = findSingleAccountByName(data.accounts, accountArg);
+      if (!account) return { error: `No unique account match for "${accountArg}"` };
+      const inAccount = currencyMatches.filter((p) => p.accountId === account.id);
+      if (inAccount.length === 0) return { error: `No ${currency} cash position found in ${account.name}` };
+      if (inAccount.length > 1) return { error: `Multiple ${currency} cash positions found in ${account.name}` };
+      return { position: inAccount[0] };
+    }
+
+    if (currencyMatches.length === 0) return { error: `No cash position found for ${currency}` };
+    if (currencyMatches.length > 1) return { error: `Multiple ${currency} cash positions found. Specify account.` };
+    return { position: currencyMatches[0] };
+  }
+
+  const rawSymbol = String(args.symbol || '').toUpperCase().trim();
+  if (!rawSymbol) return { error: 'Symbol is required' };
+  const symbol = resolveClosestPortfolioSymbol(data, rawSymbol);
+  let matches = data.positions.filter((p) => p.symbol.toUpperCase() === symbol);
+  if (matches.length === 0) return { error: `No position found for ${rawSymbol}` };
+
+  const accountArg = typeof args.account === 'string' ? args.account.trim() : '';
+  if (accountArg) {
+    const account = findSingleAccountByName(data.accounts, accountArg);
+    if (!account) return { error: `No unique account match for "${accountArg}"` };
+    matches = matches.filter((p) => p.accountId === account.id);
+    if (matches.length === 0) return { error: `No ${symbol} position found in ${account.name}` };
+  }
+
+  if (matches.length > 1) return { error: `Multiple ${symbol} positions found. Specify account or positionId.` };
+  return { position: matches[0] };
+}
+
+function buildPositionUpdates(
+  data: PortfolioData,
+  position: Position,
+  args: Record<string, unknown>,
+  mode: PositionUpdateMode,
+): { updates?: Partial<Position>; error?: string } {
+  const updates: Partial<Position> = {};
+
+  if (args.amount !== undefined) {
+    const amount = Number(args.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return { error: 'Amount must be greater than 0' };
+    }
+    updates.amount = amount;
+    if (mode === 'cash' || position.type === 'cash') {
+      updates.costBasis = amount;
+    }
+  }
+
+  if (mode === 'position' && args.costBasis !== undefined) {
+    const costBasis = Number(args.costBasis);
+    if (!Number.isFinite(costBasis) || costBasis < 0) {
+      return { error: 'Cost basis must be >= 0' };
+    }
+    updates.costBasis = costBasis;
+  }
+
+  if (args.date !== undefined && String(args.date).trim() !== '') {
+    updates.purchaseDate = toDateOnlyString(args.date);
+  }
+
+  if (typeof args.accountId === 'string' && args.accountId.trim() !== '') {
+    const accountId = args.accountId.trim();
+    const account = data.accounts.find((a) => a.id === accountId);
+    if (!account) return { error: `Unknown accountId: ${accountId}` };
+    updates.accountId = account.id;
+  } else if (typeof args.account === 'string' && args.account.trim() !== '') {
+    const account = findSingleAccountByName(data.accounts, args.account);
+    if (!account) return { error: `No unique account match for "${args.account}"` };
+    updates.accountId = account.id;
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return { error: 'No update fields provided' };
+  }
+
+  updates.updatedAt = new Date().toISOString();
+  return { updates };
 }
 
 function getDbPriceForSymbol(db: PortfolioData, symbol: string): number | null {
@@ -431,7 +599,9 @@ async function enrichSellToolArgs(
   userText: string,
 ): Promise<Record<string, unknown>> {
   const rawSymbol = String(args.symbol || '').toUpperCase();
-  const symbol = resolveClosestPortfolioSymbol(db, rawSymbol);
+  const guessedSymbol = guessPortfolioSymbolFromUserText(db, userText);
+  const symbolInput = rawSymbol || guessedSymbol || '';
+  const symbol = resolveClosestPortfolioSymbol(db, symbolInput);
   const existing = symbol ? findPositionBySymbol(db.positions, symbol) : undefined;
   const date = resolveCommandDate(args.date, userText);
   let price = asPositiveNumber(args.price);
@@ -498,6 +668,8 @@ function buildSystemContext(db: PortfolioData, opts?: { includePositions?: boole
     '- When the user uses past tense ("bought", "sold", "added", "removed", "updated"), treat it as a mutation.',
     '  "bought 10 AAPL" → call buy_position(symbol: "AAPL", amount: 10, assetType: "stock")',
     '  "sold half my ETH" → call sell_partial(symbol: "ETH", percent: 50)',
+    '  "sold 50% of GOOG today" → call sell_partial(symbol: "GOOG", percent: 50, date: "today")',
+    '  "sold all of GOOG yesterday" → call sell_all(symbol: "GOOG", date: "yesterday")',
     '- For buy_position: if the position does not exist yet, it will be created automatically. Do NOT call query_position_details before buying.',
     '- Use the symbol provided by the user. The server will resolve close symbol matches when needed.',
     '',
@@ -510,6 +682,7 @@ function buildSystemContext(db: PortfolioData, opts?: { includePositions?: boole
     '  "bought $50k worth of MSFT" → buy_position(symbol: "MSFT", totalCost: 50000, assetType: "stock")',
     '  "bought 50k USD of AAPL" → buy_position(symbol: "AAPL", totalCost: 50000, assetType: "stock")',
     '- IMPORTANT: When the user specifies a dollar amount to spend without quantity, set `totalCost` and omit `amount`. The system will calculate shares from the current price.',
+    '- For sell commands, if user does not provide a per-unit sale price, omit `price` and let the server infer it.',
     '- Include `date` for buy/sell commands when the user specifies one (YYYY-MM-DD). If no date is provided, default to today.',
     '- NEVER put a total dollar value into the `price` field. `price` is ALWAYS per-unit.',
     '- Keep answers concise — 1-3 sentences max.',
@@ -609,9 +782,19 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
 
     case 'query_positions_by_type': {
       const db = readDb();
-      const assetType = String(args.assetType || '');
+      const assetType = String(args.assetType || '').toLowerCase();
       const assets = calculateAllPositionsWithPrices(db.positions, db.prices, db.customPrices, db.fxRates);
-      const filtered = assets.filter(a => a.type === assetType);
+      const filtered = assets.filter((asset) => {
+        if (assetType === 'stock' || assetType === 'etf') return asset.type === assetType;
+        if (assetType === 'manual') return isPositionInAssetClass(asset, 'other');
+        if (assetType === 'crypto' || assetType === 'cash') {
+          return isPositionInAssetClass(asset, assetType);
+        }
+        return false;
+      });
+      if (filtered.length === 0 && !['crypto', 'stock', 'etf', 'cash', 'manual'].includes(assetType)) {
+        return { result: { error: `Unsupported assetType: ${assetType}` }, isMutation: false };
+      }
       return { result: filtered.map(a => ({ symbol: a.symbol, amount: a.amount, value: Math.round(a.value) })), isMutation: false };
     }
 
@@ -619,7 +802,9 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
     case 'query_crypto_exposure': {
       const db = readDb();
       const assets = calculateAllPositionsWithPrices(db.positions, db.prices, db.customPrices, db.fxRates);
-      const target = name === 'query_crypto_exposure' ? assets.filter(a => a.type === 'crypto') : assets;
+      const target = name === 'query_crypto_exposure'
+        ? assets.filter((asset) => isPositionInAssetClass(asset, 'crypto'))
+        : assets;
       const exposure = calculateExposureData(target);
       const m = exposure.exposureMetrics;
       return { result: { longExposure: m.longExposure, shortExposure: m.shortExposure, grossExposure: m.grossExposure, netExposure: m.netExposure, leverage: m.leverage, cashPosition: m.cashPosition }, isMutation: false };
@@ -683,12 +868,16 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
     // ─── Mutation tools ───────────────────────────────────────────────
     case 'buy_position': {
       const symbol = String(args.symbol || '').toUpperCase();
-      const amount = Number(args.amount || 0);
+      let amount = Number(args.amount || 0);
       let price = args.price ? Number(args.price) : 0;
       const totalCost = args.totalCost ? Number(args.totalCost) : 0;
       // Derive price from totalCost
       if (totalCost > 0 && amount > 0 && price <= 0) {
         price = totalCost / amount;
+      }
+      // Derive amount from totalCost when only price is known.
+      if (totalCost > 0 && amount <= 0 && price > 0) {
+        amount = totalCost / price;
       }
       const assetType = String(args.assetType || 'crypto');
       const name = String(args.name || symbol);
@@ -696,6 +885,9 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
 
       if (!symbol) return { result: { error: 'Symbol is required' }, isMutation: true };
       if ((!amount || amount <= 0) && (!totalCost || totalCost <= 0)) return { result: { error: 'Amount or totalCost must be > 0' }, isMutation: true };
+      if (totalCost > 0 && (!amount || amount <= 0)) {
+        return { result: { error: 'Could not determine amount from totalCost. Provide amount or a resolvable price.' }, isMutation: true };
+      }
 
       const effectiveAssetClass = assetClassFromType(assetType as 'crypto' | 'stock' | 'etf' | 'cash' | 'manual');
       const effectiveType = assetType as 'crypto' | 'stock' | 'etf' | 'cash' | 'manual';
@@ -740,15 +932,27 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
 
     case 'sell_partial':
     case 'sell_all': {
-      const symbol = String(args.symbol || '').toUpperCase();
-      const sellPrice = args.price ? Number(args.price) : 0;
+      const requestedSymbol = String(args.symbol || '').toUpperCase();
+      const requestedDate = toDateOnlyString(args.date);
+      if (!requestedSymbol) return { result: { error: 'Symbol is required' }, isMutation: true };
 
-      if (!symbol) return { result: { error: 'Symbol is required' }, isMutation: true };
-
-      type SellResult = { error: string } | { sold: number; remaining: number; symbol: string };
+      type SellResult =
+        | { error: string }
+        | { sold: number; remaining: number; symbol: string; price: number; date: string };
       const result = await withDb<SellResult>(data => {
-        const position = findPositionBySymbol(data.positions, symbol);
-        if (!position) return { data, result: { error: `No position found for ${symbol}` } };
+        const resolvedSymbol = resolveClosestPortfolioSymbol(data, requestedSymbol);
+        const position = findPositionBySymbol(data.positions, resolvedSymbol) || findPositionBySymbol(data.positions, requestedSymbol);
+        if (!position) return { data, result: { error: `No position found for ${requestedSymbol}` } };
+
+        const effectiveSymbol = position.symbol.toUpperCase();
+        const sellPrice =
+          asPositiveNumber(args.price)
+          || getDbPriceForSymbol(data, effectiveSymbol)
+          || getDbPriceForSymbol(data, resolvedSymbol)
+          || getDbPriceForSymbol(data, requestedSymbol);
+        if (!sellPrice) {
+          return { data, result: { error: `No sale price available for ${effectiveSymbol}` } };
+        }
 
         let sellAmount: number;
         if (name === 'sell_all') {
@@ -763,17 +967,17 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
 
         const remaining = position.amount - sellAmount;
         const tx: Transaction = {
-          id: crypto.randomUUID(), type: 'sell', symbol, name: position.name, assetType: position.type,
+          id: crypto.randomUUID(), type: 'sell', symbol: effectiveSymbol, name: position.name, assetType: position.type,
           amount: sellAmount, pricePerUnit: sellPrice, totalValue: sellAmount * sellPrice,
           costBasisAtExecution: position.costBasis, positionId: position.id,
-          date: new Date().toISOString().split('T')[0], createdAt: new Date().toISOString(),
+          date: requestedDate, createdAt: new Date().toISOString(),
         };
 
         const positions = remaining <= 0
           ? data.positions.filter(p => p.id !== position.id)
           : data.positions.map(p => p.id === position.id ? { ...p, amount: remaining, updatedAt: new Date().toISOString() } : p);
 
-        return { data: { ...data, positions, transactions: [...data.transactions, tx] }, result: { sold: sellAmount, remaining, symbol } };
+        return { data: { ...data, positions, transactions: [...data.transactions, tx] }, result: { sold: sellAmount, remaining, symbol: effectiveSymbol, price: sellPrice, date: requestedDate } };
       });
       return { result, isMutation: true };
     }
@@ -791,24 +995,35 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
       return { result, isMutation: true };
     }
 
-    case 'update_position': {
-      const symbol = String(args.symbol || '').toUpperCase();
-      if (!symbol) return { result: { error: 'Symbol is required' }, isMutation: true };
-
+    case 'update_position':
+    case 'update_cash': {
+      const mode: PositionUpdateMode = name === 'update_cash' ? 'cash' : 'position';
       type UpdateResult = { error: string } | { updated: string; changes: Partial<Position> };
-      const result = await withDb<UpdateResult>(data => {
-        const position = findPositionBySymbol(data.positions, symbol);
-        if (!position) return { data, result: { error: `No position found for ${symbol}` } };
 
-        const updates: Partial<Position> = {};
-        if (args.amount !== undefined) updates.amount = Number(args.amount);
-        if (args.costBasis !== undefined) updates.costBasis = Number(args.costBasis);
-        if (args.date !== undefined) updates.purchaseDate = String(args.date);
-        updates.updatedAt = new Date().toISOString();
+      const result = await withDb<UpdateResult>((data) => {
+        const target = resolvePositionUpdateTarget(data, args, mode);
+        if (!target.position) {
+          return { data, result: { error: target.error || 'No matching position found' } };
+        }
 
-        const positions = data.positions.map(p => p.id === position.id ? { ...p, ...updates } : p);
-        return { data: { ...data, positions }, result: { updated: symbol, changes: updates } };
+        const patch = buildPositionUpdates(data, target.position, args, mode);
+        if (!patch.updates) {
+          return { data, result: { error: patch.error || 'No update fields provided' } };
+        }
+
+        const positions = data.positions.map((p) =>
+          p.id === target.position!.id ? { ...p, ...patch.updates } : p
+        );
+
+        return {
+          data: { ...data, positions },
+          result: {
+            updated: target.position.name,
+            changes: patch.updates,
+          },
+        };
       });
+
       return { result, isMutation: true };
     }
 
@@ -834,44 +1049,71 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
 
       const result = await withDb(data => {
         let accountId: string | undefined;
-        if (accountName) {
-          const match = data.accounts.find(a => a.name.toLowerCase().includes(accountName.toLowerCase()) && a.connection.dataSource === 'manual');
-          if (match) accountId = match.id;
+        let accountLabel = accountName?.trim();
+        let accounts = data.accounts;
+
+        if (accountName?.trim()) {
+          const resolved = findSingleManualAccountByName(data.accounts, accountName);
+          if (resolved) {
+            accountId = resolved.id;
+            accountLabel = resolved.name;
+          } else {
+            const created: Account = {
+              id: crypto.randomUUID(),
+              name: accountName.trim(),
+              isActive: true,
+              connection: { dataSource: 'manual' },
+              addedAt: new Date().toISOString(),
+            };
+            accounts = [...data.accounts, created];
+            accountId = created.id;
+            accountLabel = created.name;
+          }
+        }
+
+        const existing = data.positions.find((position) => {
+          if (position.type !== 'cash') return false;
+          if (extractCurrencyCode(position.symbol).toUpperCase() !== currency) return false;
+          if (accountId) return position.accountId === accountId;
+          return !position.accountId;
+        });
+
+        if (existing) {
+          const nextAmount = existing.amount + amount;
+          const nextCostBasis = (existing.costBasis ?? existing.amount) + amount;
+          const positions = data.positions.map((position) =>
+            position.id === existing.id
+              ? {
+                  ...position,
+                  amount: nextAmount,
+                  costBasis: nextCostBasis,
+                  name: accountLabel ? `${accountLabel} (${currency})` : position.name,
+                  updatedAt: new Date().toISOString(),
+                }
+              : position
+          );
+          return {
+            data: { ...data, accounts, positions },
+            result: {
+              added: `${amount} ${currency}`,
+              updated: existing.name,
+              newBalance: nextAmount,
+              account: accountLabel,
+            },
+          };
         }
 
         const pos: Position = {
-          id: crypto.randomUUID(), symbol: `CASH_${currency}_${Date.now()}`, name: `${currency} Cash`,
+          id: crypto.randomUUID(),
+          symbol: `CASH_${currency}_${Date.now()}`,
+          name: accountLabel ? `${accountLabel} (${currency})` : `${currency} Cash`,
           amount, assetClass: 'cash', type: 'cash', costBasis: amount, accountId,
           addedAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
         };
-        return { data: { ...data, positions: [...data.positions, pos] }, result: { added: `${amount} ${currency}` } };
-      });
-      return { result, isMutation: true };
-    }
-
-    case 'update_cash': {
-      const currency = String(args.currency || '').toUpperCase();
-      const newAmount = Number(args.amount);
-      const accountName = args.account as string | undefined;
-
-      if (!currency) return { result: { error: 'Currency is required' }, isMutation: true };
-
-      type CashUpdateResult = { error: string } | { updated: string; newBalance: number };
-      const result = await withDb<CashUpdateResult>(data => {
-        const cashPositions = data.positions.filter(p => p.type === 'cash');
-        let matched: Position | undefined;
-
-        if (accountName) {
-          const account = data.accounts.find(a => a.name.toLowerCase().includes(accountName.toLowerCase()));
-          if (account) matched = cashPositions.find(p => p.accountId === account.id && p.name.toUpperCase().includes(currency));
-        }
-        if (!matched) {
-          matched = cashPositions.find(p => p.name.toUpperCase().includes(currency) || p.symbol.toUpperCase().includes(currency));
-        }
-        if (!matched) return { data, result: { error: `No cash position found for ${currency}` } };
-
-        const positions = data.positions.map(p => p.id === matched!.id ? { ...p, amount: newAmount, updatedAt: new Date().toISOString() } : p);
-        return { data: { ...data, positions }, result: { updated: matched.name, newBalance: newAmount } };
+        return {
+          data: { ...data, accounts, positions: [...data.positions, pos] },
+          result: { added: `${amount} ${currency}`, account: accountLabel },
+        };
       });
       return { result, isMutation: true };
     }
@@ -964,15 +1206,19 @@ export async function POST(request: NextRequest) {
     // Build context from db
     const db = readDb();
 
-    // LLM-first routing: send full toolset initially.
-    // Regex classifier remains as hard-fail fallback only.
+    // Intent-first routing: start with the classified tool slice when available.
+    // Fall back to full toolset only if the first pass produces no tool call.
     const userText = text.trim();
     const regexFallback = classifyIntent(userText);
     const allTools = toOllamaTools();
-    let tools = allTools;
-    let usedRegexFallback = false;
+    const slicedTools = regexFallback.toolIds.length > 0
+      ? allTools.filter((tool) => regexFallback.toolIds.includes(tool.function.name))
+      : [];
+    const usingIntentSlice = slicedTools.length > 0 && slicedTools.length < allTools.length;
+    let tools = usingIntentSlice ? slicedTools : allTools;
+    let usedAllToolsFallback = !usingIntentSlice;
     const mutationIntents = new Set([
-      'buy', 'sell', 'add_cash', 'update_cash', 'remove', 'update', 'set_price',
+      'buy', 'sell', 'add_cash', 'remove', 'update', 'set_price',
       'toggle', 'add_wallet', 'remove_wallet', 'set_risk_free_rate',
     ]);
     const likelyMutation = mutationIntents.has(regexFallback.intent);
@@ -1045,10 +1291,10 @@ export async function POST(request: NextRequest) {
 
       // Check for tool calls
       if (!assistantMsg.tool_calls || assistantMsg.tool_calls.length === 0) {
-        // Hard-fail fallback: no tool call on first pass, retry with regex tool slice.
-        if (!usedRegexFallback && regexFallback.toolIds.length > 0) {
-          usedRegexFallback = true;
-          tools = allTools.filter(t => regexFallback.toolIds.includes(t.function.name));
+        // Hard-fail fallback: no tool call on intent-sliced pass, retry once with all tools.
+        if (!usedAllToolsFallback) {
+          usedAllToolsFallback = true;
+          tools = allTools;
           messages.length = 0;
           messages.push(
             { role: 'system', content: systemContent },
@@ -1075,14 +1321,14 @@ export async function POST(request: NextRequest) {
           toolArgs = await enrichBuyToolArgs(rawToolArgs, currentDb, userText);
         } else if (toolName === 'sell_partial' || toolName === 'sell_all') {
           toolArgs = await enrichSellToolArgs(rawToolArgs, currentDb, userText);
-        } else if (toolName === 'remove_position' || toolName === 'update_position') {
+        } else if (toolName === 'remove_position' || toolName === 'update_position' || toolName === 'update_cash') {
           toolArgs = enrichExistingPositionToolArgs(rawToolArgs, currentDb);
         } else {
           toolArgs = enrichQueryToolArgs(toolName, rawToolArgs, currentDb);
         }
 
         // Check if this is a confirmable mutation — return pendingAction instead of executing
-        if (CONFIRM_MUTATION_TOOLS.has(toolName)) {
+        if (CONFIRM_MUTATION_TOOLS.has(toolName) || toolName === 'update_cash') {
           const pendingAction = toolCallToAction(toolName, toolArgs || {}, currentDb);
           if (pendingAction) {
             return NextResponse.json({

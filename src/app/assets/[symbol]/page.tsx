@@ -75,13 +75,13 @@ export default function AssetDetailPage() {
     });
   };
 
-  const { positions, prices, customPrices, wallets: getWallets, accounts, hideBalances } = usePortfolioStore();
+  const { positions, prices, customPrices, fxRates, wallets: getWallets, accounts, hideBalances } = usePortfolioStore();
   const categoryService = getCategoryService();
 
   // Get all positions with prices
   const allPositionsWithPrices = useMemo(() => {
-    return calculateAllPositionsWithPrices(positions, prices, customPrices);
-  }, [positions, prices, customPrices]);
+    return calculateAllPositionsWithPrices(positions, prices, customPrices, fxRates);
+  }, [positions, prices, customPrices, fxRates]);
 
   // Filter positions for this asset
   const assetPositions = useMemo(() => {

@@ -8,7 +8,6 @@ import {
   calculateAllPositionsWithPrices,
   calculateCashBreakdown,
   extractCurrencyCode,
-  aggregateCashByCurrency,
 } from '@/services';
 import CurrencyIcon from '@/components/ui/CurrencyIcon';
 import ConfirmPositionActionModal from '@/components/modals/ConfirmPositionActionModal';
@@ -39,10 +38,9 @@ export default function CashPositionsPage() {
   }, [allPositions]);
 
   const cashPositions = useMemo(() => {
-    const raw = includeStablecoins
+    return includeStablecoins
       ? [...breakdownData.fiatPositions, ...breakdownData.stablecoinPositions]
       : breakdownData.fiatPositions;
-    return aggregateCashByCurrency(raw);
   }, [breakdownData, includeStablecoins]);
 
   const displayTotal = useMemo(() => {
@@ -95,58 +93,33 @@ export default function CashPositionsPage() {
   };
 
   const handleEdit = (pos: AssetWithPrice) => {
+    if (!hasManualCashPosition(pos)) return;
     const currency = extractCurrencyCode(pos.symbol);
-    // Find the first underlying manual cash position for this aggregated entry
-    const underlyingPositions = positions.filter(p => {
-      if (p.type !== 'cash') return false;
-      const sym = extractCurrencyCode(p.symbol);
-      return sym === currency;
-    });
-    const manualPos = underlyingPositions.find(p => {
-      if (!p.accountId) return true;
-      const account = store.accounts.find(a => a.id === p.accountId);
-      return !account || account.connection.dataSource === 'manual';
-    });
-    if (!manualPos) return;
 
     setEditAction({
-      action: 'update_cash',
-      symbol: currency,
+      action: 'update_position',
+      symbol: pos.symbol,
       assetType: 'cash',
-      amount: manualPos.amount,
+      amount: pos.amount,
       currency,
-      matchedPositionId: manualPos.id,
-      matchedAccountId: manualPos.accountId,
+      matchedPositionId: pos.id,
+      matchedAccountId: pos.accountId,
       confidence: 1,
       summary: `Edit ${currency} cash balance`,
     });
   };
 
   const hasManualCashPosition = (pos: AssetWithPrice): boolean => {
-    const currency = extractCurrencyCode(pos.symbol);
-    return positions.some(p => {
-      if (p.type !== 'cash') return false;
-      const sym = extractCurrencyCode(p.symbol);
-      if (sym !== currency) return false;
-      if (!p.accountId) return true;
-      const account = store.accounts.find(a => a.id === p.accountId);
-      return !account || account.connection.dataSource === 'manual';
-    });
+    if (!pos.accountId) return true;
+    const account = store.accounts.find(a => a.id === pos.accountId);
+    return !account || account.connection.dataSource === 'manual';
   };
 
   const handleDelete = (pos: AssetWithPrice) => {
+    if (!hasManualCashPosition(pos)) return;
     const currency = extractCurrencyCode(pos.symbol);
-    const manualPositions = positions.filter(p => {
-      if (p.type !== 'cash') return false;
-      const sym = extractCurrencyCode(p.symbol);
-      if (sym !== currency) return false;
-      if (!p.accountId) return true;
-      const account = store.accounts.find(a => a.id === p.accountId);
-      return !account || account.connection.dataSource === 'manual';
-    });
-    if (manualPositions.length === 0) return;
-    if (!confirm(`Delete ${currency} cash position${manualPositions.length > 1 ? 's' : ''}?`)) return;
-    manualPositions.forEach(p => removePosition(p.id));
+    if (!confirm(`Delete ${currency} cash position?`)) return;
+    removePosition(pos.id);
   };
 
   const exportCSV = () => {
@@ -202,7 +175,7 @@ export default function CashPositionsPage() {
             {hideBalances ? '••••••••' : formatCurrency(displayTotal)}
           </h2>
           <p className="text-[13px] text-[var(--foreground-muted)]">
-            {sortedPositions.length} currenc{sortedPositions.length !== 1 ? 'ies' : 'y'}
+            {sortedPositions.length} position{sortedPositions.length !== 1 ? 's' : ''}
           </p>
         </div>
 
@@ -218,7 +191,7 @@ export default function CashPositionsPage() {
 
       {/* Controls Row */}
       <div className="flex flex-wrap items-center gap-3 mb-4">
-        <div className="flex-1" />
+        <div className="hidden sm:block flex-1" />
 
         <SearchInput
           value={searchQuery}
@@ -260,7 +233,7 @@ export default function CashPositionsPage() {
                 const cleanSymbol = extractCurrencyCode(position.symbol);
                 return (
                   <tr
-                    key={cleanSymbol}
+                    key={position.id}
                     className="group border-b border-[var(--border)] last:border-0 hover:bg-[var(--background-secondary)] transition-colors"
                   >
                     <td className="py-2">
@@ -319,7 +292,7 @@ export default function CashPositionsPage() {
       {sortedPositions.length > 0 && (
         <div className="mt-4 pt-4 border-t border-[var(--border)] flex justify-between items-center">
           <span className="text-[12px] text-[var(--foreground-muted)]">
-            {sortedPositions.length} currenc{sortedPositions.length !== 1 ? 'ies' : 'y'}
+            {sortedPositions.length} position{sortedPositions.length !== 1 ? 's' : ''}
             {searchQuery && ' (filtered)'}
           </span>
           <span className="font-semibold">

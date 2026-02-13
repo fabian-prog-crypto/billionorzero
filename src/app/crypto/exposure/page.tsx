@@ -16,11 +16,11 @@ import DonutChart from '@/components/charts/DonutChart';
 import { Bitcoin } from 'lucide-react';
 
 export default function CryptoExposurePage() {
-  const { positions, prices, customPrices, hideBalances, accounts } = usePortfolioStore();
+  const { positions, prices, customPrices, fxRates, hideBalances, accounts } = usePortfolioStore();
 
   const allAssetsWithPrices = useMemo(() => {
-    return calculateAllPositionsWithPrices(positions, prices, customPrices);
-  }, [positions, prices, customPrices]);
+    return calculateAllPositionsWithPrices(positions, prices, customPrices, fxRates);
+  }, [positions, prices, customPrices, fxRates]);
 
   const cryptoBreakdown = useMemo(() => {
     return calculateCryptoBreakdown(allAssetsWithPrices);

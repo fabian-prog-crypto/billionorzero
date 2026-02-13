@@ -21,7 +21,7 @@ type SortField = 'symbol' | 'value' | 'amount' | 'price' | 'change';
 type SortDirection = 'asc' | 'desc';
 
 export default function EquitiesPage() {
-  const { positions, prices, customPrices, hideBalances } = usePortfolioStore();
+  const { positions, prices, customPrices, fxRates, hideBalances } = usePortfolioStore();
   const [sortField, setSortField] = useState<SortField>('value');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [searchQuery, setSearchQuery] = useState('');
@@ -54,8 +54,8 @@ export default function EquitiesPage() {
 
   // Calculate all positions with prices
   const allPositions = useMemo(() => {
-    return calculateAllPositionsWithPrices(positions, prices, customPrices);
-  }, [positions, prices, customPrices]);
+    return calculateAllPositionsWithPrices(positions, prices, customPrices, fxRates);
+  }, [positions, prices, customPrices, fxRates]);
 
   // Use centralized service for equities breakdown - SINGLE SOURCE OF TRUTH
   const breakdownData = useMemo(() => {
@@ -217,7 +217,7 @@ export default function EquitiesPage() {
 
       {/* Controls Row */}
       <div className="flex flex-wrap items-center gap-3 mb-4">
-        <div className="flex-1" />
+        <div className="hidden sm:block flex-1" />
 
         {/* Search */}
         <SearchInput

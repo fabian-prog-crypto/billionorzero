@@ -1,13 +1,13 @@
 /**
  * Tool Registry
  *
- * Single source of truth for all 29 tools in the cmd-k system.
- * Organized by type: mutation (13), query (15), navigation (1).
+ * Single source of truth for all 28 tools in the cmd-k system.
+ * Organized by type: mutation (12), query (15), navigation (1).
  */
 
 import type { ToolDefinition, ToolType } from './command-types';
 
-// ─── Mutation Tools (13) ────────────────────────────────────────────────────
+// ─── Mutation Tools (12) ────────────────────────────────────────────────────
 
 const mutationTools: ToolDefinition[] = [
   {
@@ -37,7 +37,7 @@ const mutationTools: ToolDefinition[] = [
       { name: 'price', type: 'number', required: false, description: 'Sale price per unit' },
       { name: 'date', type: 'string', required: false, description: 'Trade date in YYYY-MM-DD format (default today if omitted).' },
     ],
-    examples: ['sell half my ETH', 'sold 5 AAPL at $190'],
+    examples: ['sell half my ETH', 'sold 5 AAPL at $190', 'sold 50% of GOOG today'],
   },
   {
     id: 'sell_all',
@@ -48,7 +48,7 @@ const mutationTools: ToolDefinition[] = [
       { name: 'price', type: 'number', required: false, description: 'Sale price per unit' },
       { name: 'date', type: 'string', required: false, description: 'Trade date in YYYY-MM-DD format (default today if omitted).' },
     ],
-    examples: ['sell all my DOGE', 'sold all BTC at $70k'],
+    examples: ['sell all my DOGE', 'sold all BTC at $70k', 'sold all of GOOG yesterday'],
   },
   {
     id: 'remove_position',
@@ -91,17 +91,6 @@ const mutationTools: ToolDefinition[] = [
       { name: 'account', type: 'string', required: false, description: 'Account name (e.g. Revolut, IBKR)' },
     ],
     examples: ['5000 EUR to Revolut', 'add $10k to IBKR'],
-  },
-  {
-    id: 'update_cash',
-    type: 'mutation',
-    description: 'Set cash balance to a specific amount',
-    fields: [
-      { name: 'currency', type: 'string', required: true, description: 'Currency code (e.g. USD, EUR)' },
-      { name: 'amount', type: 'number', required: true, description: 'New balance amount' },
-      { name: 'account', type: 'string', required: false, description: 'Account name' },
-    ],
-    examples: ['N26 EUR balance 4810', 'Revolut USD = 30000'],
   },
   {
     id: 'add_wallet',

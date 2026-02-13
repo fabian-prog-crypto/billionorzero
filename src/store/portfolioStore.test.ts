@@ -440,6 +440,45 @@ describe('Cash Account', () => {
   })
 })
 
+describe('Manual account classification selectors', () => {
+  it('includes mixed manual accounts in both brokerage and cash selectors', () => {
+    usePortfolioStore.setState({
+      accounts: [makeManualAccount({ id: 'm1', name: 'Revolut Broker' })],
+      positions: [
+        makeStockPosition({ id: 's1', accountId: 'm1' }),
+        makeCashPosition({ id: 'c1', accountId: 'm1' }),
+      ],
+    })
+
+    expect(usePortfolioStore.getState().brokerageAccounts().map(a => a.id)).toContain('m1')
+    expect(usePortfolioStore.getState().cashAccounts().map(a => a.id)).toContain('m1')
+  })
+
+  it('treats stablecoin-only manual accounts as cash accounts', () => {
+    usePortfolioStore.setState({
+      accounts: [makeManualAccount({ id: 'm2', name: 'Stablecoin Account' })],
+      positions: [
+        makeCryptoPosition({ id: 'usdc-1', accountId: 'm2', symbol: 'USDC', name: 'USD Coin' }),
+      ],
+    })
+
+    expect(usePortfolioStore.getState().cashAccounts().map(a => a.id)).toContain('m2')
+    expect(usePortfolioStore.getState().brokerageAccounts().map(a => a.id)).not.toContain('m2')
+  })
+
+  it('excludes non-stablecoin crypto-only manual accounts from cash and brokerage selectors', () => {
+    usePortfolioStore.setState({
+      accounts: [makeManualAccount({ id: 'm3', name: 'Manual Crypto' })],
+      positions: [
+        makeCryptoPosition({ id: 'eth-1', accountId: 'm3', symbol: 'ETH', name: 'Ethereum' }),
+      ],
+    })
+
+    expect(usePortfolioStore.getState().cashAccounts().map(a => a.id)).not.toContain('m3')
+    expect(usePortfolioStore.getState().brokerageAccounts().map(a => a.id)).not.toContain('m3')
+  })
+})
+
 // ---------------------------------------------------------------------------
 // setSyncedPositions for wallet accounts (4 tests)
 // ---------------------------------------------------------------------------

@@ -91,12 +91,16 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-family: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   font-size: 16px;
   line-height: 1.6;
   font-weight: 400;
   letter-spacing: -0.01em;
   -webkit-font-smoothing: antialiased;
+}
+
+.font-display {
+  font-family: Georgia, "Times New Roman", serif;
 }
 
 /* Scrollbar - minimal */
@@ -203,6 +207,22 @@ input::placeholder {
 .form-input {
   padding: 8px 12px;
   font-size: 14px;
+}
+
+.modal-field-label {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--foreground-muted);
+}
+
+.modal-field-required {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--negative);
 }
 
 /* Buttons - clean, compact */

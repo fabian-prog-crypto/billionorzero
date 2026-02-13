@@ -1,0 +1,55 @@
+{
+  "generatedAt": "2026-02-13T13:02:43.063Z",
+  "base": "http://localhost:3001",
+  "desktop": {
+    "walletTag": {
+      "found": true,
+      "text": "Ethereal",
+      "color": "rgb(155, 133, 77)",
+      "backgroundColor": "rgba(155, 133, 77, 0.08)",
+      "borderColor": "rgb(155, 133, 77)",
+      "fontSize": "10px"
+    },
+    "escapeClose": {
+      "addPosition": true,
+      "addWallet": true,
+      "customPrice": true,
+      "confirmAction": true
+    }
+  },
+  "mobile": {
+    "tabs": {
+      "found": true,
+      "overflowX": "visible",
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "isScrollable": false
+    },
+    "controls": {
+      "found": true,
+      "viewport": 390,
+      "searchRight": 624,
+      "searchWithinViewport": false,
+      "pageHasHorizontalOverflow": true
+    },
+    "addPositionLayout": {
+      "found": true,
+      "amountTop": 384.203125,
+      "costTop": 464.59375,
+      "stacked": true
+    },
+    "confirmModal": {
+      "buttonLabelFound": true,
+      "buttonLabelText": "Update Position",
+      "labelTruncated": false,
+      "labelMinPx": 12,
+      "labelMaxPx": 12
+    },
+    "customPrice": {
+      "found": true,
+      "text": "PT-SNUSD-5MAR2026 - PT-sNUSD-5MAR2026 (Morpho)",
+      "truncated": true,
+      "fontSize": "14px"
+    }
+  }
+}

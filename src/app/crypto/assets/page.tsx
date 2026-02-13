@@ -36,7 +36,7 @@ export default function CryptoAssetsPage() {
   const [editAction, setEditAction] = useState<ParsedPositionAction | null>(null);
 
   const store = usePortfolioStore();
-  const { positions, prices, customPrices, hideBalances, hideDust, toggleHideDust, removePosition } = store;
+  const { positions, prices, customPrices, fxRates, hideBalances, hideDust, toggleHideDust, removePosition } = store;
   const categoryService = getCategoryService();
 
   // Get exposure category options from service
@@ -51,8 +51,8 @@ export default function CryptoAssetsPage() {
 
   // Calculate all positions with current prices
   const allPositionsWithPrices = useMemo(() => {
-    return calculateAllPositionsWithPrices(positions, prices, customPrices);
-  }, [positions, prices, customPrices]);
+    return calculateAllPositionsWithPrices(positions, prices, customPrices, fxRates);
+  }, [positions, prices, customPrices, fxRates]);
 
   // Use centralized service for crypto breakdown - SINGLE SOURCE OF TRUTH
   const breakdownData = useMemo(() => {
@@ -299,7 +299,7 @@ export default function CryptoAssetsPage() {
 
       {/* Controls Row */}
       <div className="flex flex-wrap items-center gap-3 mb-4">
-        <div className="flex-1" />
+        <div className="hidden sm:block flex-1" />
 
         {/* Search */}
         <SearchInput

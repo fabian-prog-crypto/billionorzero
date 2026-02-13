@@ -37,6 +37,17 @@ export default function CustomPriceModal({
     }
   }, [isOpen, currentCustomPrice, currentNote]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeydown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', handleKeydown);
+    return () => document.removeEventListener('keydown', handleKeydown);
+  }, [isOpen, onClose]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -70,7 +81,7 @@ export default function CustomPriceModal({
             </div>
             <div>
               <h2 className="text-xl font-semibold">Set Custom Price</h2>
-              <p className="text-sm text-[var(--foreground-muted)]">
+              <p className="text-sm text-[var(--foreground-muted)] truncate max-w-[220px] sm:max-w-[280px]" title={`${symbol.toUpperCase()} - ${name}`}>
                 {symbol.toUpperCase()} - {name}
               </p>
             </div>

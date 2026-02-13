@@ -43,8 +43,8 @@ export default function CashPage() {
     const currencyCode = extractCurrencyCode(position.symbol);
     const acctName = extractAccountName(position);
     setEditAction({
-      action: 'update_cash',
-      symbol: currencyCode,
+      action: 'update_position',
+      symbol: position.symbol,
       assetType: 'cash',
       amount: position.amount,
       currency: currencyCode,

@@ -47,6 +47,17 @@ export default function AddWalletModal({ isOpen, onClose }: AddWalletModalProps)
     }
   }, [isOpen]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeydown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', handleKeydown);
+    return () => document.removeEventListener('keydown', handleKeydown);
+  }, [isOpen, onClose]);
+
   // Toggle perp exchange selection
   const togglePerpExchange = (exchange: PerpExchange, isBulk: boolean = false) => {
     if (isBulk) {

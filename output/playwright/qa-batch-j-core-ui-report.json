@@ -1,0 +1,24 @@
+{
+  "generatedAt": "2026-02-13T13:26:34.620Z",
+  "base": "http://localhost:3001",
+  "checks": {
+    "bz001": {
+      "stocksPositionsText": null,
+      "textSnippet": null
+    },
+    "bz002": {
+      "crmVisible": true,
+      "crmSnippet": "CRM\n\nCRM\n\n\tStock\t79.30\t-\n\t$0.00\t-\t0.0%\t\n4 positions\n$97,075"
+    },
+    "bz003": {
+      "cashSymbolMatchesInEquitiesAccounts": [],
+      "cashMatchCount": 0
+    },
+    "bz004": {
+      "equitySymbolsInCryptoAccounts": []
+    },
+    "bz005": {
+      "equitySymbolsInCryptoWallets": []
+    }
+  }
+}

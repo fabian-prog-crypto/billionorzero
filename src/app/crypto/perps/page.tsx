@@ -7,12 +7,12 @@ import { formatCurrency, formatNumber, formatPercent, getChangeColor } from '@/l
 import { Wallet, TrendingUp, Eye, EyeOff } from 'lucide-react';
 
 export default function PerpsPage() {
-  const { positions, prices, customPrices, hideBalances, hideDust, toggleHideDust } = usePortfolioStore();
+  const { positions, prices, customPrices, fxRates, hideBalances, hideDust, toggleHideDust } = usePortfolioStore();
 
   // Calculate all positions with prices (including custom price overrides)
   const allAssetsWithPrices = useMemo(() => {
-    return calculateAllPositionsWithPrices(positions, prices, customPrices);
-  }, [positions, prices, customPrices]);
+    return calculateAllPositionsWithPrices(positions, prices, customPrices, fxRates);
+  }, [positions, prices, customPrices, fxRates]);
 
   // Use centralized exposure calculation for metrics
   const exposureData = useMemo(() => {

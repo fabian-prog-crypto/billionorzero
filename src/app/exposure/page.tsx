@@ -9,12 +9,12 @@ import Alert from '@/components/ui/Alert';
 import { Info } from 'lucide-react';
 
 export default function ExposurePage() {
-  const { positions, prices, customPrices, hideBalances } = usePortfolioStore();
+  const { positions, prices, customPrices, fxRates, hideBalances } = usePortfolioStore();
 
   // Calculate all positions with prices (including custom price overrides)
   const allAssetsWithPrices = useMemo(() => {
-    return calculateAllPositionsWithPrices(positions, prices, customPrices);
-  }, [positions, prices, customPrices]);
+    return calculateAllPositionsWithPrices(positions, prices, customPrices, fxRates);
+  }, [positions, prices, customPrices, fxRates]);
 
   // Use centralized exposure calculation - single source of truth
   const exposureData = useMemo(() => {

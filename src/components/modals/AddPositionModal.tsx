@@ -56,7 +56,7 @@ export default function AddPositionModal({
   const currencyPickerRef = useRef<HTMLDivElement>(null);
 
   const store = usePortfolioStore();
-  const { addPosition, updatePrice, addAccount, positions, accounts } = store;
+  const { addPosition, updatePosition, updatePrice, addAccount, positions, accounts } = store;
   const { refresh } = useRefresh();
 
   // Get accounts using new API - memoize to avoid infinite useEffect loops
@@ -100,6 +100,17 @@ export default function AddPositionModal({
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
   }, [isCurrencyPickerOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeydown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', handleKeydown);
+    return () => document.removeEventListener('keydown', handleKeydown);
+  }, [isOpen, onClose]);
 
   // Search debounce
   useEffect(() => {
@@ -185,25 +196,46 @@ export default function AddPositionModal({
       }
 
       if (!cashBalance || !cashCurrency) return;
+      const cashAmount = parseFloat(cashBalance);
+      if (!Number.isFinite(cashAmount) || cashAmount <= 0) return;
 
-      const symbol = `CASH_${cashCurrency}_${Date.now()}`;
-      addPosition({
-        assetClass: 'cash',
-        type: 'cash',
-        symbol,
-        name: `${accountName} (${cashCurrency})`,
-        amount: parseFloat(cashBalance),
-        costBasis: parseFloat(cashBalance),
-        accountId: accountId,
-      });
+      if (existingPosition && existingPosition.accountId === accountId) {
+        const nextAmount = existingPosition.amount + cashAmount;
+        const nextCostBasis = (existingPosition.costBasis ?? existingPosition.amount) + cashAmount;
 
-      updatePrice(symbol.toLowerCase(), {
-        symbol: cashCurrency,
-        price: 1,
-        change24h: 0,
-        changePercent24h: 0,
-        lastUpdated: new Date().toISOString(),
-      });
+        updatePosition(existingPosition.id, {
+          amount: nextAmount,
+          costBasis: nextCostBasis,
+          name: `${accountName} (${cashCurrency})`,
+        });
+
+        updatePrice(existingPosition.symbol.toLowerCase(), {
+          symbol: cashCurrency,
+          price: 1,
+          change24h: 0,
+          changePercent24h: 0,
+          lastUpdated: new Date().toISOString(),
+        });
+      } else {
+        const symbol = `CASH_${cashCurrency}_${Date.now()}`;
+        addPosition({
+          assetClass: 'cash',
+          type: 'cash',
+          symbol,
+          name: `${accountName} (${cashCurrency})`,
+          amount: cashAmount,
+          costBasis: cashAmount,
+          accountId: accountId,
+        });
+
+        updatePrice(symbol.toLowerCase(), {
+          symbol: cashCurrency,
+          price: 1,
+          change24h: 0,
+          changePercent24h: 0,
+          lastUpdated: new Date().toISOString(),
+        });
+      }
     } else if (tab === 'manual') {
       if (!manualSymbol || !manualName || !amount || !manualPrice) return;
 
@@ -546,7 +578,7 @@ export default function AddPositionModal({
               {existingPosition && (
                 <div className="px-3 py-2 bg-[var(--background-secondary)] text-[12px] text-[var(--foreground-muted)]">
                   Existing: {formatNumber(existingPosition.amount)} {cashCurrency} at{' '}
-                  {manualAccounts.find((a) => a.id === selectedCashAccountId)?.name}. This will add a new entry.
+                  {manualAccounts.find((a) => a.id === selectedCashAccountId)?.name}. This will increase the existing balance.
                 </div>
               )}
             </>
@@ -644,7 +676,7 @@ export default function AddPositionModal({
           ) : (
             <>
               {/* Manual asset inputs */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">Symbol</label>
                   <input
@@ -686,7 +718,7 @@ export default function AddPositionModal({
           {/* Amount, cost basis, and purchase date - not shown for cash */}
           {tab !== 'cash' && (
             <>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">Amount</label>
                   <input

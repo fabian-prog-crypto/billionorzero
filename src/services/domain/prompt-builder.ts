@@ -24,7 +24,7 @@ export function buildSystemPrompt(positions: PositionContext[], today: string): 
   // Build CASH ACCOUNTS section for better cash command resolution
   const cashPositions = positions.filter(p => p.type === 'cash' && p.accountName);
   const cashAccountsSection = cashPositions.length > 0
-    ? `CASH ACCOUNTS (for add_cash / update_cash):
+    ? `CASH ACCOUNTS (for add_cash / update_position with assetType="cash"):
 Account | Currency | Balance | Position ID
 --------|----------|---------|------------
 ${cashPositions.map(p => {
@@ -34,11 +34,11 @@ ${cashPositions.map(p => {
 }).join('\n')}
 
 CASH DISAMBIGUATION:
-- When updating cash, ALWAYS set matchedPositionId to the position ID from CASH ACCOUNTS
-- "{account} {FIAT} to {num}" -> update_cash (when account exists above)
-- "{account} total {FIAT} balance to {num}" -> update_cash (e.g., "N26 total EUR balance to 4811")
-- "{account} {FIAT} balance to {num}" -> update_cash (e.g., "Revolut EUR balance to 52k")
-- "update/set {account} {FIAT} to {num}" -> update_cash
+- When updating cash, ALWAYS use update_position with assetType="cash" and set matchedPositionId to the position ID from CASH ACCOUNTS
+- "{account} {FIAT} to {num}" -> update_position (cash)
+- "{account} total {FIAT} balance to {num}" -> update_position (cash) (e.g., "N26 total EUR balance to 4811")
+- "{account} {FIAT} balance to {num}" -> update_position (cash) (e.g., "Revolut EUR balance to 52k")
+- "update/set {account} {FIAT} to {num}" -> update_position (cash)
 - "{num} {FIAT} to {account}" -> add_cash
 - "balance" and "total" are noise words in cash commands — focus on account name, currency, and amount`
     : '';
@@ -69,9 +69,10 @@ ACTION DEFINITIONS:
    Required: symbol, sellPrice (optional)
    Example: "Sold all BTC", "Closed my GOOG position"
 
-4. update — Update amount or price of an existing position
-   Required: symbol, amount OR pricePerUnit
+4. update_position — Update an existing position
+   Required: symbol and at least one of amount, costBasis, or date
    Example: "Update BTC to 2.5"
+   Example: "Revolut EUR balance to 52000" (assetType must be "cash")
 
 5. add_cash — Add a cash/fiat holding to an account
    Required: amount, currency, accountName
@@ -79,23 +80,18 @@ ACTION DEFINITIONS:
    Example: "50k USD to IBKR"
    Example: "3000 GBP in Wise"
 
-6. update_cash — Update an existing cash holding
-   Required: amount, currency, accountName
-   Example: "Revolut EUR is now 52000"
-   Example: "IBKR USD balance 100k"
-
-7. remove — Remove a position entirely (not a sale)
+6. remove — Remove a position entirely (not a sale)
    Required: symbol
    Example: "Remove DOGE", "Delete BTC"
 
-8. set_price — Override the price of an asset
+7. set_price — Override the price of an asset
    Required: symbol, newPrice
    Example: "BTC price 95000", "BTC price 95k"
 
 FIAT CURRENCIES (these are real-world currencies, NOT crypto tokens):
 ${fiatList}
 
-IMPORTANT: When a user mentions one of these currencies with an amount and an account/destination, it is ALWAYS add_cash or update_cash, NOT buy. For example:
+IMPORTANT: When a user mentions one of these currencies with an amount and an account/destination, it is ALWAYS add_cash or update_position (assetType="cash"), NOT buy. For example:
 - "49750 EUR to Revolut" -> add_cash (EUR is fiat)
 - "100 EURC at 1.05" -> buy (EURC is a crypto stablecoin, NOT in the fiat list)
 
@@ -121,7 +117,7 @@ DO NOT:
 FIELD RULES:
 - symbol: Always UPPERCASE
 - assetType: one of "crypto", "stock", "etf", "cash", "manual"
-- For add_cash and update_cash: assetType is ALWAYS "cash"
+- For add_cash and update_position (cash updates): assetType is ALWAYS "cash"
 - For add_cash: symbol should be "CASH_{CURRENCY}" (e.g., "CASH_EUR")
 - date: YYYY-MM-DD format. "today" = ${today}, "yesterday" = yesterday's date. Default to ${today} if not mentioned
 - confidence: 0-1, how certain about the parsing

@@ -32,12 +32,12 @@ export default function OtherPositionsPage() {
   const [editAction, setEditAction] = useState<ParsedPositionAction | null>(null);
 
   const store = usePortfolioStore();
-  const { positions, prices, customPrices, hideBalances, removePosition } = store;
+  const { positions, prices, customPrices, fxRates, hideBalances, removePosition } = store;
   const categoryService = getCategoryService();
 
   const allPositionsWithPrices = useMemo(() => {
-    return calculateAllPositionsWithPrices(positions, prices, customPrices);
-  }, [positions, prices, customPrices]);
+    return calculateAllPositionsWithPrices(positions, prices, customPrices, fxRates);
+  }, [positions, prices, customPrices, fxRates]);
 
   // Filter to "other" category
   const otherPositions = useMemo(() => {
