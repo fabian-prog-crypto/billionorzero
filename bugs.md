@@ -1,6 +1,6 @@
 # Bugs Backlog And Architecture Plan
 
-Last updated: 2026-02-13
+Last updated: 2026-02-14
 Scope: backlog, fix progress, and QA verification log.
 
 ## Current Status Snapshot (2026-02-13)
@@ -13,6 +13,13 @@ Scope: backlog, fix progress, and QA verification log.
   - `BUG-002` -> mapped to `BZ-002` (verified)
   - `BUG-003` -> mapped to `BZ-003` (verified)
 - Note: the `Main Sync Relevance Assessment` section below is retained as historical pre-fix context.
+
+## CMD-K Companion Backlog (2026-02-14)
+
+- Dedicated CMD-K investigation and architecture hardening plan is tracked in `bugs_cmd.md`.
+- CMD-K implementation roadmap is tracked in `cmdk-roadmap.md`.
+- Focus: robust unstructured-command matching to deterministic command contracts, centralized semantic normalization, shared entity resolution, and QA/performance guardrails.
+- This keeps CMD-K architecture work visible without mixing it into the already-closed `BZ-001`..`BZ-032` batch history.
 
 ## Main Sync Relevance Assessment (origin/main @ `28ff6b0`, 2026-02-13, pre-fix snapshot)
 

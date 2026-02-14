@@ -421,6 +421,26 @@ describe('toolCallToAction — add_cash', () => {
     expect(result!.matchedPositionId).toBe('pos-cash-usd');
   });
 
+  it('add cash resolves accountName alias from tool args', () => {
+    const result = toolCallToAction('add_cash', {
+      currency: 'USD', amount: 10000, accountName: 'Test Bank',
+    }, FIXTURE_DB);
+
+    expect(result!.matchedAccountId).toBe('acct-bank');
+    expect(result!.accountName).toBe('Test Bank');
+    expect(result!.matchedPositionId).toBe('pos-cash-usd');
+  });
+
+  it('add cash resolves account phrases like "cash account"', () => {
+    const result = toolCallToAction('add_cash', {
+      currency: 'USD', amount: 10000, account: 'Test Bank cash account',
+    }, FIXTURE_DB);
+
+    expect(result!.matchedAccountId).toBe('acct-bank');
+    expect(result!.accountName).toBe('Test Bank');
+    expect(result!.matchedPositionId).toBe('pos-cash-usd');
+  });
+
   it('add cash with unmatched account', () => {
     const result = toolCallToAction('add_cash', {
       currency: 'CHF', amount: 5000, account: 'UBS',
@@ -467,6 +487,16 @@ describe('toolCallToAction — legacy update_cash alias', () => {
   it('update cash with account match', () => {
     const result = toolCallToAction('update_cash', {
       currency: 'USD', amount: 3000, account: 'Test Bank',
+    }, FIXTURE_DB);
+
+    expect(result!.matchedAccountId).toBe('acct-bank');
+    expect(result!.matchedPositionId).toBe('pos-cash-usd');
+    expect(result!.summary).toBe('Update USD balance to 3000 in Test Bank');
+  });
+
+  it('update cash resolves accountName alias from tool args', () => {
+    const result = toolCallToAction('update_cash', {
+      currency: 'USD', amount: 3000, accountName: 'Test Bank',
     }, FIXTURE_DB);
 
     expect(result!.matchedAccountId).toBe('acct-bank');
@@ -643,6 +673,15 @@ describe('toolCallToAction — account resolution', () => {
   it('exact name match resolves account', () => {
     const result = toolCallToAction('buy_position', {
       symbol: 'AAPL', amount: 10, account: 'Revolut',
+    }, FIXTURE_DB);
+
+    expect(result!.matchedAccountId).toBe('acct-revolut');
+    expect(result!.accountName).toBe('Revolut');
+  });
+
+  it('resolves accountName alias as account input', () => {
+    const result = toolCallToAction('buy_position', {
+      symbol: 'AAPL', amount: 10, accountName: 'Revolut',
     }, FIXTURE_DB);
 
     expect(result!.matchedAccountId).toBe('acct-revolut');

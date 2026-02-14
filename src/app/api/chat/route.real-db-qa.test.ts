@@ -153,6 +153,52 @@ describe('chat route real-db QA (temp clone, no prod writes)', () => {
     expect(json.pendingAction.matchedPositionId).toBe(existingUsd.id);
   });
 
+  it('BZ-014.1: add_cash resolves accountName alias in tool args', async () => {
+    const { readDb } = await import('@/app/api/portfolio/db-store');
+    const { extractCurrencyCode } = await import('@/services/domain/portfolio-calculator');
+    const db = readDb();
+    const broker = db.accounts.find(
+      (a) => a.connection.dataSource === 'manual' && a.name.toLowerCase() === 'revolut broker'
+    );
+    expect(broker).toBeDefined();
+    if (!broker) return;
+
+    const existingUsd = db.positions.find(
+      (p) => p.type === 'cash' && p.accountId === broker.id && extractCurrencyCode(p.symbol) === 'USD'
+    );
+    expect(existingUsd).toBeDefined();
+    if (!existingUsd) return;
+
+    mockOllamaSequence([
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [
+          {
+            function: {
+              name: 'add_cash',
+              arguments: {
+                currency: 'USD',
+                amount: 500,
+                accountName: 'revolut broker',
+              },
+            },
+          },
+        ],
+      },
+    ]);
+
+    const res = await invokeChat('add 500 USD to revolut broker');
+    expect(res.status).toBe(200);
+
+    const json = await res.json();
+    expect(json.pendingAction).toBeDefined();
+    expect(json.pendingAction.action).toBe('add_cash');
+    expect(json.pendingAction.matchedAccountId).toBe(broker.id);
+    expect(json.pendingAction.accountName).toBe(broker.name);
+    expect(json.pendingAction.matchedPositionId).toBe(existingUsd.id);
+  });
+
   it('BZ-015: update_cash keeps ambiguous account names unresolved (no fuzzy auto-targeting)', async () => {
     const { readDb } = await import('@/app/api/portfolio/db-store');
     const db = readDb();

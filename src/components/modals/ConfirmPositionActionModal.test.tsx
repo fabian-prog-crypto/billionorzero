@@ -48,6 +48,7 @@ const mockAddPosition = vi.fn();
 const mockAddTransaction = vi.fn();
 const mockUpdatePrice = vi.fn();
 const mockSetCustomPrice = vi.fn();
+const mockAddAccount = vi.fn().mockReturnValue('acct-new');
 
 let _accounts: Account[] = [];
 
@@ -58,6 +59,7 @@ const mockStoreState = {
   addTransaction: mockAddTransaction,
   updatePrice: mockUpdatePrice,
   setCustomPrice: mockSetCustomPrice,
+  addAccount: mockAddAccount,
   accounts: _accounts,
   walletAccounts: () =>
     _accounts.filter(
@@ -150,6 +152,7 @@ const noop = vi.fn();
 describe('ConfirmPositionActionModal — account relationship fixes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockAddAccount.mockReturnValue('acct-new');
     _accounts = [];
     mockStoreState.accounts = _accounts;
   });
@@ -395,6 +398,53 @@ describe('ConfirmPositionActionModal — account relationship fixes', () => {
           assetClass: 'cash',
           amount: 1000,
           costBasis: 1000,
+          accountId: 'acct-new',
+          name: 'NewBank (EUR)',
+        })
+      );
+      expect(mockAddAccount).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'NewBank',
+          connection: { dataSource: 'manual' },
+        })
+      );
+    });
+
+    it('reuses existing manual account when accountName is a bank/account phrase', async () => {
+      const user = userEvent.setup();
+      const cashAcct = makeAccount({
+        id: 'cash-mill',
+        name: 'Millenium',
+        connection: { dataSource: 'manual' } as Account['connection'],
+      });
+      _accounts = [cashAcct];
+      mockStoreState.accounts = _accounts;
+
+      render(
+        <ConfirmPositionActionModal
+          isOpen={true}
+          onClose={noop}
+          parsedAction={baseParsedAction({
+            action: 'add_cash',
+            symbol: 'CASH_EUR',
+            assetType: 'cash',
+            amount: 5000,
+            currency: 'EUR',
+            accountName: 'millenium cash account',
+          })}
+          positions={[]}
+          positionsWithPrices={[]}
+        />
+      );
+
+      const confirmBtn = screen.getByRole('button', { name: /Add/i });
+      await user.click(confirmBtn);
+
+      expect(mockAddAccount).not.toHaveBeenCalled();
+      expect(mockAddPosition).toHaveBeenCalledWith(
+        expect.objectContaining({
+          accountId: 'cash-mill',
+          name: 'Millenium (EUR)',
         })
       );
     });

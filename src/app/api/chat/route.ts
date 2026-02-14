@@ -14,7 +14,7 @@ import { calculatePerformanceMetrics } from '@/services/domain/performance-metri
 import { isPositionInAssetClass } from '@/services/domain/account-role-service';
 import { assetClassFromType } from '@/types';
 import type { Position, Transaction, Account } from '@/types';
-import { normalizeAccountName } from '@/services/domain/cash-account-service';
+import { extractAccountInput, resolveAccountFromArgs } from '@/services/domain/command-account-resolver';
 import { toolCallToAction, findPositionBySymbol, CONFIRM_MUTATION_TOOLS } from '@/services/domain/action-mapper';
 import { getCoinGeckoApiClient, getStockApiClient } from '@/services/api';
 import { getCryptoPriceService } from '@/services/providers/crypto-price-service';
@@ -105,34 +105,6 @@ function resolveCommandDate(argDate: unknown, userText: string): string {
 function asPositiveNumber(value: unknown): number | null {
   const num = Number(value);
   return Number.isFinite(num) && num > 0 ? num : null;
-}
-
-function findSingleManualAccountByName(accounts: Account[], accountName: string): Account | null {
-  const normalized = normalizeAccountName(accountName);
-  const matches = accounts.filter(
-    (account) =>
-      account.connection.dataSource === 'manual' &&
-      normalizeAccountName(account.name) === normalized
-  );
-  if (matches.length !== 1) return null;
-  return matches[0];
-}
-
-function findSingleAccountByName(accounts: Account[], accountName: string): Account | null {
-  const normalized = normalizeAccountName(accountName);
-  if (!normalized) return null;
-
-  const exactMatches = accounts.filter(
-    (account) => normalizeAccountName(account.name) === normalized
-  );
-  if (exactMatches.length === 1) return exactMatches[0];
-  if (exactMatches.length > 1) return null;
-
-  const partialMatches = accounts.filter(
-    (account) => normalizeAccountName(account.name).includes(normalized)
-  );
-  if (partialMatches.length !== 1) return null;
-  return partialMatches[0];
 }
 
 function isToday(date: string): boolean {
@@ -286,10 +258,16 @@ function resolvePositionUpdateTarget(
         extractCurrencyCode(position.symbol).toUpperCase() === currency
     );
 
-    const accountArg = typeof args.account === 'string' ? args.account.trim() : '';
+    const accountResolution = resolveAccountFromArgs(data.accounts, args, { manualOnly: true });
+    const accountArg = accountResolution.input || '';
     if (accountArg) {
-      const account = findSingleAccountByName(data.accounts, accountArg);
-      if (!account) return { error: `No unique account match for "${accountArg}"` };
+      if (!accountResolution.account) {
+        const reason = accountResolution.status === 'ambiguous'
+          ? `Multiple accounts match "${accountArg}"`
+          : `No account match for "${accountArg}"`;
+        return { error: reason };
+      }
+      const account = accountResolution.account;
       const inAccount = currencyMatches.filter((p) => p.accountId === account.id);
       if (inAccount.length === 0) return { error: `No ${currency} cash position found in ${account.name}` };
       if (inAccount.length > 1) return { error: `Multiple ${currency} cash positions found in ${account.name}` };
@@ -307,10 +285,16 @@ function resolvePositionUpdateTarget(
   let matches = data.positions.filter((p) => p.symbol.toUpperCase() === symbol);
   if (matches.length === 0) return { error: `No position found for ${rawSymbol}` };
 
-  const accountArg = typeof args.account === 'string' ? args.account.trim() : '';
+  const accountResolution = resolveAccountFromArgs(data.accounts, args);
+  const accountArg = accountResolution.input || '';
   if (accountArg) {
-    const account = findSingleAccountByName(data.accounts, accountArg);
-    if (!account) return { error: `No unique account match for "${accountArg}"` };
+    if (!accountResolution.account) {
+      const reason = accountResolution.status === 'ambiguous'
+        ? `Multiple accounts match "${accountArg}"`
+        : `No account match for "${accountArg}"`;
+      return { error: reason };
+    }
+    const account = accountResolution.account;
     matches = matches.filter((p) => p.accountId === account.id);
     if (matches.length === 0) return { error: `No ${symbol} position found in ${account.name}` };
   }
@@ -355,10 +339,17 @@ function buildPositionUpdates(
     const account = data.accounts.find((a) => a.id === accountId);
     if (!account) return { error: `Unknown accountId: ${accountId}` };
     updates.accountId = account.id;
-  } else if (typeof args.account === 'string' && args.account.trim() !== '') {
-    const account = findSingleAccountByName(data.accounts, args.account);
-    if (!account) return { error: `No unique account match for "${args.account}"` };
-    updates.accountId = account.id;
+  } else {
+    const accountResolution = resolveAccountFromArgs(data.accounts, args);
+    if (accountResolution.input) {
+      if (!accountResolution.account) {
+        const reason = accountResolution.status === 'ambiguous'
+          ? `Multiple accounts match "${accountResolution.input}"`
+          : `No account match for "${accountResolution.input}"`;
+        return { error: reason };
+      }
+      updates.accountId = accountResolution.account.id;
+    }
   }
 
   if (Object.keys(updates).length === 0) {
@@ -881,7 +872,7 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
       }
       const assetType = String(args.assetType || 'crypto');
       const name = String(args.name || symbol);
-      const account = args.account as string | undefined;
+      const accountInput = extractAccountInput(args);
 
       if (!symbol) return { result: { error: 'Symbol is required' }, isMutation: true };
       if ((!amount || amount <= 0) && (!totalCost || totalCost <= 0)) return { result: { error: 'Amount or totalCost must be > 0' }, isMutation: true };
@@ -895,9 +886,12 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
       const result = await withDb(data => {
         // Resolve account by name
         let accountId: string | undefined;
-        if (account) {
-          const match = data.accounts.find(a => a.name.toLowerCase().includes(account.toLowerCase()));
-          if (match) accountId = match.id;
+        const accountResolution = resolveAccountFromArgs(
+          data.accounts,
+          accountInput ? { account: accountInput } : {},
+        );
+        if (accountResolution.account) {
+          accountId = accountResolution.account.id;
         }
 
         // Check for existing position
@@ -1043,32 +1037,30 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
     case 'add_cash': {
       const currency = String(args.currency || 'USD').toUpperCase();
       const amount = Number(args.amount || 0);
-      const accountName = args.account as string | undefined;
+      const accountInput = extractAccountInput(args);
+      type AddCashResult =
+        | { error: string }
+        | { added: string; updated?: string; newBalance?: number; account?: string };
 
       if (!amount || amount <= 0) return { result: { error: 'Amount must be > 0' }, isMutation: true };
 
-      const result = await withDb(data => {
+      const result = await withDb<AddCashResult>(data => {
         let accountId: string | undefined;
-        let accountLabel = accountName?.trim();
-        let accounts = data.accounts;
-
-        if (accountName?.trim()) {
-          const resolved = findSingleManualAccountByName(data.accounts, accountName);
-          if (resolved) {
-            accountId = resolved.id;
-            accountLabel = resolved.name;
-          } else {
-            const created: Account = {
-              id: crypto.randomUUID(),
-              name: accountName.trim(),
-              isActive: true,
-              connection: { dataSource: 'manual' },
-              addedAt: new Date().toISOString(),
-            };
-            accounts = [...data.accounts, created];
-            accountId = created.id;
-            accountLabel = created.name;
+        let accountLabel: string | undefined = accountInput?.trim();
+        const accountResolution = resolveAccountFromArgs(
+          data.accounts,
+          accountInput ? { account: accountInput } : {},
+          { manualOnly: true },
+        );
+        if (accountInput) {
+          if (!accountResolution.account) {
+            const reason = accountResolution.status === 'ambiguous'
+              ? `Multiple accounts match "${accountInput}"`
+              : `No manual account match for "${accountInput}"`;
+            return { data, result: { error: reason } };
           }
+          accountId = accountResolution.account.id;
+          accountLabel = accountResolution.account.name;
         }
 
         const existing = data.positions.find((position) => {
@@ -1093,7 +1085,7 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
               : position
           );
           return {
-            data: { ...data, accounts, positions },
+            data: { ...data, positions },
             result: {
               added: `${amount} ${currency}`,
               updated: existing.name,
@@ -1111,7 +1103,7 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
           addedAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
         };
         return {
-          data: { ...data, accounts, positions: [...data.positions, pos] },
+          data: { ...data, positions: [...data.positions, pos] },
           result: { added: `${amount} ${currency}`, account: accountLabel },
         };
       });

@@ -9,6 +9,7 @@ import {
   executeFullSell,
   executeBuy,
 } from '@/services/domain/position-operations';
+import { resolveAccountByName } from '@/services/domain/command-account-resolver';
 import { formatCurrency, formatNumber, formatPercent } from '@/lib/utils';
 
 interface ConfirmPositionActionModalProps {
@@ -99,7 +100,7 @@ export default function ConfirmPositionActionModal({
   positionsWithPrices,
 }: ConfirmPositionActionModalProps) {
   const store = usePortfolioStore();
-  const { updatePosition, removePosition, addPosition, addTransaction, updatePrice, setCustomPrice } = store;
+  const { updatePosition, removePosition, addPosition, addTransaction, updatePrice, setCustomPrice, addAccount } = store;
   const brokerageAccounts = store.brokerageAccounts();
   const allAccounts = store.accounts;
   const normalizedParsedAction = normalizeIncomingAction(parsedAction.action as string);
@@ -252,17 +253,38 @@ export default function ConfirmPositionActionModal({
         }
       }
 
-      // Auto-select account: matchedAccountId → matched position's account → first relevant account
+      // Auto-select account: matchedAccountId → matched position's account → resolved accountName.
+      // For add_cash, do NOT fall back to a random first account.
       const matchedPos = parsedAction.matchedPositionId
         ? positions.find(p => p.id === parsedAction.matchedPositionId)
         : null;
       const firstRelevant = getRelevantAccounts(parsedAction.assetType, store)[0];
+      const accountNameResolution = parsedAction.accountName
+        ? resolveAccountByName(store.accounts, parsedAction.accountName, { manualOnly: normalizedParsedAction === 'add_cash' })
+        : { status: 'missing' as const };
+      const resolvedAccountByNameId = accountNameResolution.account?.id;
+      const fallbackAccountId = normalizedParsedAction === 'add_cash' ? '' : (firstRelevant?.id || '');
       const resolvedAccountId =
         parsedAction.matchedAccountId ||
         matchedPos?.accountId ||
-        firstRelevant?.id ||
-        '';
+        resolvedAccountByNameId ||
+        fallbackAccountId;
       setSelectedAccountId(resolvedAccountId);
+      if (accountNameResolution.account) {
+        setAccountName(accountNameResolution.account.name);
+      }
+
+      if (normalizedParsedAction === 'add_cash' && !parsedAction.matchedPositionId && resolvedAccountId) {
+        const inferred = findCashPositionForAccount(
+          positions,
+          resolvedAccountId,
+          resolveCashCurrencyFromAction(parsedAction),
+          { strictCurrency: true },
+        );
+        if (inferred) {
+          setMatchedPositionId(inferred.id);
+        }
+      }
     }
   }, [isOpen, parsedAction, positionsWithPrices, positions, store]);
 
@@ -283,6 +305,25 @@ export default function ConfirmPositionActionModal({
     document.addEventListener('keydown', handleKeydown);
     return () => document.removeEventListener('keydown', handleKeydown);
   }, [isOpen, onClose]);
+
+  useEffect(() => {
+    if (!isOpen || action !== 'add_cash') return;
+    if (!selectedAccountId) return;
+    const inferred = findCashPositionForAccount(positions, selectedAccountId, cashCurrency, { strictCurrency: true });
+    if (inferred) {
+      setMatchedPositionId(inferred.id);
+      if (inferred.name) {
+        const inferredName = inferred.name.match(/^(.+?)\s*\(/)?.[1] || inferred.name;
+        setAccountName(inferredName);
+      }
+      return;
+    }
+
+    const selected = positions.find((p) => p.id === matchedPositionId);
+    if (selected && selected.accountId === selectedAccountId && extractCashCurrency(selected) !== cashCurrency.toUpperCase()) {
+      setMatchedPositionId('');
+    }
+  }, [isOpen, action, selectedAccountId, cashCurrency, matchedPositionId, positions]);
 
   if (!isOpen) return null;
 
@@ -718,16 +759,44 @@ export default function ConfirmPositionActionModal({
         if (warned) return;
       } else if (isAddCash) {
         // Add cash: add to existing position or create new
-        const existingMatch = matchedPositionId
+        const explicitAccountName = accountName.trim();
+        const normalizedCashCurrency = cashCurrency.toUpperCase();
+        const existingMatchById = matchedPositionId
           ? positions.find(p => p.id === matchedPositionId)
           : null;
+        let resolvedCashAccountId = selectedAccountId || existingMatchById?.accountId || undefined;
 
-        // Resolve accountId: selected dropdown → matched position's accountId
-        const resolvedCashAccountId = selectedAccountId || existingMatch?.accountId || undefined;
+        if (!resolvedCashAccountId && explicitAccountName) {
+          const accountResolution = resolveAccountByName(allAccounts, explicitAccountName, { manualOnly: true });
+          if (accountResolution.status === 'ambiguous') {
+            setError(`Multiple accounts match "${explicitAccountName}". Please select one.`);
+            return;
+          }
+          if (accountResolution.account) {
+            resolvedCashAccountId = accountResolution.account.id;
+          } else {
+            // Explicitly create the manual account so the new cash position is linked and visible in Cash > Accounts.
+            resolvedCashAccountId = addAccount({
+              name: explicitAccountName,
+              isActive: true,
+              connection: { dataSource: 'manual' },
+            });
+          }
+        }
+
+        const existingMatchByAccountAndCurrency = resolvedCashAccountId
+          ? positions.find(
+            (p) =>
+              p.type === 'cash' &&
+              p.accountId === resolvedCashAccountId &&
+              extractCashCurrency(p) === normalizedCashCurrency
+          ) || null
+          : null;
+        const existingMatch = existingMatchById || existingMatchByAccountAndCurrency;
         const resolvedCashAccount = resolvedCashAccountId
           ? allAccounts.find((a) => a.id === resolvedCashAccountId) || null
           : null;
-        const resolvedCashAccountName = accountName.trim() || resolvedCashAccount?.name || '';
+        const resolvedCashAccountName = resolvedCashAccount?.name || explicitAccountName || '';
 
         if (existingMatch) {
           // Add to existing cash position
@@ -735,22 +804,24 @@ export default function ConfirmPositionActionModal({
           updatePosition(existingMatch.id, {
             amount: newAmount,
             costBasis: newAmount,
+            ...(resolvedCashAccountId ? { accountId: resolvedCashAccountId } : {}),
+            ...(resolvedCashAccountName ? { name: `${resolvedCashAccountName} (${normalizedCashCurrency})` } : {}),
           });
         } else {
           // Create new cash position
-          const cashSymbol = `CASH_${cashCurrency}_${Date.now()}`;
+          const cashSymbol = `CASH_${normalizedCashCurrency}_${Date.now()}`;
           addPosition({
             assetClass: 'cash',
             type: 'cash',
             symbol: cashSymbol,
-            name: resolvedCashAccountName ? `${resolvedCashAccountName} (${cashCurrency})` : `Cash (${cashCurrency})`,
+            name: resolvedCashAccountName ? `${resolvedCashAccountName} (${normalizedCashCurrency})` : `Cash (${normalizedCashCurrency})`,
             amount: numAmount,
             costBasis: numAmount,
             ...(resolvedCashAccountId ? { accountId: resolvedCashAccountId } : {}),
           });
           // Set price to 1 for fiat (value = amount)
           updatePrice(cashSymbol.toLowerCase(), {
-            symbol: cashCurrency,
+            symbol: normalizedCashCurrency,
             price: 1,
             change24h: 0,
             changePercent24h: 0,
@@ -1204,12 +1275,13 @@ export default function ConfirmPositionActionModal({
                       const val = e.target.value;
                       if (val === '__new__') {
                         setMatchedPositionId('');
-                        setAccountName('');
+                        setSelectedAccountId('');
                         setCashCurrency(resolveCashCurrencyFromAction(parsedAction));
                       } else {
                         const pos = allCashPositions.find(p => p.id === val);
                         if (pos) {
                           setMatchedPositionId(pos.id);
+                          setSelectedAccountId(pos.accountId || '');
                           const currMatch = pos.symbol.match(/CASH_([A-Z]{3})/);
                           setCashCurrency(currMatch ? currMatch[1] : 'USD');
                           const acct = (pos as Position & { accountName?: string }).accountName

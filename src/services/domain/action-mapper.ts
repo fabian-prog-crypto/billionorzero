@@ -4,6 +4,7 @@
  */
 
 import type { Position, ParsedPositionAction } from '@/types';
+import { resolveAccountFromArgs } from './command-account-resolver';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -142,31 +143,6 @@ function inferSellPrice(db: ActionMapperData, symbol: string, matchedPosition?: 
   return undefined;
 }
 
-function normalizeAccountName(name: string): string {
-  return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
-}
-
-function resolveAccountByName(
-  accounts: ActionMapperData['accounts'],
-  accountArg: string,
-): ActionMapperData['accounts'][number] | undefined {
-  const normalized = normalizeAccountName(accountArg);
-  if (!normalized) return undefined;
-
-  const exactMatches = accounts.filter(
-    (account) => normalizeAccountName(account.name) === normalized
-  );
-  if (exactMatches.length === 1) return exactMatches[0];
-  if (exactMatches.length > 1) return undefined;
-
-  const partialMatches = accounts.filter(
-    (account) => normalizeAccountName(account.name).includes(normalized)
-  );
-  if (partialMatches.length === 1) return partialMatches[0];
-
-  return undefined;
-}
-
 function extractCurrencyFromCashPosition(position: Position): string | null {
   const symbolMatch = position.symbol.toUpperCase().match(/CASH_([A-Z]{3})/);
   if (symbolMatch?.[1]) return symbolMatch[1];
@@ -261,17 +237,15 @@ export function toolCallToAction(toolName: string, args: Record<string, unknown>
   const resolvedSymbol = matchedPosition?.symbol.toUpperCase() || symbol;
 
   // Resolve account by name
-  const accountArg = args.account as string | undefined;
+  const accountResolution = resolveAccountFromArgs(db.accounts, args);
+  const accountArg = accountResolution.input;
   let matchedAccountId: string | undefined;
   let accountName: string | undefined;
-  if (accountArg) {
-    const match = resolveAccountByName(db.accounts, accountArg);
-    if (match) {
-      matchedAccountId = match.id;
-      accountName = match.name;
-    } else {
-      accountName = accountArg;
-    }
+  if (accountResolution.status === 'matched' && accountResolution.account) {
+    matchedAccountId = accountResolution.account.id;
+    accountName = accountResolution.account.name;
+  } else if (accountArg) {
+    accountName = accountArg;
   }
 
   switch (toolName) {
@@ -415,32 +389,30 @@ export function toolCallToAction(toolName: string, args: Record<string, unknown>
       };
     }
     case 'add_cash': {
-      const currency = String(args.currency || 'USD').toUpperCase();
-      // Try to find an existing cash position for this account+currency combo
-      let matchedPosId: string | undefined;
-      if (matchedAccountId) {
-        const cashPos = db.positions.find(p =>
-          p.type === 'cash' && p.accountId === matchedAccountId &&
-          (p.symbol.includes(currency) || p.name.toUpperCase().includes(currency))
-        );
-        if (cashPos) matchedPosId = cashPos.id;
-      }
+      const currency = normalizeCashCurrencyCode(String(args.currency || args.symbol || 'USD')) || 'USD';
+      const cashAccountResolution = resolveAccountFromArgs(db.accounts, args, { manualOnly: true });
+      const cashMatchedAccountId = cashAccountResolution.account?.id;
+      const cashAccountName = cashAccountResolution.account?.name || cashAccountResolution.input;
+      const matchedCash = resolveCashUpdateMatch(db.positions, currency, cashMatchedAccountId);
       return {
         action: 'add_cash',
         symbol: currency,
         assetType: 'cash',
         amount,
         currency,
-        accountName: accountName || accountArg,
-        matchedPositionId: matchedPosId,
-        matchedAccountId,
+        accountName: cashAccountName,
+        matchedPositionId: matchedCash?.id,
+        matchedAccountId: cashMatchedAccountId,
         confidence: 0.9,
-        summary: `Add ${amount ?? '?'} ${currency}${accountName ? ` to ${accountName}` : ''}`,
+        summary: `Add ${amount ?? '?'} ${currency}${cashAccountName ? ` to ${cashAccountName}` : ''}`,
       };
     }
     case 'update_cash': {
       const currency = normalizeCashCurrencyCode(String(args.currency || args.symbol || ''));
-      const matchedCash = resolveCashUpdateMatch(db.positions, currency, matchedAccountId);
+      const cashAccountResolution = resolveAccountFromArgs(db.accounts, args, { manualOnly: true });
+      const cashMatchedAccountId = cashAccountResolution.account?.id;
+      const cashAccountName = cashAccountResolution.account?.name || cashAccountResolution.input;
+      const matchedCash = resolveCashUpdateMatch(db.positions, currency, cashMatchedAccountId);
 
       return {
         action: 'update_position',
@@ -448,11 +420,11 @@ export function toolCallToAction(toolName: string, args: Record<string, unknown>
         assetType: 'cash',
         amount,
         currency,
-        accountName: accountName || accountArg,
+        accountName: cashAccountName,
         matchedPositionId: matchedCash?.id,
-        matchedAccountId,
+        matchedAccountId: cashMatchedAccountId,
         confidence: 0.9,
-        summary: `Update ${currency} balance to ${amount ?? '?'}${accountName ? ` in ${accountName}` : ''}`,
+        summary: `Update ${currency} balance to ${amount ?? '?'}${cashAccountName ? ` in ${cashAccountName}` : ''}`,
       };
     }
     default:
