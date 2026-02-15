@@ -152,6 +152,8 @@ export const DEMO_CRYPTO_PRICES: Record<string, { price: number; change24h: numb
   ethereum: { price: 3200, change24h: 1.8 },
   'usd-coin': { price: 1, change24h: 0.01 },
   tether: { price: 1, change24h: 0.02 },
+  'tether-gold': { price: 2300, change24h: 0.6 },
+  'pax-gold': { price: 2300, change24h: 0.6 },
   'wrapped-bitcoin': { price: 95000, change24h: 2.5 },
   weth: { price: 3200, change24h: 1.8 },
   'staked-ether': { price: 3200, change24h: 1.8 },

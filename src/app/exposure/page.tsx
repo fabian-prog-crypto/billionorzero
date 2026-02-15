@@ -43,6 +43,7 @@ export default function ExposurePage() {
   const cashItem = simpleBreakdown.find(s => s.id === 'cash');
   const btcItem = simpleBreakdown.find(s => s.id === 'btc');
   const ethItem = simpleBreakdown.find(s => s.id === 'eth');
+  const metalsItem = simpleBreakdown.find(s => s.id === 'metals');
   const tokensItem = simpleBreakdown.find(s => s.id === 'tokens');
 
   return (
@@ -90,7 +91,7 @@ export default function ExposurePage() {
       <hr className="border-[var(--border)]" />
 
       {/* Simple Breakdown */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
         <div>
           <div className="flex items-center gap-2 mb-1">
             <div className="w-2.5 h-2.5 " style={{ backgroundColor: EXPOSURE_COLORS.stablecoins }} />
@@ -117,8 +118,16 @@ export default function ExposurePage() {
         </div>
         <div>
           <div className="flex items-center gap-2 mb-1">
+            <div className="w-2.5 h-2.5 " style={{ backgroundColor: EXPOSURE_COLORS.metals }} />
+            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)]">METALS</p>
+          </div>
+          <p className="text-xl font-semibold">{hideBalances ? '••••' : formatCurrency(metalsItem?.value || 0)}</p>
+          <p className="text-xs text-[var(--foreground-muted)]">{(metalsItem?.percentage || 0).toFixed(1)}%</p>
+        </div>
+        <div>
+          <div className="flex items-center gap-2 mb-1">
             <div className="w-2.5 h-2.5 " style={{ backgroundColor: EXPOSURE_COLORS.other }} />
-            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)]">TOKENS</p>
+            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)]">OTHER</p>
           </div>
           <p className="text-xl font-semibold">{hideBalances ? '••••' : formatCurrency(tokensItem?.value || 0)}</p>
           <p className="text-xs text-[var(--foreground-muted)]">{(tokensItem?.percentage || 0).toFixed(1)}%</p>

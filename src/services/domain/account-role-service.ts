@@ -1,10 +1,11 @@
-import { AssetClass, Position, assetClassFromType } from '@/types';
+import { AssetClass, Position } from '@/types';
 import { getCategoryService } from './category-service';
 
 export interface ManualAccountHoldings {
   hasAny: boolean;
   hasCash: boolean;
   hasEquity: boolean;
+  hasMetals: boolean;
   hasStablecoin: boolean;
   hasOther: boolean;
 }
@@ -12,23 +13,27 @@ export interface ManualAccountHoldings {
 export type ManualAccountRole = 'empty' | 'cash' | 'brokerage' | 'mixed' | 'other';
 export type ManualAccountScope = 'cash' | 'brokerage';
 
-export function getEffectiveAssetClass(position: Pick<Position, 'assetClass' | 'type'>): AssetClass {
-  return position.assetClass ?? assetClassFromType(position.type);
+export function getEffectiveAssetClass(position: Pick<Position, 'assetClass' | 'assetClassOverride' | 'type' | 'symbol'>): AssetClass {
+  if (position.assetClassOverride) return position.assetClassOverride;
+  if (position.assetClass) return position.assetClass;
+  const categoryService = getCategoryService();
+  return categoryService.getAssetClass(position.symbol, position.type);
 }
 
 export function isPositionInAssetClass(
-  position: Pick<Position, 'assetClass' | 'type'>,
+  position: Pick<Position, 'assetClass' | 'assetClassOverride' | 'type' | 'symbol'>,
   assetClass: AssetClass
 ): boolean {
   return getEffectiveAssetClass(position) === assetClass;
 }
 
 export function isStablecoinPosition(
-  position: Pick<Position, 'assetClass' | 'type' | 'symbol'>
+  position: Pick<Position, 'assetClass' | 'assetClassOverride' | 'type' | 'symbol'>
 ): boolean {
   if (!isPositionInAssetClass(position, 'crypto')) return false;
   const categoryService = getCategoryService();
-  return categoryService.getSubCategory(position.symbol, position.type) === 'stablecoins';
+  const categoryInput = position.assetClassOverride ?? position.assetClass ?? position.type;
+  return categoryService.getSubCategory(position.symbol, categoryInput) === 'stablecoins';
 }
 
 export function buildManualAccountHoldings(positions: Position[]): Map<string, ManualAccountHoldings> {
@@ -41,6 +46,7 @@ export function buildManualAccountHoldings(positions: Position[]): Map<string, M
       hasAny: false,
       hasCash: false,
       hasEquity: false,
+      hasMetals: false,
       hasStablecoin: false,
       hasOther: false,
     };
@@ -52,6 +58,8 @@ export function buildManualAccountHoldings(positions: Position[]): Map<string, M
       current.hasCash = true;
     } else if (effectiveClass === 'equity') {
       current.hasEquity = true;
+    } else if (effectiveClass === 'metals') {
+      current.hasMetals = true;
     } else {
       current.hasOther = true;
     }
@@ -70,8 +78,9 @@ export function getManualAccountRole(flags?: ManualAccountHoldings): ManualAccou
   if (!flags || !flags.hasAny) return 'empty';
 
   const hasCashEquivalent = flags.hasCash || flags.hasStablecoin;
-  if (flags.hasEquity && hasCashEquivalent) return 'mixed';
-  if (flags.hasEquity) return 'brokerage';
+  const hasBrokerageAssets = flags.hasEquity || flags.hasMetals;
+  if (hasBrokerageAssets && hasCashEquivalent) return 'mixed';
+  if (hasBrokerageAssets) return 'brokerage';
   if (hasCashEquivalent) return 'cash';
   return 'other';
 }

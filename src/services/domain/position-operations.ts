@@ -6,7 +6,8 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import { Position, Transaction, ParsedPositionAction, AssetType, assetClassFromType } from '@/types';
+import { Position, Transaction, ParsedPositionAction, AssetType } from '@/types';
+import { getCategoryService } from './category-service';
 
 interface PositionOperationResult {
   success: boolean;
@@ -186,7 +187,7 @@ export function executeBuy(
 
   const newPosition: Omit<Position, 'addedAt' | 'updatedAt'> = {
     id: positionId,
-    assetClass: assetClassFromType(action.assetType),
+    assetClass: getCategoryService().getAssetClass(action.symbol, action.assetType),
     type: action.assetType,
     symbol: action.symbol,
     name: action.name || action.symbol,

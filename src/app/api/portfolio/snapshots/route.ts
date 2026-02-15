@@ -50,6 +50,7 @@ export async function POST() {
         totalValue: summary.totalValue,
         cryptoValue: summary.cryptoValue,
         equityValue: summary.equityValue,
+        metalsValue: summary.metalsValue,
         cashValue: summary.cashValue,
         otherValue: summary.otherValue,
       };

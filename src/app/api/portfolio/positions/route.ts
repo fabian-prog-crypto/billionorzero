@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { readDb, withDb } from '../db-store';
 import { calculateAllPositionsWithPrices } from '@/services/domain/portfolio-calculator';
-import { assetClassFromType, typeFromAssetClass } from '@/types';
+import { typeFromAssetClass } from '@/types';
+import { getCategoryService } from '@/services/domain/category-service';
 import type { Position, AssetClass } from '@/types';
 
 // GET /api/portfolio/positions - List positions with prices
 export async function GET(request: NextRequest) {
   const db = readDb();
+  const categoryService = getCategoryService();
   const url = request.nextUrl;
   const accountId = url.searchParams.get('accountId');
   const assetClass = url.searchParams.get('assetClass') as AssetClass | null;
@@ -20,7 +22,7 @@ export async function GET(request: NextRequest) {
 
   // Filters
   if (accountId) positions = positions.filter(p => p.accountId === accountId);
-  if (assetClass) positions = positions.filter(p => (p.assetClass ?? assetClassFromType(p.type)) === assetClass);
+  if (assetClass) positions = positions.filter(p => (p.assetClassOverride ?? p.assetClass ?? categoryService.getAssetClass(p.symbol, p.type)) === assetClass);
   if (type) positions = positions.filter(p => p.type === type);
   if (search) {
     const s = search.toLowerCase();
@@ -61,13 +63,14 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { symbol, amount, assetClass, type, name, price, costBasis, accountId, isDebt, chain, protocol } = body;
+    const { symbol, amount, assetClass, assetClassOverride, type, name, price, costBasis, accountId, isDebt, chain, protocol } = body;
 
     if (!symbol) return NextResponse.json({ error: 'symbol is required' }, { status: 400 });
     if (amount === undefined || amount === null) return NextResponse.json({ error: 'amount is required' }, { status: 400 });
 
     const now = new Date().toISOString();
-    const effectiveAssetClass = assetClass || (type ? assetClassFromType(type) : 'crypto');
+    const categoryService = getCategoryService();
+    const effectiveAssetClass = assetClassOverride || assetClass || (type ? categoryService.getAssetClass(symbol, type) : 'crypto');
     const effectiveType = type || typeFromAssetClass(effectiveAssetClass);
 
     const position: Position = {
@@ -76,6 +79,7 @@ export async function POST(request: NextRequest) {
       name: name || symbol.toUpperCase(),
       amount: Number(amount),
       assetClass: effectiveAssetClass,
+      assetClassOverride: assetClassOverride || undefined,
       type: effectiveType,
       costBasis: costBasis ? Number(costBasis) : (price ? Number(price) * Number(amount) : undefined),
       accountId,

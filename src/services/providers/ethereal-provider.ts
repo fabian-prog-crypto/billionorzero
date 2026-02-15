@@ -5,6 +5,7 @@
 
 import { Position } from '@/types';
 import { getEtherealApiClient, EtherealSubaccount } from '../api/ethereal-api';
+import { getCategoryService } from '@/services/domain/category-service';
 
 export interface EtherealPositionsResult {
   positions: Position[];
@@ -24,6 +25,7 @@ export class EtherealProvider {
     const positions: Position[] = [];
     const prices: Record<string, { price: number; symbol: string }> = {};
     let accountValue = 0;
+    const categoryService = getCategoryService();
 
     try {
       // Get all subaccounts for this wallet
@@ -113,7 +115,7 @@ export class EtherealProvider {
 
       positions.push({
         id: `${walletId}-ethereal-perp-${symbol}-${isShort ? 'short' : 'long'}-${subaccount.id.slice(0, 8)}`,
-        assetClass: 'crypto' as const,
+        assetClass: categoryService.getAssetClass(baseAsset, 'crypto'),
         type: 'crypto' as const,
         symbol: baseAsset,
         name: `${baseAsset} ${isShort ? 'Short' : 'Long'} (Ethereal)`,
@@ -206,7 +208,7 @@ export class EtherealProvider {
 
       positions.push({
         id: `${walletId}-ethereal-spot-${symbol}-${subaccount.id.slice(0, 8)}`,
-        assetClass: 'crypto' as const,
+        assetClass: categoryService.getAssetClass(symbol, 'crypto'),
         type: 'crypto' as const,
         symbol,
         name: `${symbol} (Ethereal${isStable ? ' Margin' : ' Spot'})`,
@@ -242,7 +244,7 @@ export class EtherealProvider {
 
         positions.push({
           id: `${walletId}-ethereal-margin-usdc-${subaccount.id.slice(0, 8)}`,
-          assetClass: 'crypto' as const,
+          assetClass: categoryService.getAssetClass('USDC', 'crypto'),
           type: 'crypto' as const,
           symbol: 'USDC',
           name: 'USDC Margin (Ethereal)',

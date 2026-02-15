@@ -21,6 +21,7 @@ vi.mock('@/services/providers', () => ({
   getPriceProvider: () => ({
     getCoinId: (symbol: string) => symbol.toLowerCase(),
     getDebankPriceKey: (symbol: string) => symbol.toLowerCase(),
+    hasKnownCryptoMapping: () => false,
   }),
 }))
 

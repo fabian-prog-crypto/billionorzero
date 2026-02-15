@@ -3,8 +3,8 @@
  * Hierarchical asset categorization for portfolio exposure analysis
  *
  * Structure:
- * - Main Categories: crypto, equities, cash, other
- * - Sub Categories: crypto (btc, eth, sol, stablecoins, tokens, perps), equities (stocks, etfs)
+ * - Main Categories: crypto, equities, metals, cash, other
+ * - Sub Categories: crypto (btc, eth, sol, stablecoins, tokens, perps), equities (stocks, etfs), metals (gold, silver, platinum, palladium, miners)
  * - Exposure Categories: More granular breakdown for crypto exposure (stablecoins, eth, defi, btc, rwa, sol, privacy, ai, tokens)
  */
 
@@ -13,14 +13,16 @@ import {
   SUBCATEGORY_COLORS as UI_SUBCATEGORY_COLORS,
   EXPOSURE_CATEGORY_CONFIG,
 } from '@/lib/colors';
+import type { AssetClass } from '@/types';
 
 // Main category types
-export type MainCategory = 'crypto' | 'equities' | 'cash' | 'other';
+export type MainCategory = 'crypto' | 'equities' | 'metals' | 'cash' | 'other';
 
 // Sub-category types
 export type CryptoSubCategory = 'btc' | 'eth' | 'sol' | 'stablecoins' | 'tokens' | 'perps';
 export type EquitiesSubCategory = 'stocks' | 'etfs';
-export type SubCategory = CryptoSubCategory | EquitiesSubCategory | 'none';
+export type MetalsSubCategory = 'gold' | 'silver' | 'platinum' | 'palladium' | 'miners';
+export type SubCategory = CryptoSubCategory | EquitiesSubCategory | MetalsSubCategory | 'none';
 
 // Exposure category types (more granular than sub-categories for crypto exposure analysis)
 // Perp positions are classified by their underlying asset (e.g., BTC perp -> BTC exposure)
@@ -30,6 +32,7 @@ export type ExposureCategoryType = 'stablecoins' | 'eth' | 'defi' | 'btc' | 'rwa
 export type AssetCategory =
   | 'crypto' | 'crypto_btc' | 'crypto_eth' | 'crypto_sol' | 'crypto_stablecoins' | 'crypto_tokens' | 'crypto_perps'
   | 'equities' | 'equities_stocks' | 'equities_etfs'
+  | 'metals' | 'metals_gold' | 'metals_silver' | 'metals_platinum' | 'metals_palladium' | 'metals_miners'
   | 'cash' | 'other';
 
 // Category hierarchy structure
@@ -240,10 +243,45 @@ export class CategoryService {
     'veur.as', 'meud.pa', 'lyxdax.de', 'exs1.de', 'c40.pa',
   ]);
 
+  // --- Metals (tokenized + ETFs/ETCs) ---
+  private metalsGold = new Set([
+    // Tokenized gold
+    'xaut', 'paxg', 'xau', 'tgold', 'dgld', 'pmgt', 'cache', 'cgo',
+    // Gold ETFs/ETCs
+    'gld', 'iau', 'gldm', 'sgol', 'phys', 'bar', 'aau', 'aaau',
+  ]);
+
+  private metalsSilver = new Set([
+    // Tokenized silver
+    'xag', 'xage',
+    // Silver ETFs/ETCs
+    'slv', 'sivr', 'pslv',
+  ]);
+
+  private metalsPlatinum = new Set([
+    // Platinum ETFs/ETCs
+    'pplt',
+    // Tokenized platinum (ISO code)
+    'xpt',
+  ]);
+
+  private metalsPalladium = new Set([
+    // Palladium ETFs/ETCs
+    'pall',
+    // Tokenized palladium (ISO code)
+    'xpd',
+  ]);
+
+  private metalsMiners = new Set([
+    // Mining ETFs
+    'gdx', 'gdxj', 'sil', 'silj', 'ring',
+  ]);
+
   // Main category colors
   private mainCategoryColors: Record<MainCategory, string> = {
     crypto: UI_CATEGORY_COLORS.crypto,
     equities: UI_CATEGORY_COLORS.equities,
+    metals: UI_CATEGORY_COLORS.metals,
     cash: UI_CATEGORY_COLORS.cash,
     other: UI_CATEGORY_COLORS.other,
   };
@@ -257,6 +295,7 @@ export class CategoryService {
   private mainCategoryLabels: Record<MainCategory, string> = {
     crypto: 'Crypto',
     equities: 'Equities',
+    metals: 'Metals',
     cash: 'Cash',
     other: 'Other',
   };
@@ -270,6 +309,11 @@ export class CategoryService {
     crypto_perps: 'Perps',
     equities_stocks: 'Stocks',
     equities_etfs: 'ETFs',
+    metals_gold: 'Gold',
+    metals_silver: 'Silver',
+    metals_platinum: 'Platinum',
+    metals_palladium: 'Palladium',
+    metals_miners: 'Miners',
   };
 
   // Exposure category configuration (more granular breakdown for crypto)
@@ -409,6 +453,30 @@ export class CategoryService {
   }
 
   /**
+   * Check if a symbol is a known metal (tokenized or ETF/ETC)
+   */
+  private isMetalSymbol(symbol: string): boolean {
+    const normalized = symbol.toLowerCase().trim();
+    return this.metalsGold.has(normalized) ||
+      this.metalsSilver.has(normalized) ||
+      this.metalsPlatinum.has(normalized) ||
+      this.metalsPalladium.has(normalized) ||
+      this.metalsMiners.has(normalized);
+  }
+
+  /**
+   * Resolve metal sub-category for a symbol
+   */
+  private getMetalSubCategory(symbol: string): MetalsSubCategory {
+    const normalized = symbol.toLowerCase().trim();
+    if (this.metalsGold.has(normalized)) return 'gold';
+    if (this.metalsSilver.has(normalized)) return 'silver';
+    if (this.metalsPlatinum.has(normalized)) return 'platinum';
+    if (this.metalsPalladium.has(normalized)) return 'palladium';
+    return 'miners';
+  }
+
+  /**
    * Get the main category for an asset
    * Accepts both legacy AssetType ('crypto'|'stock'|'etf'|'cash'|'manual')
    * and new AssetClass ('crypto'|'equity'|'cash'|'other') values.
@@ -422,6 +490,18 @@ export class CategoryService {
     // Check for cash symbol patterns (e.g., "CASH_CHF_123456")
     if (symbol.toLowerCase().startsWith('cash_')) {
       return 'cash';
+    }
+
+    // Metals positions (explicit class)
+    if (assetType === 'metals') {
+      return 'metals';
+    }
+
+    const normalizedSymbol = symbol.toLowerCase().trim();
+
+    // Metals positions (symbol-based override)
+    if (this.isMetalSymbol(normalizedSymbol)) {
+      return 'metals';
     }
 
     // Stock/ETF positions (equities) - legacy types
@@ -445,7 +525,6 @@ export class CategoryService {
     }
 
     // Manual/untyped positions - try to categorize by symbol
-    const normalizedSymbol = symbol.toLowerCase().trim();
 
     // Check if it's a fiat currency (for bank accounts)
     if (this.fiatCurrencies.has(normalizedSymbol)) {
@@ -474,6 +553,11 @@ export class CategoryService {
    */
   getSubCategory(symbol: string, assetType?: string): SubCategory {
     const normalizedSymbol = symbol.toLowerCase().trim();
+
+    // Metals sub-categories
+    if (assetType === 'metals' || this.getMainCategory(symbol, assetType) === 'metals') {
+      return this.getMetalSubCategory(normalizedSymbol);
+    }
 
     // Crypto sub-categories
     if (assetType === 'crypto' || this.getMainCategory(symbol, assetType) === 'crypto') {
@@ -608,6 +692,27 @@ export class CategoryService {
   }
 
   /**
+   * Get asset class (storage-level classification) from symbol + type.
+   * Maps main categories to AssetClass values.
+   */
+  getAssetClass(symbol: string, assetType?: string): AssetClass {
+    const main = this.getMainCategory(symbol, assetType);
+    switch (main) {
+      case 'crypto':
+        return 'crypto';
+      case 'equities':
+        return 'equity';
+      case 'metals':
+        return 'metals';
+      case 'cash':
+        return 'cash';
+      case 'other':
+      default:
+        return 'other';
+    }
+  }
+
+  /**
    * Get full category hierarchy
    */
   getCategoryHierarchy(symbol: string, assetType?: string): CategoryHierarchy {
@@ -664,7 +769,7 @@ export class CategoryService {
    * Get all main categories
    */
   getMainCategories(): MainCategory[] {
-    return ['crypto', 'equities', 'cash', 'other'];
+    return ['crypto', 'equities', 'metals', 'cash', 'other'];
   }
 
   /**
@@ -676,6 +781,8 @@ export class CategoryService {
         return ['btc', 'eth', 'sol', 'stablecoins', 'tokens', 'perps'];
       case 'equities':
         return ['stocks', 'etfs'];
+      case 'metals':
+        return ['gold', 'silver', 'platinum', 'palladium', 'miners'];
       default:
         return [];
     }
@@ -685,7 +792,7 @@ export class CategoryService {
    * Get all display categories (main categories for overview)
    */
   getDisplayCategories(): MainCategory[] {
-    return ['crypto', 'equities', 'cash', 'other'];
+    return ['crypto', 'equities', 'metals', 'cash', 'other'];
   }
 
   /**
@@ -695,6 +802,7 @@ export class CategoryService {
     return [
       'crypto_btc', 'crypto_eth', 'crypto_sol', 'crypto_stablecoins', 'crypto_tokens', 'crypto_perps',
       'equities_stocks', 'equities_etfs',
+      'metals_gold', 'metals_silver', 'metals_platinum', 'metals_palladium', 'metals_miners',
     ];
   }
 
@@ -820,6 +928,10 @@ export const CATEGORY_COLORS = getCategoryService().getCategoryColors();
 
 export function getAssetCategory(symbol: string, assetType?: string): AssetCategory {
   return getCategoryService().getAssetCategory(symbol, assetType);
+}
+
+export function getAssetClass(symbol: string, assetType?: string): AssetClass {
+  return getCategoryService().getAssetClass(symbol, assetType);
 }
 
 export function getCategoryLabel(category: AssetCategory): string {

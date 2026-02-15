@@ -47,7 +47,8 @@ export default function CategoryView({
   // Filter by category
   const categoryPositions = useMemo(() => {
     return allPositions.filter((p) => {
-      const mainCat = categoryService.getMainCategory(p.symbol, p.type);
+      const categoryInput = p.assetClassOverride ?? p.assetClass ?? p.type;
+      const mainCat = categoryService.getMainCategory(p.symbol, categoryInput);
       return mainCat === category;
     });
   }, [allPositions, category, categoryService]);

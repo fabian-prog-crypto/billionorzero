@@ -22,6 +22,7 @@ vi.mock('@/services/providers', () => ({
   getPriceProvider: () => ({
     getCoinId: (symbol: string) => symbol.toLowerCase(),
     getDebankPriceKey: (symbol: string) => symbol.toLowerCase(),
+    hasKnownCryptoMapping: () => false,
   }),
 }))
 
@@ -44,6 +45,7 @@ import {
   extractAccountName,
   calculateCashBreakdown,
   calculateEquitiesBreakdown,
+  calculateMetalsBreakdown,
   calculateAssetSummary,
   calculateTotalNAV,
   DUST_THRESHOLD,
@@ -1716,6 +1718,28 @@ describe('calculateEquitiesBreakdown', () => {
     const result = calculateEquitiesBreakdown(assets)
     expect(result.total).toBe(0)
     expect(result.stocks.value).toBe(0) // clamped via Math.max
+  })
+})
+
+// ─── asset class overrides ──────────────────────────────────────────────────
+
+describe('asset class overrides', () => {
+  it('routes overridden assets into metals breakdown', () => {
+    const assets: AssetWithPrice[] = [
+      makeAssetWithPrice({
+        symbol: 'AAA',
+        name: 'Test Asset',
+        type: 'stock',
+        assetClass: 'equity',
+        assetClassOverride: 'metals',
+        amount: 10,
+        value: 1000,
+      }),
+    ]
+
+    const metals = calculateMetalsBreakdown(assets)
+    expect(metals.total).toBe(1000)
+    expect(metals.miners.value).toBe(1000)
   })
 })
 

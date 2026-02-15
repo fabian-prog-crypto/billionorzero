@@ -4,6 +4,7 @@
  */
 
 import type { Position, ParsedPositionAction } from '@/types';
+import { getEffectiveAssetClass } from './account-role-service';
 import { resolveAccountFromArgs } from './command-account-resolver';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -106,9 +107,11 @@ function resolveSellPositionMatch(
   }
 
   // For equity sells, prefer an account-linked position so settlement can update that account's cash.
-  const equityLinked = candidates.filter(
-    (p) => !!p.accountId && (p.type === 'stock' || p.type === 'etf' || p.assetClass === 'equity')
-  );
+  const equityLinked = candidates.filter((p) => {
+    if (!p.accountId) return false;
+    const effectiveClass = getEffectiveAssetClass(p);
+    return p.type === 'stock' || p.type === 'etf' || effectiveClass === 'equity' || effectiveClass === 'metals';
+  });
   if (equityLinked.length === 1) return equityLinked[0];
 
   const linked = candidates.filter((p) => !!p.accountId);

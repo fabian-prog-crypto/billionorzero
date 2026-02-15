@@ -173,9 +173,10 @@ export default function PositionsPage() {
       const exposureCategories = Object.keys(categoryService.getAllExposureCategoryConfigs());
 
       filtered = filtered.filter((p) => {
-        const mainCat = categoryService.getMainCategory(p.symbol, p.type);
-        const subCat = categoryService.getSubCategory(p.symbol, p.type);
-        const exposureCat = categoryService.getExposureCategory(p.symbol, p.type);
+        const categoryInput = p.assetClassOverride ?? p.assetClass ?? p.type;
+        const mainCat = categoryService.getMainCategory(p.symbol, categoryInput);
+        const subCat = categoryService.getSubCategory(p.symbol, categoryInput);
+        const exposureCat = categoryService.getExposureCategory(p.symbol, categoryInput);
         const isOnPerpProtocol = p.protocol && isPerpProtocol(p.protocol);
 
         // Check each active filter - position matches if ANY filter matches

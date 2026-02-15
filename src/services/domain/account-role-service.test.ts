@@ -2,6 +2,7 @@ import { makeCashPosition, makeCryptoPosition, makeStockPosition } from '@/__tes
 import type { Position } from '@/types'
 import {
   buildManualAccountHoldings,
+  getEffectiveAssetClass,
   getManualAccountRole,
   isManualAccountInScope,
   isPositionInAssetClass,
@@ -25,6 +26,12 @@ describe('account-role-service', () => {
     expect(isPositionInAssetClass(cash, 'equity')).toBe(false)
   })
 
+  it('prefers assetClassOverride for classification', () => {
+    const overridden = makeCryptoPosition({ assetClassOverride: 'metals' })
+    expect(getEffectiveAssetClass(overridden)).toBe('metals')
+    expect(isPositionInAssetClass(overridden, 'metals')).toBe(true)
+  })
+
   it('builds manual holdings with stablecoin and equity flags', () => {
     const positions: Position[] = [
       makeStockPosition({ accountId: 'a-1' }),
@@ -37,6 +44,7 @@ describe('account-role-service', () => {
     const stableOnly = holdings.get('a-2')
 
     expect(mixed?.hasEquity).toBe(true)
+    expect(mixed?.hasMetals).toBe(false)
     expect(mixed?.hasCash).toBe(true)
     expect(getManualAccountRole(mixed)).toBe('mixed')
 
@@ -55,6 +63,7 @@ describe('account-role-service', () => {
       hasAny: true,
       hasCash: true,
       hasEquity: true,
+      hasMetals: false,
       hasStablecoin: false,
       hasOther: false,
     }

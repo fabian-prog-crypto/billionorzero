@@ -38,6 +38,7 @@ export default function CryptoAssetsPage() {
   const store = usePortfolioStore();
   const { positions, prices, customPrices, fxRates, hideBalances, hideDust, toggleHideDust, removePosition } = store;
   const categoryService = getCategoryService();
+  const getCategoryInput = (asset: AssetWithPrice) => asset.assetClassOverride ?? asset.assetClass ?? asset.type;
 
   // Get exposure category options from service
   const filterOptions = useMemo(() => {
@@ -66,7 +67,7 @@ export default function CryptoAssetsPage() {
     // Filter by category (multi-select - 'all' means show all)
     if (!selectedCategories.has('all')) {
       filtered = filtered.filter((p) => {
-        const exposureCat = categoryService.getExposureCategory(p.symbol, p.type);
+        const exposureCat = categoryService.getExposureCategory(p.symbol, getCategoryInput(p));
         return selectedCategories.has(exposureCat);
       });
     }

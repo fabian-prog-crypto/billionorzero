@@ -58,7 +58,8 @@ export default function EquitiesPositionsPage() {
     // Filter by type
     if (typeFilter !== 'all') {
       filtered = filtered.filter((p) => {
-        const subCat = categoryService.getSubCategory(p.symbol, p.type);
+        const categoryInput = p.assetClassOverride ?? p.assetClass ?? p.type;
+        const subCat = categoryService.getSubCategory(p.symbol, categoryInput);
         return typeFilter === 'etfs' ? subCat === 'etfs' : subCat !== 'etfs';
       });
     }
@@ -149,7 +150,8 @@ export default function EquitiesPositionsPage() {
   const exportCSV = () => {
     const headers = ['Symbol', 'Name', 'Type', 'Amount', 'Price', 'Value', '24h Change', 'Allocation'];
     const rows = sortedPositions.map((p) => {
-      const subCat = categoryService.getSubCategory(p.symbol, p.type);
+      const categoryInput = p.assetClassOverride ?? p.assetClass ?? p.type;
+      const subCat = categoryService.getSubCategory(p.symbol, categoryInput);
       return [
         p.symbol.toUpperCase(),
         p.name,
@@ -301,7 +303,8 @@ export default function EquitiesPositionsPage() {
             </thead>
             <tbody>
               {sortedPositions.map((position) => {
-                const subCat = categoryService.getSubCategory(position.symbol, position.type);
+                const categoryInput = position.assetClassOverride ?? position.assetClass ?? position.type;
+                const subCat = categoryService.getSubCategory(position.symbol, categoryInput);
                 const isETF = subCat === 'etfs';
 
                 return (
