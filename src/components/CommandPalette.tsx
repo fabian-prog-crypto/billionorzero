@@ -2,16 +2,14 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Command } from 'cmdk';
-import { MessageSquare, X, AlertCircle, Settings, Check, CornerDownLeft } from 'lucide-react';
+import { MessageSquare, X, AlertCircle, Settings, Check } from 'lucide-react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
 import { useCommandPalette } from '@/hooks/useCommandPalette';
 import { QueryResultView } from '@/components/CommandResult';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import { calculateAllPositionsWithPrices } from '@/services/domain/portfolio-calculator';
 import ConfirmPositionActionModal from '@/components/modals/ConfirmPositionActionModal';
-import { getSuggestions, isPartialCommand } from '@/commands/suggestions';
-import { formatDistanceToNow } from 'date-fns';
+import { isPartialCommand } from '@/commands/suggestions';
 
 interface CommandPaletteProps {
   isOpen: boolean;
@@ -38,7 +36,6 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
     cancelMutation,
     clearError,
     reset,
-    recentCommands,
     pendingAction,
     setPendingAction,
   } = useCommandPalette();
@@ -53,7 +50,6 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
     [positions, prices, customPrices, fxRates]
   );
 
-  const pathname = usePathname();
   const inputRef = useRef<HTMLInputElement>(null);
   const errorTimerRef = useRef<NodeJS.Timeout | null>(null);
   const successTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -62,9 +58,7 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
 
   // cmdk search state (separate from `text` which is the value sent to LLM)
   const [search, setSearch] = useState('');
-
-  const suggestionGroups = useMemo(() => getSuggestions(pathname), [pathname]);
-  const recentEntries = useMemo(() => recentCommands.slice(0, 3), [recentCommands]);
+  usePathname();
 
   const animateClose = useCallback(() => {
     if (closingRef.current) return;
@@ -166,13 +160,6 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
     }
   }, [setText, submitText]);
 
-  // Handle recent command selection
-  const handleRecentSelect = useCallback((commandText: string) => {
-    setText(commandText);
-    setSearch('');
-    submitText(commandText);
-  }, [setText, submitText]);
-
   // Handle Enter key in input -- submit to LLM
   // stopPropagation prevents cmdk from also firing onSelect on the highlighted item
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -191,8 +178,8 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
     if (!isLoading) animateClose();
   };
 
-  const showSuggestions = mode === 'commands' || mode === 'error';
-  const showExamples = showSuggestions && !search && !isLoading && !queryResult && !llmResponse;
+  const showCommands = mode === 'commands' || mode === 'error';
+  const showExamples = showCommands && !search && !isLoading && !queryResult && !llmResponse;
   const inputDisabled = isLoading || !!queryResult || !!llmResponse;
 
   // When palette is closed but pendingAction exists, render only the modal
@@ -238,7 +225,7 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
           ) : (
             <Command
               label="Command palette"
-              shouldFilter={showSuggestions}
+              shouldFilter={false}
               loop
             >
               {/* Input row */}
@@ -386,57 +373,10 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
                 </div>
               )}
 
-              {/* Suggestion list */}
-              {showSuggestions && (
-                <Command.List>
-                  {/* Recent commands */}
-                  {recentEntries.length > 0 && (
-                    <Command.Group heading="RECENT">
-                      {recentEntries.map((entry) => (
-                        <Command.Item
-                          key={`recent-${entry.timestamp}`}
-                          value={`recent: ${entry.text}`}
-                          keywords={[entry.text]}
-                          onSelect={() => handleRecentSelect(entry.text)}
-                        >
-                          <CornerDownLeft className="w-4 h-4 text-[var(--foreground-subtle)] flex-shrink-0" />
-                          <span className="flex-1 truncate">{entry.text}</span>
-                          <span className="text-[11px] text-[var(--foreground-subtle)] flex-shrink-0">
-                            {formatDistanceToNow(
-                              new Date(entry.timestamp),
-                              { addSuffix: false }
-                            )}
-                          </span>
-                        </Command.Item>
-                      ))}
-                    </Command.Group>
-                  )}
-
-                  {/* Suggestion categories */}
-                  {suggestionGroups.map((group) => (
-                    <Command.Group key={group.category} heading={group.category}>
-                      {group.items.map((item) => {
-                        const IconComponent = item.icon;
-                        return (
-                          <Command.Item
-                            key={item.id}
-                            value={item.label}
-                            keywords={[...item.keywords, item.text]}
-                            onSelect={() => handleSuggestionSelect(item.text)}
-                          >
-                            <IconComponent className="w-4 h-4 flex-shrink-0" />
-                            <span className="flex-1">{item.label}</span>
-                            <span className="cmdk-category-tag">{item.category}</span>
-                          </Command.Item>
-                        );
-                      })}
-                    </Command.Group>
-                  ))}
-
-                  <Command.Empty className="px-4 py-6 text-center text-[13px] text-[var(--foreground-muted)]">
-                    Press Enter to send to AI
-                  </Command.Empty>
-                </Command.List>
+              {showCommands && !showExamples && (
+                <div className="px-4 py-6 text-center text-[13px] text-[var(--foreground-muted)]">
+                  Press Enter to send to AI
+                </div>
               )}
             </Command>
           )}

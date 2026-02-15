@@ -20,6 +20,10 @@ CMD-K is now deterministic and should remain fast. This doc proposes UX/UI upgra
 4. **Performance first**: no heavier than current rendering.
 
 ## Proposed UX Changes
+### Suggestions (Chips Only)
+- Remove the long suggestion list for now.
+- Use a compact row of example chips as the primary entry point.
+- Keep “Press Enter to send to AI” as the only helper when typing.
 ### Recents
 - Show only last 3 commands in `RECENT` group.
 - If fewer than 3 exist, show what’s available; never show a blank group.

@@ -33,56 +33,27 @@ test.describe('Command Palette', () => {
     await expect(page.locator('.command-palette-panel')).not.toBeVisible();
   });
 
-  test('shows suggestion groups when empty', async ({ seededPage: page }) => {
+  test('shows example chips when empty', async ({ seededPage: page }) => {
     await page.keyboard.press(CMD_K);
     await expect(page.locator('.command-palette-panel')).toBeVisible();
 
-    // Check suggestion group headings are visible (only TRADE and QUERY)
-    await expect(page.locator('[cmdk-group-heading]', { hasText: 'TRADE' })).toBeVisible();
-    await expect(page.locator('[cmdk-group-heading]', { hasText: 'QUERY' })).toBeVisible();
+    const examples = page.locator('.cmdk-examples');
+    await expect(examples).toBeVisible({ timeout: 3000 });
+    await expect(examples.locator('text=Exposure % USD')).toBeVisible();
   });
 
-  test('partial command → complete → submit → modal opens', async ({ seededPage: page }) => {
-    // Full journey: click partial suggestion → type rest → Enter → confirmation modal
+  test('clicking an example chip submits to AI', async ({ seededPage: page }) => {
     await mockChatSuccess(page, {
-      response: '',
+      response: 'USD exposure is 42.0%.',
       toolCalls: [],
       mutations: false,
-      pendingAction: {
-        action: 'buy',
-        symbol: 'ETH',
-        name: 'Ethereum',
-        assetType: 'crypto',
-        amount: 2,
-        pricePerUnit: 3500,
-        matchedPositionId: 'test-eth-1',
-        confidence: 0.95,
-        summary: 'Buy 2 ETH at $3,500',
-      },
     });
 
     await page.keyboard.press(CMD_K);
-    const input = page.locator('[cmdk-input]');
-
-    // Click "Buy Position" partial suggestion — pre-fills "Buy "
-    const buyItem = page.locator('[cmdk-item]', { hasText: 'Buy Position' });
-    await expect(buyItem).toBeVisible();
-    await buyItem.click();
-    await expect(input).toHaveValue('Buy ');
-    await expect(input).toBeFocused();
-
-    // Complete the command
-    await page.keyboard.type('2 ETH at 3500');
-    await expect(input).toHaveValue('Buy 2 ETH at 3500');
-
-    // Submit
-    await page.keyboard.press('Enter');
-
-    // Confirmation modal should open (palette closes, modal takes over)
-    await expect(page.locator('.modal-content')).toBeVisible({ timeout: 10000 });
-    await expect(page.locator('text=Buy 2 ETH at $3,500')).toBeVisible();
-    // Modal should show the pre-filled amount
-    await expect(page.locator('text=Confirm')).toBeVisible();
+    const examples = page.locator('.cmdk-examples');
+    await expect(examples).toBeVisible();
+    await examples.locator('text=Exposure % USD').click();
+    await expect(page.locator('text=USD exposure is 42.0%.')).toBeVisible({ timeout: 10000 });
   });
 
   test('submit query → see response → "Ask another question" → submit again', async ({ seededPage: page }) => {
@@ -124,10 +95,10 @@ test.describe('Command Palette', () => {
     // Click "Ask another question" to reset
     await page.locator('text=Ask another question').click();
 
-    // Input should be cleared and re-focused, suggestions visible again
+    // Input should be cleared and re-focused, examples visible again
     const freshInput = page.locator('[cmdk-input]');
     await expect(freshInput).toBeFocused({ timeout: 3000 });
-    await expect(page.locator('[cmdk-group-heading]', { hasText: 'TRADE' })).toBeVisible();
+    await expect(page.locator('.cmdk-examples')).toBeVisible();
 
     // Submit second query
     await freshInput.fill('What is my biggest position?');
@@ -282,9 +253,9 @@ test.describe('Command Palette', () => {
     await input.fill('Show everything');
     await expect(page.locator('text=Internal server error')).not.toBeVisible();
 
-    // After clearing text, suggestions should be visible (error mode shows suggestions)
+    // After clearing text, examples should be visible (error mode shows commands)
     await input.fill('');
-    await expect(page.locator('[cmdk-group-heading]', { hasText: 'TRADE' })).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('.cmdk-examples')).toBeVisible({ timeout: 3000 });
     await input.fill('Show everything');
 
     // Submit retry
@@ -313,25 +284,18 @@ test.describe('Command Palette', () => {
     // Press Escape — should go back to command mode (not close palette)
     await page.keyboard.press('Escape');
 
-    // Palette should still be open with suggestions visible
+    // Palette should still be open with examples visible
     await expect(page.locator('.command-palette-panel')).toBeVisible();
-    await expect(page.locator('[cmdk-group-heading]', { hasText: 'TRADE' })).toBeVisible();
+    await expect(page.locator('.cmdk-examples')).toBeVisible();
 
     // LLM response should be gone
     await expect(page.locator('text=You have 1.5 BTC and 10 ETH.')).not.toBeVisible();
   });
 
-  test('suggestion items show icons and category tags', async ({ seededPage: page }) => {
+  test('example chips remain visible on open', async ({ seededPage: page }) => {
     await page.keyboard.press(CMD_K);
     await expect(page.locator('.command-palette-panel')).toBeVisible();
-
-    // Check that suggestion items have icons (svg elements)
-    const buyItem = page.locator('[cmdk-item]', { hasText: 'Buy Position' });
-    await expect(buyItem).toBeVisible();
-    await expect(buyItem.locator('svg')).toBeVisible();
-
-    // Check that category tags are rendered
-    await expect(buyItem.locator('.cmdk-category-tag')).toHaveText('TRADE');
+    await expect(page.locator('.cmdk-examples')).toBeVisible();
   });
 });
 
@@ -707,46 +671,6 @@ test.describe('CMD-K Commands — Mutations (Confirmation Flow)', () => {
 // ─── Complex User Journey E2E Tests ─────────────────────────────────────────
 
 test.describe('CMD-K Complex Journeys', () => {
-  test('recent commands: submit query → reopen → recent appears → click re-submits', async ({ seededPage: page }) => {
-    let callCount = 0;
-    await page.route('**/api/chat', async (route) => {
-      callCount++;
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          response: `Response #${callCount}: Exposure Long $100K, Short $0.`,
-          toolCalls: [],
-          mutations: false,
-        }),
-      });
-    });
-
-    // Step 1: Submit a command to generate a recent entry
-    await page.keyboard.press(CMD_K);
-    const input = page.locator('[cmdk-input]');
-    await input.fill('Show my exposure breakdown');
-    await page.keyboard.press('Enter');
-    await expect(page.locator('text=Response #1: Exposure Long $100K')).toBeVisible({ timeout: 10000 });
-
-    // Step 2: Close palette
-    await page.keyboard.press('Escape'); // back to commands
-    await page.keyboard.press('Escape'); // close palette
-    await expect(page.locator('.command-palette-panel')).not.toBeVisible({ timeout: 2000 });
-
-    // Step 3: Reopen — recent command should appear in RECENT group
-    await page.keyboard.press(CMD_K);
-    await expect(page.locator('[cmdk-group-heading]', { hasText: 'RECENT' })).toBeVisible({ timeout: 5000 });
-    const recentItem = page.locator('[cmdk-item]', { hasText: 'Show my exposure breakdown' });
-    await expect(recentItem).toBeVisible();
-
-    // Step 4: Click recent command — should submit directly to LLM
-    await recentItem.click();
-
-    // Should get the second response
-    await expect(page.locator('text=Response #2: Exposure Long $100K')).toBeVisible({ timeout: 10000 });
-    expect(callCount).toBe(2);
-  });
 
   test('confirmation modal cancel closes cleanly without executing', async ({ seededPage: page }) => {
     await mockChatSuccess(page, {
@@ -786,7 +710,7 @@ test.describe('CMD-K Complex Journeys', () => {
     // Should be able to reopen CMD-K cleanly after cancel
     await page.keyboard.press(CMD_K);
     await expect(page.locator('.command-palette-panel')).toBeVisible();
-    await expect(page.locator('[cmdk-group-heading]', { hasText: 'TRADE' })).toBeVisible();
+    await expect(page.locator('.cmdk-examples')).toBeVisible();
   });
 
   test('full buy flow: CMD-K → modal pre-fills fields → execution preview → confirm closes', async ({ seededPage: page }) => {
@@ -846,31 +770,6 @@ test.describe('CMD-K Complex Journeys', () => {
   // E2E page navigation beyond / times out in dev mode (first-time page compilation).
   test.skip('contextual boosting: page-specific suggestion order', () => {});
 
-  test('fuzzy filter: multiple rounds of typing, clearing, retyping', async ({ seededPage: page }) => {
-    await page.keyboard.press(CMD_K);
-    const input = page.locator('[cmdk-input]');
-    await expect(input).toBeVisible({ timeout: 5000 });
-
-    // Round 1: type "expos" — should show "Exposure Breakdown"
-    await input.fill('expos');
-    await expect(page.locator('[cmdk-item]', { hasText: 'Exposure' }).first()).toBeVisible({ timeout: 3000 });
-
-    // Round 2: clear and type "debt" — should show "Debt Summary"
-    await input.fill('');
-    await expect(page.locator('[cmdk-group-heading]', { hasText: 'TRADE' })).toBeVisible({ timeout: 3000 });
-    await input.fill('debt');
-    await expect(page.locator('[cmdk-item]', { hasText: 'Debt Summary' })).toBeVisible({ timeout: 3000 });
-
-    // Round 3: clear — all suggestion groups return
-    await input.fill('');
-    await expect(page.locator('[cmdk-group-heading]', { hasText: 'TRADE' })).toBeVisible({ timeout: 3000 });
-    await expect(page.locator('[cmdk-group-heading]', { hasText: 'QUERY' })).toBeVisible();
-
-    // Round 4: type gibberish — empty state shows
-    await input.fill('zzzqqq999');
-    await expect(page.locator('text=Press Enter to send to AI')).toBeVisible({ timeout: 3000 });
-  });
-
   test('keyboard-only full workflow: Cmd+K → type → Enter → response', async ({ seededPage: page }) => {
     await mockChatSuccess(page, {
       response: 'BTC is 80.7% of your portfolio. Concentration risk: HIGH.',
@@ -897,30 +796,13 @@ test.describe('CMD-K Complex Journeys', () => {
     // Press Escape to go back to command mode
     await page.keyboard.press('Escape');
 
-    // Suggestions visible again, input re-focused
-    await expect(page.locator('[cmdk-group-heading]', { hasText: 'TRADE' })).toBeVisible();
+    // Examples visible again, input re-focused
+    await expect(page.locator('.cmdk-examples')).toBeVisible();
     await expect(page.locator('[cmdk-input]')).toBeFocused({ timeout: 3000 });
 
     // Press Escape again to close palette entirely
     await page.keyboard.press('Escape');
     await expect(page.locator('.command-palette-panel')).not.toBeVisible({ timeout: 2000 });
-  });
-
-  test('suggestion items show icons and category tags', async ({ seededPage: page }) => {
-    await page.keyboard.press(CMD_K);
-    await expect(page.locator('.command-palette-panel')).toBeVisible();
-
-    // Check that suggestion items have icons (svg elements)
-    const buyItem = page.locator('[cmdk-item]', { hasText: 'Buy Position' });
-    await expect(buyItem).toBeVisible();
-    await expect(buyItem.locator('svg')).toBeVisible();
-
-    // Check that category tags are rendered
-    await expect(buyItem.locator('.cmdk-category-tag')).toHaveText('TRADE');
-
-    // Verify QUERY category tag
-    const topPositionsItem = page.locator('[cmdk-item]', { hasText: 'Top Positions' });
-    await expect(topPositionsItem.locator('.cmdk-category-tag')).toHaveText('QUERY');
   });
 
   test('example prompts appear on open', async ({ seededPage: page }) => {
@@ -963,27 +845,6 @@ test.describe('CMD-K Complex Journeys', () => {
     await expect(page.locator('text=Delayed response arrived.')).toBeVisible({ timeout: 10000 });
   });
 
-  test('pointer selection + click sends suggestion text to LLM', async ({ seededPage: page }) => {
-    await mockChatSuccess(page, {
-      response: 'Leverage ratio: 1.0x. No margin positions detected.',
-      toolCalls: [],
-      mutations: false,
-    });
-
-    await page.keyboard.press(CMD_K);
-    await expect(page.locator('[cmdk-list]')).toBeVisible();
-
-    // Hover over "Leverage & Risk" to select it
-    const leverageItem = page.locator('[cmdk-item]', { hasText: 'Leverage & Risk' });
-    await leverageItem.hover();
-    await expect(leverageItem).toHaveAttribute('data-selected', 'true', { timeout: 2000 });
-
-    // Click it — should submit to LLM
-    await leverageItem.click();
-
-    // LLM response should appear
-    await expect(page.locator('text=Leverage ratio: 1.0x')).toBeVisible({ timeout: 10000 });
-  });
 });
 
 // ─── Natural Language Variations ────────────────────────────────────────────
@@ -1527,230 +1388,5 @@ test.describe('CMD-K Number Consistency', () => {
     const modal = page.locator('.modal-content');
     await expect(modal).toBeVisible({ timeout: 10000 });
     await expect(page.locator('text=Set BTC price to $70000')).toBeVisible();
-  });
-});
-
-// ─── Click Every Suggestion ─────────────────────────────────────────────────
-
-test.describe('CMD-K — Click Every Suggestion', () => {
-  // ─── TRADE suggestions (partial → complete → submit) ────────────────────
-
-  test('click "Buy Position" → complete → submit → modal', async ({ seededPage: page }) => {
-    await mockChatSuccess(page, {
-      response: '',
-      toolCalls: [],
-      mutations: false,
-      pendingAction: {
-        action: 'buy',
-        symbol: 'ETH',
-        name: 'ETH',
-        assetType: 'crypto',
-        amount: 2,
-        pricePerUnit: 3500,
-        confidence: 0.9,
-        summary: 'Buy 2 ETH at $3500.00',
-      },
-    });
-
-    await page.keyboard.press(CMD_K);
-    const buyItem = page.locator('[cmdk-item]', { hasText: 'Buy Position' });
-    await buyItem.click();
-    const input = page.locator('[cmdk-input]');
-    await expect(input).toHaveValue('Buy ');
-    await input.click();
-    await expect(input).toBeFocused();
-    await page.keyboard.type('2 ETH at 3500');
-    await page.keyboard.press('Enter');
-    await expect(page.locator('.modal-content')).toBeVisible({ timeout: 10000 });
-  });
-
-  test('click "Sell Position" → complete → submit → modal', async ({ seededPage: page }) => {
-    await mockChatSuccess(page, {
-      response: '',
-      toolCalls: [],
-      mutations: false,
-      pendingAction: {
-        action: 'sell_partial',
-        symbol: 'ETH',
-        assetType: 'crypto',
-        sellPercent: 50,
-        matchedPositionId: 'test-eth-1',
-        confidence: 0.9,
-        summary: 'Sell 50% of ETH',
-      },
-    });
-
-    await page.keyboard.press(CMD_K);
-    const sellItem = page.locator('[cmdk-item]', { hasText: 'Sell Position' });
-    await sellItem.click();
-    const input = page.locator('[cmdk-input]');
-    await expect(input).toHaveValue('Sell ');
-    await input.click();
-    await expect(input).toBeFocused();
-    await page.keyboard.type('half my ETH');
-    await page.keyboard.press('Enter');
-    await expect(page.locator('.modal-content')).toBeVisible({ timeout: 10000 });
-  });
-
-  test('click "Add Cash" → complete → submit → modal', async ({ seededPage: page }) => {
-    await mockChatSuccess(page, {
-      response: '',
-      toolCalls: [],
-      mutations: false,
-      pendingAction: {
-        action: 'add_cash',
-        symbol: 'EUR',
-        assetType: 'cash',
-        amount: 5000,
-        currency: 'EUR',
-        confidence: 0.9,
-        summary: 'Add 5000 EUR',
-      },
-    });
-
-    await page.keyboard.press(CMD_K);
-    const addCashItem = page.locator('[cmdk-item]', { hasText: 'Add Cash' });
-    await addCashItem.click();
-    const input = page.locator('[cmdk-input]');
-    await expect(input).toHaveValue('Add cash ');
-    await input.click();
-    await expect(input).toBeFocused();
-    await page.keyboard.type('5000 EUR');
-    await page.keyboard.press('Enter');
-    await expect(page.locator('.modal-content')).toBeVisible({ timeout: 10000 });
-  });
-
-  test('click "Update Position" → complete → submit → modal', async ({ seededPage: page }) => {
-    await mockChatSuccess(page, {
-      response: '',
-      toolCalls: [],
-      mutations: false,
-      pendingAction: {
-        action: 'update_position',
-        symbol: 'BTC',
-        assetType: 'crypto',
-        amount: 2,
-        matchedPositionId: 'test-btc-1',
-        confidence: 0.9,
-        summary: 'Update BTC position',
-      },
-    });
-
-    await page.keyboard.press(CMD_K);
-    const updateItem = page.locator('[cmdk-item]', { hasText: 'Update Position' });
-    await updateItem.click();
-    const input = page.locator('[cmdk-input]');
-    await expect(input).toHaveValue('Update ');
-    await input.click();
-    await expect(input).toBeFocused();
-    await page.keyboard.type('BTC to 2');
-    await page.keyboard.press('Enter');
-    await expect(page.locator('.modal-content')).toBeVisible({ timeout: 10000 });
-  });
-
-  test('click "Remove Position" → complete → submit → modal', async ({ seededPage: page }) => {
-    await mockChatSuccess(page, {
-      response: '',
-      toolCalls: [],
-      mutations: false,
-      pendingAction: {
-        action: 'remove',
-        symbol: 'DOGE',
-        assetType: 'crypto',
-        confidence: 0.9,
-        summary: 'Remove DOGE from portfolio',
-      },
-    });
-
-    await page.keyboard.press(CMD_K);
-    const removeItem = page.locator('[cmdk-item]', { hasText: 'Remove Position' });
-    await removeItem.click();
-    const input = page.locator('[cmdk-input]');
-    await expect(input).toHaveValue('Remove ');
-    await input.click();
-    await expect(input).toBeFocused();
-    await page.keyboard.type('DOGE');
-    await page.keyboard.press('Enter');
-    await expect(page.locator('.modal-content')).toBeVisible({ timeout: 10000 });
-  });
-
-  // ─── QUERY suggestions (click → auto-submit → response) ────────────────
-
-  test('click "Top Positions" → response', async ({ seededPage: page }) => {
-    await mockChatSuccess(page, {
-      response: 'Top 5: BTC $97K, ETH $32K, GOLD $11.5K, Cash $10K, AAPL $9.5K.',
-      toolCalls: [],
-      mutations: false,
-    });
-
-    await page.keyboard.press(CMD_K);
-    const item = page.locator('[cmdk-item]', { hasText: 'Top Positions' });
-    await item.click();
-    await expect(page.locator('text=Top 5: BTC $97K')).toBeVisible({ timeout: 10000 });
-  });
-
-  test('click "Exposure Breakdown" → response', async ({ seededPage: page }) => {
-    await mockChatSuccess(page, {
-      response: 'Exposure: Long $110K, Short $0, Net $110K.',
-      toolCalls: [],
-      mutations: false,
-    });
-
-    await page.keyboard.press(CMD_K);
-    const item = page.locator('[cmdk-item]', { hasText: 'Exposure Breakdown' });
-    await item.click();
-    await expect(page.locator('text=Exposure: Long $110K')).toBeVisible({ timeout: 10000 });
-  });
-
-  test('click "24h Change" → response', async ({ seededPage: page }) => {
-    await mockChatSuccess(page, {
-      response: '24h change: +$1,425 (+1.18%).',
-      toolCalls: [],
-      mutations: false,
-    });
-
-    await page.keyboard.press(CMD_K);
-    const item = page.locator('[cmdk-item]', { hasText: '24h Change' });
-    await item.click();
-    await expect(page.locator('text=24h change: +$1,425')).toBeVisible({ timeout: 10000 });
-  });
-
-  test('click "Leverage & Risk" → response', async ({ seededPage: page }) => {
-    await mockChatSuccess(page, {
-      response: 'Leverage: 1.0x. No margin positions.',
-      toolCalls: [],
-      mutations: false,
-    });
-
-    await page.keyboard.press(CMD_K);
-    const item = page.locator('[cmdk-item]', { hasText: 'Leverage & Risk' });
-    await item.click();
-    await expect(page.locator('text=Leverage: 1.0x')).toBeVisible({ timeout: 10000 });
-  });
-
-  test('click "Debt Summary" → response', async ({ seededPage: page }) => {
-    await mockChatSuccess(page, {
-      response: 'Total debt: $14,500 across 2 positions.',
-      toolCalls: [],
-      mutations: false,
-    });
-
-    await page.keyboard.press(CMD_K);
-    const item = page.locator('[cmdk-item]', { hasText: 'Debt Summary' });
-    await item.click();
-    await expect(page.locator('text=Total debt: $14,500')).toBeVisible({ timeout: 10000 });
-  });
-
-  test('click "Perps Summary" → response', async ({ seededPage: page }) => {
-    await mockChatSuccess(page, {
-      response: 'No perps positions found.',
-      toolCalls: [],
-      mutations: false,
-    });
-
-    await page.keyboard.press(CMD_K);
-    const item = page.locator('[cmdk-item]', { hasText: 'Perps Summary' });
-    await item.click();
-    await expect(page.locator('text=No perps positions found.')).toBeVisible({ timeout: 10000 });
   });
 });
