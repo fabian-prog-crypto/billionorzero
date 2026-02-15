@@ -3,10 +3,10 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { X, Search, Loader2, Plus } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
-import { searchCoins, searchStocks, extractCurrencyCode, isManualAccountNameTaken } from '@/services';
+import { searchCoins, searchStocks, extractCurrencyCode, isManualAccountNameTaken, getCategoryService } from '@/services';
 import StockIcon from '@/components/ui/StockIcon';
 import { useRefresh } from '@/components/PortfolioProvider';
-import { AssetType, assetClassFromType } from '@/types';
+import { AssetType } from '@/types';
 import { FIAT_CURRENCIES, COMMON_CURRENCY_CODES, FIAT_CURRENCY_MAP } from '@/lib/currencies';
 import { formatNumber } from '@/lib/utils';
 
@@ -58,6 +58,7 @@ export default function AddPositionModal({
   const store = usePortfolioStore();
   const { addPosition, updatePosition, updatePrice, addAccount, positions, accounts } = store;
   const { refresh } = useRefresh();
+  const categoryService = getCategoryService();
 
   // Get accounts using new API - memoize to avoid infinite useEffect loops
   const brokerageAccounts = useMemo(() => store.brokerageAccounts(), [store, accounts]);
@@ -240,7 +241,7 @@ export default function AddPositionModal({
       if (!manualSymbol || !manualName || !amount || !manualPrice) return;
 
       addPosition({
-        assetClass: 'other',
+        assetClass: categoryService.getAssetClass(manualSymbol, 'manual'),
         type: 'manual',
         symbol: manualSymbol.toUpperCase(),
         name: manualName,
@@ -273,7 +274,7 @@ export default function AddPositionModal({
         : undefined;
 
       addPosition({
-        assetClass: assetClassFromType(type),
+        assetClass: categoryService.getAssetClass(symbol, type),
         type,
         symbol,
         name,

@@ -6,6 +6,7 @@
 import { Position } from '@/types';
 import { toChecksumAddress } from '@/lib/eip55';
 import { getLighterApiClient, LighterAccount } from '../api/lighter-api';
+import { getCategoryService } from '@/services/domain/category-service';
 
 export interface LighterPositionsResult {
   positions: Position[];
@@ -25,6 +26,7 @@ export class LighterProvider {
     const positions: Position[] = [];
     const prices: Record<string, { price: number; symbol: string }> = {};
     let accountValue = 0;
+    const categoryService = getCategoryService();
     // Lighter API is case-sensitive — requires EIP-55 checksummed addresses
     const checksummed = toChecksumAddress(walletAddress);
 
@@ -114,7 +116,7 @@ export class LighterProvider {
 
       positions.push({
         id: `${walletId}-lighter-perp-${symbol}-${isShort ? 'short' : 'long'}-${account.index}`,
-        assetClass: 'crypto' as const,
+        assetClass: categoryService.getAssetClass(baseAsset, 'crypto'),
         type: 'crypto' as const,
         symbol: baseAsset,
         name: `${baseAsset} ${isShort ? 'Short' : 'Long'} (Lighter)`,
@@ -138,7 +140,7 @@ export class LighterProvider {
 
       positions.push({
         id: `${walletId}-lighter-margin-usdc-${account.index}`,
-        assetClass: 'crypto' as const,
+        assetClass: categoryService.getAssetClass('USDC', 'crypto'),
         type: 'crypto' as const,
         symbol: 'USDC',
         name: 'USDC Margin (Lighter)',
@@ -180,7 +182,7 @@ export class LighterProvider {
 
         positions.push({
           id: `${walletId}-lighter-spot-${symbol}-${account.index}`,
-          assetClass: 'crypto' as const,
+          assetClass: categoryService.getAssetClass(symbol, 'crypto'),
           type: 'crypto' as const,
           symbol,
           name: `${symbol} (Lighter Spot)`,

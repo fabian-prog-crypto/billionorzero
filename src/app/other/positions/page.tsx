@@ -42,7 +42,8 @@ export default function OtherPositionsPage() {
   // Filter to "other" category
   const otherPositions = useMemo(() => {
     return allPositionsWithPrices.filter((p) => {
-      const mainCat = categoryService.getMainCategory(p.symbol, p.type);
+      const categoryInput = p.assetClassOverride ?? p.assetClass ?? p.type;
+      const mainCat = categoryService.getMainCategory(p.symbol, categoryInput);
       return mainCat === 'other';
     });
   }, [allPositionsWithPrices, categoryService]);

@@ -9,6 +9,7 @@ import { getDebankApiClient, ApiError } from '../api';
 import { generateDemoWalletTokens, generateDemoDefiPositions } from './demo-data';
 import { getPerpExchangeService } from '../domain/perp-exchange-service';
 import { getCached, setCache, clearAllCache, formatCacheAge } from '../utils/cache';
+import { getCategoryService } from '../domain/category-service';
 
 const DEFAULT_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -498,6 +499,7 @@ export class WalletProvider {
 
     const allPositions: Position[] = [];
     const debankPrices: Record<string, { price: number; symbol: string }> = {};
+    const categoryService = getCategoryService();
 
     for (const wallet of evmWallets) {
       // FIRST: Fetch DeFi protocol positions (including debt)
@@ -541,7 +543,7 @@ export class WalletProvider {
 
           allPositions.push({
             id: positionId,
-            assetClass: 'crypto' as const,
+            assetClass: categoryService.getAssetClass(token.symbol, 'crypto'),
             type: 'crypto' as const,
             symbol: token.symbol,
             name: `${token.symbol} (${defiPos.protocol})`,
@@ -591,7 +593,7 @@ export class WalletProvider {
 
             allPositions.push({
               id: positionId,
-              assetClass: 'crypto' as const,
+              assetClass: categoryService.getAssetClass(token.symbol, 'crypto'),
               type: 'crypto' as const,
               symbol: token.symbol,
               name: `${token.symbol} Debt (${defiPos.protocol})`,
@@ -623,7 +625,7 @@ export class WalletProvider {
 
           return {
             id: `${wallet.id}-${token.chain}-${token.symbol}-${index}`,
-            assetClass: 'crypto' as const,
+            assetClass: categoryService.getAssetClass(token.symbol, 'crypto'),
             type: 'crypto' as const,
             symbol: token.symbol,
             name: token.name,
@@ -666,7 +668,7 @@ export class WalletProvider {
 
         return {
           id: `${wallet.id}-sol-${token.symbol}-${index}`,
-          assetClass: 'crypto' as const,
+          assetClass: categoryService.getAssetClass(token.symbol, 'crypto'),
           type: 'crypto' as const,
           symbol: token.symbol,
           name: token.name,

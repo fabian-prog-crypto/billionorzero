@@ -3,7 +3,7 @@
  * Pure business logic for portfolio calculations
  */
 
-import { Position, PriceData, AssetWithPrice, PortfolioSummary, AssetClass, AssetType, Account, WalletAccount, CexAccount, WalletConnection, DataSourceType, assetClassFromType } from '@/types';
+import { Position, PriceData, AssetWithPrice, PortfolioSummary, AssetClass, AssetType, Account, WalletAccount, CexAccount, WalletConnection, DataSourceType } from '@/types';
 import { getPriceProvider } from '../providers';
 import {
   CRYPTO_COLORS,
@@ -23,6 +23,24 @@ import {
 
 const getCryptoSubCategoryColor = (subCategory: string): string =>
   CRYPTO_COLORS[subCategory as keyof typeof CRYPTO_COLORS] ?? DEFAULT_COLOR;
+
+const getEffectiveAssetClass = (position: Pick<Position, 'assetClass' | 'assetClassOverride' | 'symbol' | 'type'>): AssetClass => {
+  if (position.assetClassOverride) return position.assetClassOverride;
+  if (position.assetClass) return position.assetClass;
+  const categoryService = getCategoryService();
+  return categoryService.getAssetClass(position.symbol, position.type);
+};
+
+const getCategoryInput = (position: Pick<Position, 'assetClass' | 'assetClassOverride' | 'type'>): string => (
+  position.assetClassOverride ?? position.assetClass ?? position.type
+);
+
+const shouldUseCryptoPricing = (position: Pick<Position, 'symbol' | 'type'>): boolean => {
+  if (position.type === 'crypto') return true;
+  if (position.type !== 'manual') return false;
+  const priceProvider = getPriceProvider();
+  return priceProvider.hasKnownCryptoMapping(position.symbol);
+};
 
 /**
  * Build a lookup map from account ID to Account for efficient repeated access.
@@ -196,8 +214,8 @@ export function classifyAssetExposure(
   const isDebt = asset.isDebt || asset.value < 0;
   const absValue = Math.abs(asset.value);
   const { isPerpTrade, isShort } = detectPerpTrade(asset.name);
-  // Pass effective type string to category service for backward compat
-  const effectiveType = asset.type;
+  // Pass effective category input (override > assetClass > type)
+  const effectiveType = getCategoryInput(asset);
   const subCat = categoryService.getSubCategory(asset.symbol, effectiveType);
 
   // Check if cash equivalent (stablecoins, Pendle PTs)
@@ -331,10 +349,10 @@ export interface ExposureData {
 
 /**
  * Simple exposure item for pie chart display
- * Shows: Cash & Equivalents, BTC, ETH, Tokens
+ * Shows: Cash & Equivalents, BTC, ETH, Metals, Other
  */
 export interface SimpleExposureItem {
-  id: 'cash' | 'btc' | 'eth' | 'tokens';
+  id: 'cash' | 'btc' | 'eth' | 'metals' | 'tokens';
   label: string;
   value: number;
   percentage: number;
@@ -350,7 +368,7 @@ export interface BreakdownItem {
 }
 
 /**
- * Allocation breakdown item (Cash & Equivalents, Crypto, Equities)
+ * Allocation breakdown item (Cash & Equivalents, Crypto, Equities, Metals)
  */
 export interface AllocationBreakdownItem {
   label: string;
@@ -439,8 +457,7 @@ export function getPriceKey(position: Position): string {
 
   // Manual positions use CoinGecko/Finnhub price lookup
   const priceProvider = getPriceProvider();
-  const effectiveClass = position.assetClass ?? assetClassFromType(position.type);
-  return effectiveClass === 'crypto'
+  return shouldUseCryptoPricing(position)
     ? priceProvider.getCoinId(position.symbol)
     : position.symbol.toLowerCase();
 }
@@ -508,9 +525,9 @@ export function calculatePositionValue(
   // Cash positions - apply FX conversion to USD
   // Check BOTH explicit cash class/type AND positions that categoryService identifies as cash
   // (e.g., manual positions with fiat currency symbols like CHF, EUR, GBP)
-  const effectiveClass = position.assetClass ?? assetClassFromType(position.type);
+  const effectiveClass = getEffectiveAssetClass(position);
   const isCashByType = effectiveClass === 'cash';
-  const isCashByCategory = getMainCategory(position.symbol, position.type) === 'cash';
+  const isCashByCategory = getMainCategory(position.symbol, getCategoryInput(position)) === 'cash';
 
   if (isCashByType || isCashByCategory) {
     const currency = extractCurrencyCode(position.symbol).toUpperCase();
@@ -556,7 +573,7 @@ export function calculatePositionValue(
 
   // Fallback to CoinGecko price if DeBank price is 0 or missing
   // This helps tokens like SYRUP that DeBank doesn't have prices for
-  if ((!priceData || priceData.price === 0) && effectiveClass === 'crypto') {
+  if ((!priceData || priceData.price === 0) && shouldUseCryptoPricing(position)) {
     const priceProvider = getPriceProvider();
     const coinGeckoKey = priceProvider.getCoinId(position.symbol);
     const coinGeckoData = prices[coinGeckoKey];
@@ -722,14 +739,16 @@ export function calculatePortfolioSummary(
       : 0;
 
   // Group by assetClass - exclude perp notional from category values (they don't affect net worth)
-  const getEffectiveClass = (a: AssetWithPrice): AssetClass => a.assetClass ?? assetClassFromType(a.type);
+  const getEffectiveClass = (a: AssetWithPrice): AssetClass => getEffectiveAssetClass(a);
   const cryptoAssets = assetsWithPrice.filter((a) => getEffectiveClass(a) === 'crypto' && !a.isPerpNotional);
   const equityAssets = assetsWithPrice.filter((a) => getEffectiveClass(a) === 'equity');
+  const metalsAssets = assetsWithPrice.filter((a) => getEffectiveClass(a) === 'metals');
   const cashAssets = assetsWithPrice.filter((a) => getEffectiveClass(a) === 'cash');
   const otherAssets = assetsWithPrice.filter((a) => getEffectiveClass(a) === 'other');
 
   const cryptoValue = cryptoAssets.reduce((sum, a) => sum + a.value, 0);
   const equityValue = equityAssets.reduce((sum, a) => sum + a.value, 0);
+  const metalsValue = metalsAssets.reduce((sum, a) => sum + a.value, 0);
   const cashValue = cashAssets.reduce((sum, a) => sum + a.value, 0);
   const otherValue = otherAssets.reduce((sum, a) => sum + a.value, 0);
 
@@ -765,6 +784,11 @@ export function calculatePortfolioSummary(
       assetClass: 'equity' as const,
       value: equityValue,
       percentage: grossAssets > 0 ? (Math.max(0, equityValue) / grossAssets) * 100 : 0,
+    },
+    {
+      assetClass: 'metals' as const,
+      value: metalsValue,
+      percentage: grossAssets > 0 ? (Math.max(0, metalsValue) / grossAssets) * 100 : 0,
     },
     {
       assetClass: 'cash' as const,
@@ -810,6 +834,7 @@ export function calculatePortfolioSummary(
     changePercent24h,
     cryptoValue,
     equityValue,
+    metalsValue,
     stockValue,
     cashValue,
     otherValue,
@@ -832,7 +857,7 @@ export function calculateTotalNAV(
 ): number {
   return positions.reduce((sum, position) => {
     // Cash positions have price = 1
-    const effectiveClass = position.assetClass ?? assetClassFromType(position.type);
+    const effectiveClass = getEffectiveAssetClass(position);
     if (effectiveClass === 'cash') {
       return sum + position.amount;
     }
@@ -866,7 +891,7 @@ export function aggregatePositionsBySymbol(
     // Keep perp notional positions separate (leveraged exposure, not spot holdings)
     // But net debt with non-debt positions of the same symbol
     const perpSuffix = asset.isPerpNotional ? '-perp' : '';
-    const effectiveClass = asset.assetClass ?? assetClassFromType(asset.type);
+    const effectiveClass = getEffectiveAssetClass(asset);
     const key = `${asset.symbol.toLowerCase()}-${effectiveClass}${perpSuffix}`;
     const existing = assetMap.get(key);
 
@@ -964,9 +989,9 @@ export function calculateAssetSummary(
   const positionWithPrice = assetPositions.find(p => p.currentPrice > 0) || first;
 
   // Get category info
-  const exposureCat = categoryService.getExposureCategory(first.symbol, first.type);
+  const exposureCat = categoryService.getExposureCategory(first.symbol, getCategoryInput(first));
   const exposureConfig = getExposureCategoryConfig(exposureCat);
-  const mainCategory = categoryService.getMainCategory(first.symbol, first.type);
+  const mainCategory = categoryService.getMainCategory(first.symbol, getCategoryInput(first));
 
   // Count unique accounts (wallets, CEX, brokerage, etc.)
   const uniqueAccounts = new Set(
@@ -1051,7 +1076,7 @@ export function calculatePerpPageData(assets: AssetWithPrice[]): PerpPageData {
   const spotHoldings: AssetWithPrice[] = [];
 
   perpPositions.forEach((p) => {
-    const subCat = categoryService.getSubCategory(p.symbol, p.type);
+    const subCat = categoryService.getSubCategory(p.symbol, getCategoryInput(p));
     const { isPerpTrade } = detectPerpTrade(p.name);
 
     if (subCat === 'stablecoins') {
@@ -1081,7 +1106,7 @@ export function calculatePerpPageData(assets: AssetWithPrice[]): PerpPageData {
       let spot = 0;
 
       positions.forEach((p) => {
-        const subCat = categoryService.getSubCategory(p.symbol, p.type);
+        const subCat = categoryService.getSubCategory(p.symbol, getCategoryInput(p));
         const { isPerpTrade } = detectPerpTrade(p.name);
 
         if (subCat === 'stablecoins' && !p.isDebt) {
@@ -1257,7 +1282,9 @@ export function calculateCustodyBreakdown(assets: AssetWithPrice[], accounts?: A
       category = 'Perp DEX';
     } else if (acctType === 'brokerage') {
       category = 'Banks & Brokers';
-    } else if ((asset.assetClass ?? assetClassFromType(asset.type)) === 'equity' || (asset.assetClass ?? assetClassFromType(asset.type)) === 'cash') {
+    } else if (getEffectiveAssetClass(asset) === 'equity' ||
+      getEffectiveAssetClass(asset) === 'metals' ||
+      getEffectiveAssetClass(asset) === 'cash') {
       category = 'Banks & Brokers';
     } else if (acctType === 'wallet') {
       if (asset.protocol) {
@@ -1357,7 +1384,7 @@ export function calculateCryptoMetrics(assets: AssetWithPrice[]): CryptoMetrics 
 
   // Filter to crypto only
   const cryptoAssets = assets.filter((a) => {
-    const mainCat = categoryService.getMainCategory(a.symbol, a.type);
+    const mainCat = categoryService.getMainCategory(a.symbol, getCategoryInput(a));
     return mainCat === 'crypto';
   });
 
@@ -1370,7 +1397,7 @@ export function calculateCryptoMetrics(assets: AssetWithPrice[]): CryptoMetrics 
 
   cryptoAssets.forEach((asset) => {
     const value = asset.value; // Can be negative for debt
-    const subCat = categoryService.getSubCategory(asset.symbol, asset.type);
+    const subCat = categoryService.getSubCategory(asset.symbol, getCategoryInput(asset));
 
     // Skip perp trades from dominance calculations - they're leveraged exposure, not holdings
     if (asset.protocol && isPerpProtocol(asset.protocol)) {
@@ -1424,7 +1451,7 @@ export function calculateCryptoAllocation(assets: AssetWithPrice[]): CryptoAlloc
   // EXCLUDE perp notional - they're leveraged exposure, not actual holdings
   const cryptoAssets = assets.filter((a) => {
     if (a.isPerpNotional) return false;
-    const mainCat = categoryService.getMainCategory(a.symbol, a.type);
+    const mainCat = categoryService.getMainCategory(a.symbol, getCategoryInput(a));
     return mainCat === 'crypto';
   });
 
@@ -1443,7 +1470,7 @@ export function calculateCryptoAllocation(assets: AssetWithPrice[]): CryptoAlloc
     const value = asset.value; // Can be negative for debt
     // Note: perp notional positions are already filtered out above
     // Margin and spot holdings on perp exchanges are categorized normally
-    const subCat = categoryService.getSubCategory(asset.symbol, asset.type);
+    const subCat = categoryService.getSubCategory(asset.symbol, getCategoryInput(asset));
 
     if (!allocationMap[subCat]) {
       allocationMap[subCat] = {
@@ -1482,7 +1509,7 @@ export function calculateExposureBreakdown(assets: AssetWithPrice[]): CryptoAllo
 
   // Filter to crypto assets AND perp protocol positions (perps count towards underlying exposure)
   const cryptoAssets = assets.filter((a) => {
-    const mainCat = categoryService.getMainCategory(a.symbol, a.type);
+    const mainCat = categoryService.getMainCategory(a.symbol, getCategoryInput(a));
     if (mainCat === 'crypto') return true;
     // Include perp protocol positions - they represent underlying asset exposure
     if (a.protocol && isPerpProtocol(a.protocol)) return true;
@@ -1506,7 +1533,7 @@ export function calculateExposureBreakdown(assets: AssetWithPrice[]): CryptoAllo
     // For perp trades, extract the underlying asset from the name (e.g., "BTC Long (Hyperliquid)" -> btc)
     // For collateral on perp protocols, classify normally (e.g., USDC collateral -> stablecoins)
     // This gives true underlying exposure rather than treating perps as a separate category
-    let exposureCat = categoryService.getExposureCategory(asset.symbol, asset.type);
+    let exposureCat = categoryService.getExposureCategory(asset.symbol, getCategoryInput(asset));
 
     // For perp trades, try to extract underlying asset from name
     const { isPerpTrade } = detectPerpTrade(asset.name);
@@ -1595,8 +1622,8 @@ export function calculateExposureData(assets: AssetWithPrice[]): ExposureData {
   assets.forEach((asset) => {
     const { classification, absValue } = classifyAssetExposure(asset, categoryService);
     const isDebt = asset.isDebt || asset.value < 0;
-    const mainCat = categoryService.getMainCategory(asset.symbol, asset.type);
-    let subCat = categoryService.getSubCategory(asset.symbol, asset.type);
+    const mainCat = categoryService.getMainCategory(asset.symbol, getCategoryInput(asset));
+    let subCat = categoryService.getSubCategory(asset.symbol, getCategoryInput(asset));
 
     // Track exposure metrics based on classification
     classificationCounts[classification]++;
@@ -1741,13 +1768,20 @@ export function calculateExposureData(assets: AssetWithPrice[]): ExposureData {
     total: perpsMargin,        // Only margin counts towards net worth
   };
 
-  // Calculate simple breakdown for pie chart: Cash & Equivalents, BTC, ETH, Tokens
+  // Calculate simple breakdown for pie chart: Cash & Equivalents, BTC, ETH, Metals, Tokens
   const cashValue = ((categoryAssets['cash'] || 0) - (categoryDebts['cash'] || 0)) +
                     ((categoryAssets['crypto_stablecoins'] || 0) - (categoryDebts['crypto_stablecoins'] || 0));
   const btcValue = (categoryAssets['crypto_btc'] || 0) - (categoryDebts['crypto_btc'] || 0);
   const ethValue = (categoryAssets['crypto_eth'] || 0) - (categoryDebts['crypto_eth'] || 0);
+  const metalsGross = Object.entries(categoryAssets)
+    .filter(([key]) => key === 'metals' || key.startsWith('metals_'))
+    .reduce((sum, [, value]) => sum + value, 0);
+  const metalsDebts = Object.entries(categoryDebts)
+    .filter(([key]) => key === 'metals' || key.startsWith('metals_'))
+    .reduce((sum, [, value]) => sum + value, 0);
+  const metalsValue = metalsGross - metalsDebts;
   // Tokens = everything else (sol, tokens, perps, stocks, other)
-  const tokensValue = totalValue - cashValue - btcValue - ethValue;
+  const tokensValue = totalValue - cashValue - btcValue - ethValue - metalsValue;
 
   const simpleBreakdownItems: SimpleExposureItem[] = [
     {
@@ -1772,8 +1806,15 @@ export function calculateExposureData(assets: AssetWithPrice[]): ExposureData {
       color: '#627EEA', // ethereum blue
     },
     {
+      id: 'metals' as const,
+      label: 'Metals',
+      value: metalsValue,
+      percentage: totalValue > 0 ? (metalsValue / totalValue) * 100 : 0,
+      color: '#C9A227', // gold
+    },
+    {
       id: 'tokens' as const,
-      label: 'Tokens',
+      label: 'Other',
       value: tokensValue,
       percentage: totalValue > 0 ? (tokensValue / totalValue) * 100 : 0,
       color: '#22D3EE', // cyan
@@ -1916,6 +1957,7 @@ export function calculateAllocationBreakdown(assets: AssetWithPrice[]): Allocati
     'Cash & Equivalents': { value: 0, color: '#4CAF50', positions: new Map() },
     'Crypto': { value: 0, color: '#FF9800', positions: new Map() },
     'Equities': { value: 0, color: '#F44336', positions: new Map() },
+    'Metals': { value: 0, color: '#C9A227', positions: new Map() },
     'Other': { value: 0, color: '#8B7355', positions: new Map() },
   };
 
@@ -1926,7 +1968,7 @@ export function calculateAllocationBreakdown(assets: AssetWithPrice[]): Allocati
     if (asset.isPerpNotional) return;
 
     const value = asset.value; // Can be negative for debt
-    const mainCat = categoryService.getMainCategory(asset.symbol, asset.type);
+    const mainCat = categoryService.getMainCategory(asset.symbol, getCategoryInput(asset));
     const symbolKey = asset.symbol.toUpperCase();
 
     if (mainCat === 'cash') {
@@ -1938,7 +1980,7 @@ export function calculateAllocationBreakdown(assets: AssetWithPrice[]): Allocati
         );
       }
     } else if (mainCat === 'crypto') {
-      const subCat = categoryService.getSubCategory(asset.symbol, asset.type);
+      const subCat = categoryService.getSubCategory(asset.symbol, getCategoryInput(asset));
       if (subCat === 'stablecoins') {
         allocationMap['Cash & Equivalents'].value += value;
         if (value > 0) {
@@ -1962,6 +2004,14 @@ export function calculateAllocationBreakdown(assets: AssetWithPrice[]): Allocati
         allocationMap['Equities'].positions.set(
           symbolKey,
           (allocationMap['Equities'].positions.get(symbolKey) || 0) + value
+        );
+      }
+    } else if (mainCat === 'metals') {
+      allocationMap['Metals'].value += value;
+      if (value > 0) {
+        allocationMap['Metals'].positions.set(
+          symbolKey,
+          (allocationMap['Metals'].positions.get(symbolKey) || 0) + value
         );
       }
     } else {
@@ -2017,8 +2067,8 @@ export function calculateRiskProfile(assets: AssetWithPrice[]): RiskProfileItem[
     if (asset.isPerpNotional) return;
 
     const value = asset.value; // Can be negative for debt
-    const mainCat = categoryService.getMainCategory(asset.symbol, asset.type);
-    const subCat = categoryService.getSubCategory(asset.symbol, asset.type);
+    const mainCat = categoryService.getMainCategory(asset.symbol, getCategoryInput(asset));
+    const subCat = categoryService.getSubCategory(asset.symbol, getCategoryInput(asset));
     const symbolKey = asset.symbol.toUpperCase();
     let category: string;
 
@@ -2026,8 +2076,8 @@ export function calculateRiskProfile(assets: AssetWithPrice[]): RiskProfileItem[
     if (mainCat === 'cash' || subCat === 'stablecoins') {
       category = 'Conservative';
     }
-    // Moderate: Large cap crypto (BTC, ETH), blue chip stocks/ETFs
-    else if (subCat === 'btc' || subCat === 'eth' || mainCat === 'equities') {
+    // Moderate: Large cap crypto (BTC, ETH), blue chip stocks/ETFs, metals
+    else if (subCat === 'btc' || subCat === 'eth' || mainCat === 'equities' || mainCat === 'metals') {
       category = 'Moderate';
     }
     // Aggressive: Altcoins, DeFi, perps, other tokens
@@ -2141,14 +2191,14 @@ export function calculateCashBreakdown(
 
   // Filter to fiat positions (mainCat === 'cash')
   const fiatPositions = assets.filter((p) => {
-    const mainCat = categoryService.getMainCategory(p.symbol, p.type);
+    const mainCat = categoryService.getMainCategory(p.symbol, getCategoryInput(p));
     return mainCat === 'cash';
   });
 
   // Filter to stablecoin positions (crypto stablecoins)
   const stablecoinPositions = assets.filter((p) => {
-    const mainCat = categoryService.getMainCategory(p.symbol, p.type);
-    const subCat = categoryService.getSubCategory(p.symbol, p.type);
+    const mainCat = categoryService.getMainCategory(p.symbol, getCategoryInput(p));
+    const subCat = categoryService.getSubCategory(p.symbol, getCategoryInput(p));
     return mainCat === 'crypto' && subCat === 'stablecoins';
   });
 
@@ -2300,7 +2350,7 @@ export function calculateEquitiesBreakdown(assets: AssetWithPrice[]): EquitiesBr
 
   // Filter to equities only
   const equityPositions = assets.filter((p) => {
-    const mainCat = categoryService.getMainCategory(p.symbol, p.type);
+    const mainCat = categoryService.getMainCategory(p.symbol, getCategoryInput(p));
     return mainCat === 'equities';
   });
 
@@ -2313,7 +2363,7 @@ export function calculateEquitiesBreakdown(assets: AssetWithPrice[]): EquitiesBr
   const etfPositions: AssetWithPrice[] = [];
 
   equityPositions.forEach((p) => {
-    const subCat = categoryService.getSubCategory(p.symbol, p.type);
+    const subCat = categoryService.getSubCategory(p.symbol, getCategoryInput(p));
     if (subCat === 'etfs') {
       etfsValue += p.value; // Can be negative for debt
       etfsCount++; // Count holdings, independent from current valuation
@@ -2373,6 +2423,98 @@ export function calculateEquitiesBreakdown(assets: AssetWithPrice[]): EquitiesBr
 }
 
 /**
+ * Metals breakdown result type
+ */
+export interface MetalsBreakdownResult {
+  gold: { value: number; count: number };
+  silver: { value: number; count: number };
+  platinum: { value: number; count: number };
+  palladium: { value: number; count: number };
+  miners: { value: number; count: number };
+  total: number;
+  metalPositions: AssetWithPrice[];
+  chartData: { label: string; value: number; color: string; breakdown: { label: string; value: number }[] }[];
+}
+
+/**
+ * Calculate metals breakdown - SINGLE SOURCE OF TRUTH
+ * Separates gold/silver/platinum/palladium/miners
+ * Uses NET values - debt subtracts from category
+ */
+export function calculateMetalsBreakdown(assets: AssetWithPrice[]): MetalsBreakdownResult {
+  const categoryService = getCategoryService();
+
+  // Filter to metals only
+  const metalPositions = assets.filter((p) => {
+    const mainCat = categoryService.getMainCategory(p.symbol, getCategoryInput(p));
+    return mainCat === 'metals';
+  });
+
+  const categoryLabels: Record<string, string> = {
+    gold: 'Gold',
+    silver: 'Silver',
+    platinum: 'Platinum',
+    palladium: 'Palladium',
+    miners: 'Miners',
+  };
+
+  // Track NET values by metal type
+  const categoryMap: Record<string, { value: number; count: number; positions: AssetWithPrice[] }> = {};
+
+  metalPositions.forEach((p) => {
+    const subCat = categoryService.getSubCategory(p.symbol, getCategoryInput(p));
+    if (!categoryMap[subCat]) {
+      categoryMap[subCat] = { value: 0, count: 0, positions: [] };
+    }
+    categoryMap[subCat].value += p.value; // Can be negative for debt
+    if (p.value > 0) {
+      categoryMap[subCat].count++;
+      categoryMap[subCat].positions.push(p);
+    }
+  });
+
+  const total = Object.values(categoryMap).reduce((sum, cat) => sum + Math.max(0, cat.value), 0);
+
+  const aggregateBySymbol = (positions: AssetWithPrice[]) => {
+    const map = new Map<string, number>();
+    positions.forEach(p => {
+      const key = p.symbol.toUpperCase();
+      map.set(key, (map.get(key) || 0) + p.value);
+    });
+    return Array.from(map.entries())
+      .filter(([_, value]) => value > 0)
+      .map(([label, value]) => ({ label, value }))
+      .sort((a, b) => b.value - a.value);
+  };
+
+  const chartData = Object.entries(categoryMap)
+    .filter(([_, data]) => data.value > 0)
+    .map(([category, data]) => ({
+      label: categoryLabels[category] || category,
+      value: data.value,
+      color: SUBCATEGORY_COLORS[`metals_${category}` as keyof typeof SUBCATEGORY_COLORS] || SUBCATEGORY_COLORS.metals_gold,
+      breakdown: aggregateBySymbol(data.positions),
+    }))
+    .sort((a, b) => b.value - a.value);
+
+  const byCategory = (key: string) => ({
+    value: Math.max(0, categoryMap[key]?.value || 0),
+    count: categoryMap[key]?.count || 0,
+  });
+
+  return {
+    gold: byCategory('gold'),
+    silver: byCategory('silver'),
+    platinum: byCategory('platinum'),
+    palladium: byCategory('palladium'),
+    miners: byCategory('miners'),
+    total,
+    metalPositions,
+    chartData,
+  };
+}
+
+/**
  * Crypto breakdown result type
  */
 export interface CryptoBreakdownResult {
@@ -2394,7 +2536,7 @@ export function calculateCryptoBreakdown(assets: AssetWithPrice[]): CryptoBreakd
   // EXCLUDE perp notional - they're leveraged exposure, not actual holdings
   const cryptoPositions = assets.filter((p) => {
     if (p.isPerpNotional) return false;
-    const mainCat = categoryService.getMainCategory(p.symbol, p.type);
+    const mainCat = categoryService.getMainCategory(p.symbol, getCategoryInput(p));
     return mainCat === 'crypto';
   });
 
@@ -2413,7 +2555,7 @@ export function calculateCryptoBreakdown(assets: AssetWithPrice[]): CryptoBreakd
   cryptoPositions.forEach((p) => {
     // Note: perp notional positions are already filtered out above
     // Margin and spot holdings on perp exchanges are categorized normally
-    const subCat: string = categoryService.getSubCategory(p.symbol, p.type);
+    const subCat: string = categoryService.getSubCategory(p.symbol, getCategoryInput(p));
 
     if (!categoryMap[subCat]) {
       categoryMap[subCat] = { value: 0, count: 0, positions: [] };

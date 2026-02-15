@@ -13,6 +13,7 @@ export type {
   SubCategory,
   CryptoSubCategory,
   EquitiesSubCategory,
+  MetalsSubCategory,
   CategoryHierarchy,
 } from '@/services/domain/category-service';
 
@@ -22,6 +23,7 @@ export type { EquitiesSubCategory as StockSubCategory } from '@/services/domain/
 export {
   CATEGORY_COLORS,
   getAssetCategory,
+  getAssetClass,
   getMainCategory,
   getSubCategory,
   getCategoryLabel,

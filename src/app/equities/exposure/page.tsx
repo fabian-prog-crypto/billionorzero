@@ -204,7 +204,8 @@ export default function EquitiesExposurePage() {
             </thead>
             <tbody>
               {exposureByPosition.slice(0, 20).map((asset) => {
-                const subCat = categoryService.getSubCategory(asset.symbol, asset.type);
+                const categoryInput = asset.assetClassOverride ?? asset.assetClass ?? asset.type;
+                const subCat = categoryService.getSubCategory(asset.symbol, categoryInput);
                 const isETF = subCat === 'etfs';
                 const pct = breakdownData.total > 0 ? (asset.value / breakdownData.total) * 100 : 0;
 

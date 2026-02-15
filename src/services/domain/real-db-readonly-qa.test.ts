@@ -66,11 +66,11 @@ describe('real-db readonly regression checks', () => {
         .map((account) => account.id)
     );
 
-    const perManual = new Map<string, { equity: number; cash: number; crypto: number; other: number }>();
+    const perManual = new Map<string, { equity: number; metals: number; cash: number; crypto: number; other: number }>();
     for (const p of db.positions) {
       if (!p.accountId || !manualAccountIds.has(p.accountId)) continue;
       const cls = getEffectiveAssetClass(p);
-      const curr = perManual.get(p.accountId) || { equity: 0, cash: 0, crypto: 0, other: 0 };
+      const curr = perManual.get(p.accountId) || { equity: 0, metals: 0, cash: 0, crypto: 0, other: 0 };
       curr[cls] += 1;
       perManual.set(p.accountId, curr);
     }

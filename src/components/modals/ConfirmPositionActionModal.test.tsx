@@ -49,6 +49,7 @@ const mockAddTransaction = vi.fn();
 const mockUpdatePrice = vi.fn();
 const mockSetCustomPrice = vi.fn();
 const mockAddAccount = vi.fn().mockReturnValue('acct-new');
+const mockSetAssetClassOverride = vi.fn();
 
 let _accounts: Account[] = [];
 
@@ -60,6 +61,7 @@ const mockStoreState = {
   updatePrice: mockUpdatePrice,
   setCustomPrice: mockSetCustomPrice,
   addAccount: mockAddAccount,
+  setAssetClassOverride: mockSetAssetClassOverride,
   accounts: _accounts,
   walletAccounts: () =>
     _accounts.filter(
@@ -602,6 +604,43 @@ describe('ConfirmPositionActionModal — account relationship fixes', () => {
         amount: 6000,
         costBasis: 6000,
       });
+    });
+  });
+
+  describe('update_position category override', () => {
+    it('applies per-asset category override without other edits', async () => {
+      const user = userEvent.setup();
+      const pos = makePosition({
+        id: 'pos-override',
+        symbol: 'AAA',
+        name: 'Test Asset',
+        amount: 10,
+        type: 'stock',
+        assetClass: 'equity',
+      });
+
+      render(
+        <ConfirmPositionActionModal
+          isOpen={true}
+          onClose={noop}
+          parsedAction={baseParsedAction({
+            action: 'update_position',
+            symbol: 'AAA',
+            assetType: 'stock',
+            matchedPositionId: 'pos-override',
+          })}
+          positions={[pos]}
+          positionsWithPrices={[makeAssetWithPrice(pos, 100)]}
+        />
+      );
+
+      const categorySelect = screen.getByLabelText('Category override');
+      await user.selectOptions(categorySelect, 'metals');
+
+      const confirmBtn = screen.getByRole('button', { name: /update position/i });
+      await user.click(confirmBtn);
+
+      expect(mockSetAssetClassOverride).toHaveBeenCalledWith('AAA', 'metals');
     });
   });
 

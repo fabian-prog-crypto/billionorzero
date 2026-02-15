@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Plus, RefreshCw, Eye, EyeOff, Settings, Wallet, Sun, Moon, Menu, X, PieChart, TrendingUp, Layers, CandlestickChart, Building2, LayoutDashboard, MessageSquare } from 'lucide-react';
@@ -13,9 +13,10 @@ import CommandPalette from '@/components/CommandPalette';
 import Logo from '@/components/ui/Logo';
 import { calculateSyncCost } from '@/lib/constants';
 import { formatDistanceToNow } from 'date-fns';
+import { getCategoryService } from '@/services';
 
 type MainTab = 'portfolio' | 'insights';
-type SubTab = 'overview' | 'crypto' | 'equities' | 'cash' | 'other';
+type SubTab = 'overview' | 'crypto' | 'equities' | 'metals' | 'cash' | 'other';
 
 // Sidebar items per category (paths are relative, will be prefixed with category)
 // Empty path '' means category root (e.g., /crypto for crypto category)
@@ -35,6 +36,12 @@ const sidebarItemsByCategory: Record<SubTab, { path: string; icon: typeof Layers
     { path: 'accounts', icon: Building2, label: 'Accounts' },
   ],
   equities: [
+    { path: '', icon: LayoutDashboard, label: 'Overview' },
+    { path: 'positions', icon: Layers, label: 'Assets' },
+    { path: 'exposure', icon: PieChart, label: 'Exposure' },
+    { path: 'accounts', icon: Building2, label: 'Accounts' },
+  ],
+  metals: [
     { path: '', icon: LayoutDashboard, label: 'Overview' },
     { path: 'positions', icon: Layers, label: 'Assets' },
     { path: 'exposure', icon: PieChart, label: 'Exposure' },
@@ -63,6 +70,7 @@ const subTabs: { id: SubTab; label: string }[] = [
   { id: 'overview', label: 'All' },
   { id: 'crypto', label: 'Crypto' },
   { id: 'equities', label: 'Equities' },
+  { id: 'metals', label: 'Metals' },
   { id: 'cash', label: 'Cash' },
   { id: 'other', label: 'Others' },
 ];
@@ -87,10 +95,26 @@ export default function AppShell({ children }: AppShellProps) {
   }, []);
 
   const appStore = usePortfolioStore();
-  const { hideBalances, toggleHideBalances, lastRefresh } = appStore;
+  const { hideBalances, toggleHideBalances, lastRefresh, positions } = appStore;
   const wallets = appStore.wallets();
   const { theme, setTheme } = useThemeStore();
   const { refresh, isRefreshing } = useRefresh();
+
+  const hasOtherHoldings = useMemo(() => {
+    const categoryService = getCategoryService();
+    return positions.some((p) => {
+      const categoryInput = p.assetClassOverride ?? p.assetClass ?? p.type;
+      return categoryService.getMainCategory(p.symbol, categoryInput) === 'other';
+    });
+  }, [positions]);
+
+  const visibleSubTabs = useMemo(() => {
+    return subTabs.filter((tab) => tab.id !== 'other' || hasOtherHoldings);
+  }, [hasOtherHoldings]);
+
+  const tabRoutes = useMemo(() => {
+    return ['/', '/crypto', '/equities', '/metals', '/cash', ...(hasOtherHoldings ? ['/other'] : [])];
+  }, [hasOtherHoldings]);
 
   // Calculate sync costs
   const walletCount = wallets.length;
@@ -132,24 +156,24 @@ export default function AppShell({ children }: AppShellProps) {
       if (e.key !== 'Tab') return;
       e.preventDefault();
 
-      const routes = ['/', '/crypto', '/equities', '/cash', '/other'];
-      const currentIdx = routes.findIndex((r) =>
+      const currentIdx = tabRoutes.findIndex((r) =>
         r === '/' ? pathname === '/' : pathname.startsWith(r)
       );
       const idx = currentIdx === -1 ? 0 : currentIdx;
       const next = e.shiftKey
-        ? (idx - 1 + routes.length) % routes.length
-        : (idx + 1) % routes.length;
-      router.push(routes[next]);
+        ? (idx - 1 + tabRoutes.length) % tabRoutes.length
+        : (idx + 1) % tabRoutes.length;
+      router.push(tabRoutes[next]);
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [pathname, router]);
+  }, [pathname, router, tabRoutes]);
 
   // Determine active sub-tab from pathname
   const getActiveSubTab = (): SubTab => {
     if (pathname.startsWith('/crypto')) return 'crypto';
     if (pathname.startsWith('/equities')) return 'equities';
+    if (pathname.startsWith('/metals')) return 'metals';
     if (pathname.startsWith('/cash')) return 'cash';
     if (pathname.startsWith('/other')) return 'other';
     return 'overview';
@@ -198,7 +222,7 @@ export default function AppShell({ children }: AppShellProps) {
   };
 
   // Check if current path is a portfolio sub-tab page
-  const isPortfolioPage = pathname === '/' || pathname === '/crypto' || pathname === '/equities' || pathname === '/cash' || pathname === '/other';
+  const isPortfolioPage = pathname === '/' || pathname === '/crypto' || pathname === '/equities' || pathname === '/metals' || pathname === '/cash' || pathname === '/other';
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -296,7 +320,7 @@ export default function AppShell({ children }: AppShellProps) {
         <div className="px-4 sm:px-6 lg:px-8 pt-5 pb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="w-full overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none]">
             <div className="flex items-baseline gap-5 sm:gap-7 min-w-max pr-2">
-              {subTabs.map((tab) => (
+              {visibleSubTabs.map((tab) => (
                 <button
                   key={tab.id}
                   className={`font-display transition-colors relative pb-2 text-[16px] sm:text-[28px] leading-[1.2] ${
@@ -321,7 +345,7 @@ export default function AppShell({ children }: AppShellProps) {
             className="btn btn-primary self-start sm:self-auto whitespace-nowrap"
           >
             <Plus className="w-4 h-4" />
-            <span>Add {activeSubTab === 'overview' ? 'Position' : subTabs.find(t => t.id === activeSubTab)?.label || 'Position'}</span>
+            <span>Add {activeSubTab === 'overview' ? 'Position' : visibleSubTabs.find(t => t.id === activeSubTab)?.label || 'Position'}</span>
           </button>
         </div>
       </header>

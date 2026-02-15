@@ -17,6 +17,7 @@ export const CRYPTO_COLORS = {
 export const CATEGORY_COLORS = {
   crypto: '#627EEA',
   equities: '#E91E63',
+  metals: '#C9A227',
   cash: '#4CAF50',
   other: '#8B7355',
 } as const;
@@ -33,6 +34,12 @@ export const SUBCATEGORY_COLORS = {
   // Equities
   equities_stocks: '#E91E63',
   equities_etfs: '#9C27B0',
+  // Metals
+  metals_gold: '#D4AF37',
+  metals_silver: '#C0C0C0',
+  metals_platinum: '#E5E4E2',
+  metals_palladium: '#B0B0B0',
+  metals_miners: '#8B5E3C',
 } as const;
 
 // Chain colors
@@ -103,6 +110,7 @@ export const ASSET_CLASS_COLORS = {
   'Cash & Equivalents': '#4CAF50',
   'Crypto': '#FF9800',
   'Equities': '#F44336',
+  'Metals': '#C9A227',
   'Other': '#8B7355',
 } as const;
 
@@ -147,6 +155,7 @@ export const EXPOSURE_COLORS = {
   stablecoins: '#10B981',
   btc: '#F7931A',
   eth: '#627EEA',
+  metals: '#C9A227',
   other: '#22D3EE',
 } as const;
 

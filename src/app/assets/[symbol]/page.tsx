@@ -95,6 +95,12 @@ export default function AssetDetailPage() {
     return calculateAssetSummary(assetPositions);
   }, [assetPositions]);
 
+  const categoryInput = useMemo(() => {
+    if (!assetData) return null;
+    const override = assetPositions.find((p) => p.assetClassOverride)?.assetClassOverride;
+    return override ?? assetData.type;
+  }, [assetData, assetPositions]);
+
   // Helper to extract address from Account via connection
   const getAccountAddress = (account: Account): string => {
     const conn = account.connection;
@@ -196,10 +202,10 @@ export default function AssetDetailPage() {
 
   // Get exposure category for this asset
   const exposureCategory = useMemo(() => {
-    if (!assetData) return null;
-    const cat = categoryService.getExposureCategory(assetData.symbol, assetData.type);
+    if (!assetData || !categoryInput) return null;
+    const cat = categoryService.getExposureCategory(assetData.symbol, categoryInput);
     return getExposureCategoryConfig(cat);
-  }, [assetData, categoryService]);
+  }, [assetData, categoryInput, categoryService]);
 
   const openCustomPriceModal = () => {
     if (assetData) {

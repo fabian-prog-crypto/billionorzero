@@ -8,8 +8,9 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import { Position, Account, AssetWithPrice, assetClassFromType } from '@/types';
+import { Position, Account, AssetWithPrice } from '@/types';
 import { extractCurrencyCode } from './portfolio-calculator';
+import { getCategoryService } from './category-service';
 
 /** Normalize a name to a stable internal slug for matching. */
 export function toSlug(name: string): string {
@@ -52,6 +53,7 @@ export function linkOrphanedCashPositions(
   positions: Position[],
   accounts: Account[]
 ): { positions: Position[]; accounts: Account[] } | null {
+  const categoryService = getCategoryService();
   const manualAccounts = accounts.filter((a) => a.connection.dataSource === 'manual');
   const updatedAccounts = [...accounts];
   const updatedPositions = [...positions];
@@ -69,7 +71,7 @@ export function linkOrphanedCashPositions(
   const existingIds = new Set(accounts.map((a) => a.id));
 
   updatedPositions.forEach((p, i) => {
-    const effectiveClass = p.assetClass ?? assetClassFromType(p.type);
+    const effectiveClass = p.assetClassOverride ?? p.assetClass ?? categoryService.getAssetClass(p.symbol, p.type);
     if (effectiveClass !== 'cash') return;
 
     const accountName = extractCashAccountName(p.name);

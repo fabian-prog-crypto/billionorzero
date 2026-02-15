@@ -6,21 +6,28 @@ import DonutChart from '@/components/charts/DonutChart';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import {
   calculateAllPositionsWithPrices,
-  calculateEquitiesBreakdown,
+  calculateMetalsBreakdown,
   getCategoryService,
 } from '@/services';
 import { formatCurrency, formatNumber, formatPercent, getChangeColor } from '@/lib/utils';
 import { SUBCATEGORY_COLORS } from '@/lib/colors';
 import SearchInput from '@/components/ui/SearchInput';
 import SortableTableHeader from '@/components/ui/SortableTableHeader';
-import StockIcon from '@/components/ui/StockIcon';
 import ConfirmPositionActionModal from '@/components/modals/ConfirmPositionActionModal';
 import type { ParsedPositionAction, AssetWithPrice } from '@/types';
 
 type SortField = 'symbol' | 'value' | 'amount' | 'price' | 'change';
 type SortDirection = 'asc' | 'desc';
 
-export default function EquitiesPage() {
+const METAL_LABELS: Record<string, string> = {
+  gold: 'Gold',
+  silver: 'Silver',
+  platinum: 'Platinum',
+  palladium: 'Palladium',
+  miners: 'Miners',
+};
+
+export default function MetalsPage() {
   const { positions, prices, customPrices, fxRates, hideBalances } = usePortfolioStore();
   const [sortField, setSortField] = useState<SortField>('value');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
@@ -28,14 +35,6 @@ export default function EquitiesPage() {
   const [editAction, setEditAction] = useState<ParsedPositionAction | null>(null);
 
   const handleEdit = (position: AssetWithPrice) => {
-    // Only allow editing manual (non-wallet-synced) positions
-    if (position.accountId) {
-      const store = usePortfolioStore.getState();
-      const account = store.accounts.find(a => a.id === position.accountId);
-      if (account && (account.connection.dataSource === 'debank' || account.connection.dataSource === 'helius')) {
-        return; // Can't edit wallet-synced positions
-      }
-    }
     setEditAction({
       action: 'update_position',
       symbol: position.symbol,
@@ -52,21 +51,17 @@ export default function EquitiesPage() {
 
   const categoryService = getCategoryService();
 
-  // Calculate all positions with prices
   const allPositions = useMemo(() => {
     return calculateAllPositionsWithPrices(positions, prices, customPrices, fxRates);
   }, [positions, prices, customPrices, fxRates]);
 
-  // Use centralized service for equities breakdown - SINGLE SOURCE OF TRUTH
   const breakdownData = useMemo(() => {
-    return calculateEquitiesBreakdown(allPositions);
+    return calculateMetalsBreakdown(allPositions);
   }, [allPositions]);
 
-  // Filter and sort positions (UI-only logic)
   const filteredPositions = useMemo(() => {
-    let filtered = breakdownData.equityPositions;
+    let filtered = breakdownData.metalPositions;
 
-    // Apply search filter
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(
@@ -76,7 +71,6 @@ export default function EquitiesPage() {
       );
     }
 
-    // Apply sorting
     return [...filtered].sort((a, b) => {
       let comparison = 0;
       switch (sortField) {
@@ -98,7 +92,7 @@ export default function EquitiesPage() {
       }
       return sortDirection === 'asc' ? comparison : -comparison;
     });
-  }, [breakdownData.equityPositions, searchQuery, sortField, sortDirection]);
+  }, [breakdownData.metalPositions, searchQuery, sortField, sortDirection]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -117,7 +111,7 @@ export default function EquitiesPage() {
       return [
         p.symbol.toUpperCase(),
         p.name,
-        subCat === 'etfs' ? 'ETF' : 'Stock',
+        METAL_LABELS[subCat] || subCat,
         p.amount,
         p.currentPrice,
         p.value,
@@ -134,82 +128,79 @@ export default function EquitiesPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `equities-${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `metals-${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
-  if (breakdownData.equityPositions.length === 0) {
+  if (breakdownData.metalPositions.length === 0) {
     return (
       <div>
         <div className="flex flex-col items-center justify-center py-20">
           <div className="w-14 h-14  bg-[var(--background-secondary)] flex items-center justify-center mb-4">
             <TrendingUp className="w-6 h-6 text-[var(--foreground-muted)]" />
           </div>
-          <h2 className="text-[15px] font-semibold mb-2">No equity positions</h2>
+          <h2 className="text-[15px] font-semibold mb-2">No metal positions</h2>
           <p className="text-[13px] text-[var(--foreground-muted)] text-center max-w-md">
-            Add stock or ETF positions to track your equity portfolio.
+            Add gold, silver, or metal-related positions to track your metals exposure.
           </p>
         </div>
       </div>
     );
   }
 
+  const breakdownCards = [
+    { key: 'gold', label: 'Gold', color: SUBCATEGORY_COLORS.metals_gold, data: breakdownData.gold },
+    { key: 'silver', label: 'Silver', color: SUBCATEGORY_COLORS.metals_silver, data: breakdownData.silver },
+    { key: 'platinum', label: 'Platinum', color: SUBCATEGORY_COLORS.metals_platinum, data: breakdownData.platinum },
+    { key: 'palladium', label: 'Palladium', color: SUBCATEGORY_COLORS.metals_palladium, data: breakdownData.palladium },
+    { key: 'miners', label: 'Miners', color: SUBCATEGORY_COLORS.metals_miners, data: breakdownData.miners },
+  ];
+
   return (
     <div>
       {/* Header Stats */}
       <div className="flex items-start justify-between mb-6">
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">TOTAL EQUITIES</p>
+          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">TOTAL METALS</p>
           <h2 className="text-2xl font-semibold mb-1">
             {hideBalances ? '••••••••' : formatCurrency(breakdownData.total)}
           </h2>
           <p className="text-[13px] text-[var(--foreground-muted)]">
-            Stocks and ETFs in your portfolio
+            Gold, silver, and metal exposure across accounts
           </p>
         </div>
-
       </div>
 
       <hr className="border-[var(--border)] mb-6" />
 
-      {/* Pie Chart - Stocks vs ETFs */}
+      {/* Donut Chart */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
         <DonutChart
-          title="Stocks vs ETFs"
+          title="Metals Breakdown"
           data={breakdownData.chartData}
           hideValues={hideBalances}
-          maxItems={2}
+          maxItems={5}
         />
 
         {/* Summary Stats */}
         <div className="md:col-span-2">
           <h3 className="text-[15px] font-medium mb-4">Breakdown</h3>
-          <div className="grid grid-cols-2 gap-6">
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-3 h-3 " style={{ backgroundColor: SUBCATEGORY_COLORS.equities_stocks }} />
-                <span className="text-[13px] font-medium">Individual Stocks</span>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+            {breakdownCards.map((item) => (
+              <div key={item.key}>
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-3 h-3" style={{ backgroundColor: item.color }} />
+                  <span className="text-[13px] font-medium">{item.label}</span>
+                </div>
+                <p className="text-xl font-semibold mb-1">
+                  {hideBalances ? '••••' : formatCurrency(item.data.value)}
+                </p>
+                <p className="text-[13px] text-[var(--foreground-muted)]">
+                  {item.data.count} position{item.data.count !== 1 ? 's' : ''} &middot; {breakdownData.total > 0 ? ((item.data.value / breakdownData.total) * 100).toFixed(1) : 0}%
+                </p>
               </div>
-              <p className="text-xl font-semibold mb-1">
-                {hideBalances ? '••••' : formatCurrency(breakdownData.stocks.value)}
-              </p>
-              <p className="text-[13px] text-[var(--foreground-muted)]">
-                {breakdownData.stocks.count} position{breakdownData.stocks.count !== 1 ? 's' : ''} &middot; {breakdownData.total > 0 ? ((breakdownData.stocks.value / breakdownData.total) * 100).toFixed(1) : 0}%
-              </p>
-            </div>
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-3 h-3 " style={{ backgroundColor: SUBCATEGORY_COLORS.equities_etfs }} />
-                <span className="text-[13px] font-medium">ETFs</span>
-              </div>
-              <p className="text-xl font-semibold mb-1">
-                {hideBalances ? '••••' : formatCurrency(breakdownData.etfs.value)}
-              </p>
-              <p className="text-[13px] text-[var(--foreground-muted)]">
-                {breakdownData.etfs.count} position{breakdownData.etfs.count !== 1 ? 's' : ''} &middot; {breakdownData.total > 0 ? ((breakdownData.etfs.value / breakdownData.total) * 100).toFixed(1) : 0}%
-              </p>
-            </div>
+            ))}
           </div>
         </div>
       </div>
@@ -261,7 +252,7 @@ export default function EquitiesPage() {
             {filteredPositions.map((position) => {
               const categoryInput = position.assetClassOverride ?? position.assetClass ?? position.type;
               const subCat = categoryService.getSubCategory(position.symbol, categoryInput);
-              const isETF = subCat === 'etfs';
+              const subColor = SUBCATEGORY_COLORS[`metals_${subCat}` as keyof typeof SUBCATEGORY_COLORS] || SUBCATEGORY_COLORS.metals_gold;
 
               return (
                 <tr
@@ -270,7 +261,12 @@ export default function EquitiesPage() {
                 >
                   <td className="py-2">
                     <div className="flex items-center gap-2">
-                      <StockIcon symbol={position.symbol} size={24} isETF={isETF} />
+                      <div
+                        className="w-6 h-6 flex items-center justify-center text-[10px] font-semibold text-white"
+                        style={{ backgroundColor: subColor }}
+                      >
+                        {position.symbol.slice(0, 1).toUpperCase()}
+                      </div>
                       <div>
                         <p className="font-medium text-sm">{position.symbol.toUpperCase()}</p>
                         <p className="text-[11px] text-[var(--foreground-muted)] truncate max-w-[150px]">
@@ -283,11 +279,11 @@ export default function EquitiesPage() {
                     <span
                       className="px-1.5 py-0.5 text-[10px] font-medium"
                       style={{
-                        backgroundColor: isETF ? `${SUBCATEGORY_COLORS.equities_etfs}1A` : `${SUBCATEGORY_COLORS.equities_stocks}1A`,
-                        color: isETF ? SUBCATEGORY_COLORS.equities_etfs : SUBCATEGORY_COLORS.equities_stocks,
+                        backgroundColor: `${subColor}1A`,
+                        color: subColor,
                       }}
                     >
-                      {isETF ? 'ETF' : 'Stock'}
+                      {METAL_LABELS[subCat] || subCat}
                     </span>
                   </td>
                   <td className="py-2 text-right font-mono text-xs">

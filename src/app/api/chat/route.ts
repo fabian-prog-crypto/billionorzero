@@ -12,7 +12,7 @@ import { classifyIntent } from '@/services/domain/intent-router';
 import { calculatePortfolioSummary, calculateAllPositionsWithPrices, calculateExposureData, calculateRiskProfile, calculatePerpPageData, extractCurrencyCode } from '@/services/domain/portfolio-calculator';
 import { calculatePerformanceMetrics } from '@/services/domain/performance-metrics';
 import { isPositionInAssetClass } from '@/services/domain/account-role-service';
-import { assetClassFromType } from '@/types';
+import { getCategoryService } from '@/services/domain/category-service';
 import type { Position, Transaction, Account } from '@/types';
 import { extractAccountInput, resolveAccountFromArgs } from '@/services/domain/command-account-resolver';
 import { toolCallToAction, findPositionBySymbol, CONFIRM_MUTATION_TOOLS } from '@/services/domain/action-mapper';
@@ -749,7 +749,7 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
     case 'query_portfolio_summary': {
       const db = readDb();
       const summary = calculatePortfolioSummary(db.positions, db.prices, db.customPrices, db.fxRates);
-      return { result: { netWorth: summary.totalValue, grossAssets: summary.grossAssets, totalDebts: summary.totalDebts, cryptoValue: summary.cryptoValue, equityValue: summary.equityValue, cashValue: summary.cashValue, otherValue: summary.otherValue, change24h: summary.change24h, changePercent24h: summary.changePercent24h, positionCount: summary.positionCount, assetCount: summary.assetCount }, isMutation: false };
+      return { result: { netWorth: summary.totalValue, grossAssets: summary.grossAssets, totalDebts: summary.totalDebts, cryptoValue: summary.cryptoValue, equityValue: summary.equityValue, metalsValue: summary.metalsValue, cashValue: summary.cashValue, otherValue: summary.otherValue, change24h: summary.change24h, changePercent24h: summary.changePercent24h, positionCount: summary.positionCount, assetCount: summary.assetCount }, isMutation: false };
     }
 
     case 'query_top_positions': {
@@ -778,12 +778,13 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
       const filtered = assets.filter((asset) => {
         if (assetType === 'stock' || assetType === 'etf') return asset.type === assetType;
         if (assetType === 'manual') return isPositionInAssetClass(asset, 'other');
+        if (assetType === 'metals') return isPositionInAssetClass(asset, 'metals');
         if (assetType === 'crypto' || assetType === 'cash') {
           return isPositionInAssetClass(asset, assetType);
         }
         return false;
       });
-      if (filtered.length === 0 && !['crypto', 'stock', 'etf', 'cash', 'manual'].includes(assetType)) {
+      if (filtered.length === 0 && !['crypto', 'stock', 'etf', 'metals', 'cash', 'manual'].includes(assetType)) {
         return { result: { error: `Unsupported assetType: ${assetType}` }, isMutation: false };
       }
       return { result: filtered.map(a => ({ symbol: a.symbol, amount: a.amount, value: Math.round(a.value) })), isMutation: false };
@@ -818,7 +819,10 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
       const db = readDb();
       const category = String(args.category || '');
       const summary = calculatePortfolioSummary(db.positions, db.prices, db.customPrices, db.fxRates);
-      const match = summary.assetsByType.find(e => e.type === category);
+      const normalized = category.toLowerCase();
+      const match = normalized === 'metals'
+        ? summary.assetsByClass.find(e => e.assetClass === 'metals')
+        : summary.assetsByType.find(e => e.type === normalized);
       return { result: match || { error: `No data for category "${category}"` }, isMutation: false };
     }
 
@@ -880,7 +884,8 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
         return { result: { error: 'Could not determine amount from totalCost. Provide amount or a resolvable price.' }, isMutation: true };
       }
 
-      const effectiveAssetClass = assetClassFromType(assetType as 'crypto' | 'stock' | 'etf' | 'cash' | 'manual');
+      const categoryService = getCategoryService();
+      const effectiveAssetClass = categoryService.getAssetClass(symbol, assetType);
       const effectiveType = assetType as 'crypto' | 'stock' | 'etf' | 'cash' | 'manual';
 
       const result = await withDb(data => {

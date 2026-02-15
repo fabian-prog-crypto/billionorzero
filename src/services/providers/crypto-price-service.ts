@@ -86,6 +86,9 @@ const COIN_ID_MAP: Record<string, string> = {
   busd: 'binance-usd',
   pyusd: 'paypal-usd',
   fdusd: 'first-digital-usd',
+  // Tokenized metals
+  xaut: 'tether-gold',
+  paxg: 'pax-gold',
   // Meme coins
   pepe: 'pepe',
   shib: 'shiba-inu',

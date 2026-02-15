@@ -4,6 +4,7 @@
  */
 
 import { Position } from '@/types';
+import { getCategoryService } from '@/services/domain/category-service';
 import {
   getHyperliquidApiClient,
   HyperliquidClearinghouseState,
@@ -28,6 +29,7 @@ export class HyperliquidProvider {
     const positions: Position[] = [];
     const prices: Record<string, { price: number; symbol: string }> = {};
     let accountValue = 0;
+    const categoryService = getCategoryService();
 
     try {
       // Fetch perp state, spot state, and prices in parallel
@@ -98,7 +100,7 @@ export class HyperliquidProvider {
 
       positions.push({
         id: `${walletId}-hyperliquid-perp-${coin}-${isShort ? 'short' : 'long'}`,
-        assetClass: 'crypto' as const,
+        assetClass: categoryService.getAssetClass(coin, 'crypto'),
         type: 'crypto' as const,
         symbol: coin,
         name: `${coin} ${isShort ? 'Short' : 'Long'} (Hyperliquid)`,
@@ -125,7 +127,7 @@ export class HyperliquidProvider {
 
       positions.push({
         id: `${walletId}-hyperliquid-margin-usdc`,
-        assetClass: 'crypto' as const,
+        assetClass: categoryService.getAssetClass('USDC', 'crypto'),
         type: 'crypto' as const,
         symbol: 'USDC',
         name: 'USDC Margin (Hyperliquid)',
@@ -153,6 +155,7 @@ export class HyperliquidProvider {
   ): { positions: Position[]; prices: Record<string, { price: number; symbol: string }> } {
     const positions: Position[] = [];
     const prices: Record<string, { price: number; symbol: string }> = {};
+    const categoryService = getCategoryService();
 
     for (const balance of state.balances) {
       const total = parseFloat(balance.total);
@@ -185,7 +188,7 @@ export class HyperliquidProvider {
 
       positions.push({
         id: `${walletId}-hyperliquid-spot-${coin}`,
-        assetClass: 'crypto' as const,
+        assetClass: categoryService.getAssetClass(coin, 'crypto'),
         type: 'crypto' as const,
         symbol: coin,
         name: `${coin} (Hyperliquid${isStable ? ' Spot Margin' : ' Spot'})`,

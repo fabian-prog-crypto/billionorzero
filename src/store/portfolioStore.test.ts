@@ -145,6 +145,28 @@ describe('Position CRUD', () => {
     const ids = usePortfolioStore.getState().positions.map((p) => p.id)
     expect(ids).toEqual(['first', 'second', 'third'])
   })
+
+  it('setAssetClassOverride updates all positions for a symbol', () => {
+    usePortfolioStore.setState({
+      positions: [
+        makeStockPosition({ id: 'p1', symbol: 'AAA', assetClass: 'equity', type: 'stock' }),
+        makeStockPosition({ id: 'p2', symbol: 'AAA', assetClass: 'equity', type: 'stock' }),
+        makeCryptoPosition({ id: 'p3', symbol: 'BTC', assetClass: 'crypto', type: 'crypto' }),
+      ],
+    })
+
+    usePortfolioStore.getState().setAssetClassOverride('AAA', 'metals')
+    const afterOverride = usePortfolioStore.getState().positions
+    const overridden = afterOverride.filter((p) => p.symbol === 'AAA')
+    expect(overridden.every((p) => p.assetClassOverride === 'metals')).toBe(true)
+    expect(overridden.every((p) => p.assetClass === 'metals')).toBe(true)
+
+    usePortfolioStore.getState().setAssetClassOverride('AAA', null)
+    const afterClear = usePortfolioStore.getState().positions
+    const cleared = afterClear.filter((p) => p.symbol === 'AAA')
+    expect(cleared.every((p) => p.assetClassOverride === undefined)).toBe(true)
+    expect(cleared.every((p) => p.assetClass === 'equity')).toBe(true)
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -787,7 +809,7 @@ describe('clearAll', () => {
       ],
       customPrices: { btc: { price: 99000, setAt: '2024-01-01T00:00:00Z' } },
       transactions: [{ id: 'tx1', type: 'buy' as const, symbol: 'BTC', name: 'Bitcoin', assetType: 'crypto' as const, amount: 1, pricePerUnit: 50000, totalValue: 50000, positionId: 'p1', date: '2024-01-01', createdAt: '2024-01-01T00:00:00Z' }],
-      snapshots: [{ id: 's1', date: '2024-01-01', totalValue: 100000, cryptoValue: 60000, equityValue: 30000, cashValue: 8000, otherValue: 2000, stockValue: 30000, manualValue: 2000 }],
+      snapshots: [{ id: 's1', date: '2024-01-01', totalValue: 100000, cryptoValue: 60000, equityValue: 30000, metalsValue: 0, cashValue: 8000, otherValue: 2000, stockValue: 30000, manualValue: 2000 }],
       lastRefresh: '2024-06-01T00:00:00Z',
       isRefreshing: true,
     })
@@ -864,6 +886,7 @@ describe('Snapshots', () => {
       totalValue: 150000,
       cryptoValue: 90000,
       equityValue: 40000,
+      metalsValue: 0,
       cashValue: 15000,
       otherValue: 5000,
       stockValue: 40000,

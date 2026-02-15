@@ -5,6 +5,7 @@ import { jsonFileStorage } from './json-storage';
 import { Position, Account, WalletAccount, BrokerageAccount, CashAccount, CexAccount, AssetClass, AssetType, WalletConnection, CexConnection, ManualConnection, AccountConnection, PriceData, NetWorthSnapshot, Transaction, typeFromAssetClass } from '@/types';
 import { toSlug, extractCashAccountName, linkOrphanedCashPositions } from '@/services/domain/cash-account-service';
 import { buildManualAccountHoldings, isManualAccountInScope } from '@/services/domain/account-role-service';
+import { getCategoryService } from '@/services/domain/category-service';
 
 // Custom price entry
 export interface CustomPrice {
@@ -35,6 +36,7 @@ interface PortfolioState {
   cexAccounts: () => Account[];
   manualAccounts: () => Account[];
   brokerageAccounts: () => Account[];
+  metalAccounts: () => Account[];
   cashAccounts: () => Account[];
   wallets: () => Account[];  // Legacy alias for walletAccounts
 
@@ -42,6 +44,7 @@ interface PortfolioState {
   addPosition: (position: Omit<Position, 'id' | 'addedAt' | 'updatedAt'> & { id?: string }) => void;
   removePosition: (id: string) => void;
   updatePosition: (id: string, updates: Partial<Position>) => void;
+  setAssetClassOverride: (symbol: string, override: AssetClass | null) => void;
 
   // Unified account CRUD
   addAccount: (account: Omit<Account, 'id' | 'addedAt'>) => string;
@@ -120,6 +123,20 @@ export const usePortfolioStore = create<PortfolioState>()(
           return isManualAccountInScope(holdings.get(a.id), 'brokerage');
         });
       },
+      metalAccounts: () => {
+        const accounts = get().accounts;
+        const positions = get().positions;
+        const categoryService = getCategoryService();
+        const metalAccountIds = new Set(
+          positions
+            .filter((p) => {
+              const categoryInput = p.assetClassOverride ?? p.assetClass ?? p.type;
+              return !!p.accountId && categoryService.getMainCategory(p.symbol, categoryInput) === 'metals';
+            })
+            .map((p) => p.accountId as string)
+        );
+        return accounts.filter((a) => metalAccountIds.has(a.id));
+      },
       cashAccounts: () => {
         const accounts = get().accounts;
         const positions = get().positions;
@@ -162,6 +179,26 @@ export const usePortfolioStore = create<PortfolioState>()(
               ? { ...p, ...updates, updatedAt: new Date().toISOString() }
               : p
           ),
+        }));
+      },
+
+      setAssetClassOverride: (symbol, override) => {
+        const normalized = symbol.toLowerCase().trim();
+        const categoryService = getCategoryService();
+        set((state) => ({
+          positions: state.positions.map((p) => {
+            if (p.symbol.toLowerCase() !== normalized) return p;
+            const nextOverride = override || undefined;
+            const nextAssetClass = override
+              ? override
+              : categoryService.getAssetClass(p.symbol, p.type);
+            return {
+              ...p,
+              assetClassOverride: nextOverride,
+              assetClass: nextAssetClass,
+              updatedAt: new Date().toISOString(),
+            };
+          }),
         }));
       },
 
@@ -347,7 +384,7 @@ export const usePortfolioStore = create<PortfolioState>()(
     {
       name: 'portfolio-storage',
       storage: createJSONStorage(() => jsonFileStorage),
-      version: 13,
+      version: 14,
       migrate: (persistedState: unknown, version: number) => {
         const state = persistedState as Record<string, unknown>;
         // v2 → v3: add transactions array
@@ -900,6 +937,30 @@ export const usePortfolioStore = create<PortfolioState>()(
             accounts: (state.accounts as Array<Record<string, unknown>>).length,
             positions: positions.length,
             merged: mergeMap.size,
+          });
+        }
+
+        // v13 → v14: Reclassify metals + add metalsValue on snapshots
+        if (version < 14) {
+          console.log('[v14 migration] Running. version =', version);
+          const categoryService = getCategoryService();
+          const positions = (state.positions || []) as Array<Record<string, unknown>>;
+          positions.forEach(p => {
+            const symbol = String(p.symbol || '');
+            const type = String(p.type || 'manual');
+            p.assetClass = categoryService.getAssetClass(symbol, type);
+          });
+
+          const snapshots = (state.snapshots || []) as Array<Record<string, unknown>>;
+          snapshots.forEach(s => {
+            if (s.metalsValue === undefined) {
+              s.metalsValue = 0;
+            }
+          });
+
+          console.log('[v14 migration] Complete.', {
+            positions: positions.length,
+            snapshots: snapshots.length,
           });
         }
 

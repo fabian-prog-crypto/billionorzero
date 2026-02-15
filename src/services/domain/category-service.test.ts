@@ -69,6 +69,14 @@ describe('getMainCategory', () => {
     expect(service.getMainCategory('BTC', 'crypto')).toBe('crypto')
   })
 
+  it('returns metals for XAUT even when assetType is crypto', () => {
+    expect(service.getMainCategory('XAUT', 'crypto')).toBe('metals')
+  })
+
+  it('returns metals for GLD even when assetType is stock', () => {
+    expect(service.getMainCategory('GLD', 'stock')).toBe('metals')
+  })
+
   it('returns cash for manual position with fiat currency symbol', () => {
     expect(service.getMainCategory('EUR')).toBe('cash')
   })
@@ -116,6 +124,18 @@ describe('getSubCategory', () => {
 
   it('returns etfs for SPY (known ETF symbol)', () => {
     expect(service.getSubCategory('SPY', 'stock')).toBe('etfs')
+  })
+
+  it('returns gold for XAUT', () => {
+    expect(service.getSubCategory('XAUT', 'crypto')).toBe('gold')
+  })
+
+  it('returns silver for XAGE', () => {
+    expect(service.getSubCategory('XAGE', 'crypto')).toBe('silver')
+  })
+
+  it('returns gold for GLD (metal ETF)', () => {
+    expect(service.getSubCategory('GLD', 'stock')).toBe('gold')
   })
 
   it('returns etfs for explicit etf assetType', () => {
@@ -285,7 +305,7 @@ describe('token coverage', () => {
     // ETFs are not part of getAllCategorizedTokens (which is crypto-only),
     // so we test via getSubCategory recognizing known ETFs
     const knownEtfs = [
-      'SPY', 'QQQ', 'VTI', 'ARKK', 'GBTC', 'IBIT', 'GLD', 'TLT',
+      'SPY', 'QQQ', 'VTI', 'ARKK', 'GBTC', 'IBIT', 'TLT',
       'XLK', 'SOXX', 'TQQQ', 'BND', 'VWO', 'EFA', 'SCHD',
     ]
     for (const etf of knownEtfs) {
@@ -301,13 +321,15 @@ describe('color alignment', () => {
   it('uses shared category color tokens for main categories', () => {
     expect(service.getCategoryColor('crypto')).toBe(CATEGORY_COLORS.crypto)
     expect(service.getCategoryColor('equities')).toBe(CATEGORY_COLORS.equities)
+    expect(service.getCategoryColor('metals')).toBe(CATEGORY_COLORS.metals)
     expect(service.getCategoryColor('cash')).toBe(CATEGORY_COLORS.cash)
   })
 
-  it('uses shared subcategory color tokens for crypto/equities subcategories', () => {
+  it('uses shared subcategory color tokens for crypto/equities/metals subcategories', () => {
     expect(service.getCategoryColor('crypto_btc')).toBe(SUBCATEGORY_COLORS.crypto_btc)
     expect(service.getCategoryColor('crypto_tokens')).toBe(SUBCATEGORY_COLORS.crypto_tokens)
     expect(service.getCategoryColor('equities_stocks')).toBe(SUBCATEGORY_COLORS.equities_stocks)
+    expect(service.getCategoryColor('metals_gold')).toBe(SUBCATEGORY_COLORS.metals_gold)
   })
 
   it('uses shared exposure color config (including RWA)', () => {

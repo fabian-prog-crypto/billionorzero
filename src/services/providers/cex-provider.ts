@@ -6,6 +6,7 @@
 
 import { Account, CexConnection, Position } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
+import { getCategoryService } from '@/services/domain/category-service';
 
 interface BinanceBalance {
   asset: string;
@@ -71,6 +72,8 @@ const ASSET_NAME_MAP: Record<string, string> = {
   ZRO: 'LayerZero',
   ENA: 'Ethena',
   EIGEN: 'EigenLayer',
+  XAUT: 'Tether Gold',
+  PAXG: 'Pax Gold',
 };
 
 /**
@@ -98,6 +101,7 @@ async function fetchBinanceBalances(account: Account): Promise<Position[]> {
     const data: BinanceAccountResponse = await response.json();
     const positions: Position[] = [];
     const now = new Date().toISOString();
+    const categoryService = getCategoryService();
 
     for (const balance of data.balances) {
       const free = parseFloat(balance.free);
@@ -113,7 +117,7 @@ async function fetchBinanceBalances(account: Account): Promise<Position[]> {
 
       positions.push({
         id: uuidv4(),
-        assetClass: 'crypto' as const,
+        assetClass: categoryService.getAssetClass(symbolLower, 'crypto'),
         type: 'crypto' as const,
         symbol: symbolLower,
         name,

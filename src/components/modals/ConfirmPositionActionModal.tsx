@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { X, AlertCircle, TrendingUp, TrendingDown, DollarSign, Trash2, RefreshCw, Tag, Edit2 } from 'lucide-react';
-import { ParsedPositionAction, Position, Account, AssetWithPrice, WalletConnection } from '@/types';
+import { ParsedPositionAction, Position, Account, AssetWithPrice, WalletConnection, AssetClass } from '@/types';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import {
   executePartialSell,
@@ -10,6 +10,7 @@ import {
   executeBuy,
 } from '@/services/domain/position-operations';
 import { resolveAccountByName } from '@/services/domain/command-account-resolver';
+import { getEffectiveAssetClass } from '@/services/domain/account-role-service';
 import { formatCurrency, formatNumber, formatPercent } from '@/lib/utils';
 
 interface ConfirmPositionActionModalProps {
@@ -21,6 +22,13 @@ interface ConfirmPositionActionModalProps {
 }
 
 const FIAT_CURRENCIES = ['USD', 'EUR', 'GBP', 'CHF', 'JPY', 'CNY', 'CAD', 'AUD', 'NZD', 'HKD', 'SGD', 'SEK', 'NOK', 'DKK', 'KRW', 'INR', 'BRL', 'MXN', 'ZAR', 'AED', 'THB', 'PLN', 'CZK', 'ILS', 'PHP', 'IDR', 'MYR', 'TRY', 'RUB', 'HUF', 'RON', 'BGN', 'HRK', 'ISK', 'TWD', 'VND'];
+const ASSET_CLASS_LABELS: Record<AssetClass, string> = {
+  crypto: 'Crypto',
+  equity: 'Equities',
+  metals: 'Metals',
+  cash: 'Cash',
+  other: 'Other',
+};
 
 /**
  * Get relevant accounts for a given asset type.
@@ -100,7 +108,7 @@ export default function ConfirmPositionActionModal({
   positionsWithPrices,
 }: ConfirmPositionActionModalProps) {
   const store = usePortfolioStore();
-  const { updatePosition, removePosition, addPosition, addTransaction, updatePrice, setCustomPrice, addAccount } = store;
+  const { updatePosition, removePosition, addPosition, addTransaction, updatePrice, setCustomPrice, addAccount, setAssetClassOverride } = store;
   const brokerageAccounts = store.brokerageAccounts();
   const allAccounts = store.accounts;
   const normalizedParsedAction = normalizeIncomingAction(parsedAction.action as string);
@@ -138,6 +146,7 @@ export default function ConfirmPositionActionModal({
   const [newPrice, setNewPrice] = useState(parsedAction.newPrice?.toString() || '');
   const [editCostBasis, setEditCostBasis] = useState(parsedAction.costBasis?.toString() || '');
   const [editPurchaseDate, setEditPurchaseDate] = useState(parsedAction.date || '');
+  const [categoryOverride, setCategoryOverride] = useState<'auto' | AssetClass>('auto');
 
   // Account selector for buy/update_position
   const [selectedAccountId, setSelectedAccountId] = useState(
@@ -165,6 +174,7 @@ export default function ConfirmPositionActionModal({
       setNewPrice(parsedAction.newPrice?.toString() || '');
       setEditCostBasis(parsedAction.costBasis?.toString() || '');
       setEditPurchaseDate(parsedAction.date || '');
+      setCategoryOverride('auto');
 
       // Auto-fill price from current market price when missing
       const matchedById = parsedAction.matchedPositionId
@@ -221,6 +231,7 @@ export default function ConfirmPositionActionModal({
           setAmount(parsedAction.amount?.toString() || pos.amount.toString());
           setEditCostBasis(parsedAction.costBasis?.toString() || pos.costBasis?.toString() || '');
           setEditPurchaseDate(parsedAction.date || pos.purchaseDate || '');
+          setCategoryOverride(pos.assetClassOverride || 'auto');
         }
       }
 
@@ -287,6 +298,15 @@ export default function ConfirmPositionActionModal({
       }
     }
   }, [isOpen, parsedAction, positionsWithPrices, positions, store]);
+
+  // Keep category override selection in sync with the selected position
+  useEffect(() => {
+    if (!isOpen || action !== 'update_position') return;
+    const pos = positions.find(p => p.id === matchedPositionId);
+    if (pos) {
+      setCategoryOverride(pos.assetClassOverride || 'auto');
+    }
+  }, [isOpen, action, matchedPositionId, positions]);
 
   // Auto-focus first missing field
   useEffect(() => {
@@ -500,8 +520,9 @@ export default function ConfirmPositionActionModal({
             : null
     )
     : null;
+  const matchedEffectiveClass = matchedPosition ? getEffectiveAssetClass(matchedPosition) : null;
   const isSellEquity = isSell && !!matchedPosition
-    && (matchedPosition.type === 'stock' || matchedPosition.type === 'etf' || matchedPosition.assetClass === 'equity');
+    && (matchedPosition.type === 'stock' || matchedPosition.type === 'etf' || matchedEffectiveClass === 'equity' || matchedEffectiveClass === 'metals');
   const isBuyEquity = isBuy && (parsedAction.assetType === 'stock' || parsedAction.assetType === 'etf');
   const sellSettlementCurrency = isSellEquity ? 'USD' : inferSettlementCurrency(matchedPosition?.symbol || symbol);
   const buySettlementCurrency = isBuyEquity ? 'USD' : inferSettlementCurrency(symbol);
@@ -622,6 +643,7 @@ export default function ConfirmPositionActionModal({
       purchaseDate?: string;
       accountId?: string;
       forceCashCostBasis?: boolean;
+      allowNoChanges?: boolean;
     },
   ): boolean => {
     const updates: Partial<Position> = {};
@@ -646,7 +668,9 @@ export default function ConfirmPositionActionModal({
     }
 
     if (Object.keys(updates).length === 0) {
-      setError('No fields changed');
+      if (!options.allowNoChanges) {
+        setError('No fields changed');
+      }
       return false;
     }
 
@@ -854,28 +878,62 @@ export default function ConfirmPositionActionModal({
           setError('No matching position found to update');
           return;
         }
+        const desiredOverride = categoryOverride === 'auto' ? null : categoryOverride;
+        const currentOverride = matchedPosition.assetClassOverride ?? null;
+        const overrideChanged = desiredOverride !== currentOverride;
+
+        const resolvedAccountId = selectedAccountId || matchedPosition.accountId || undefined;
+        const numEditCostBasis = parseFloat(editCostBasis);
+        const amountChanged = isCashUpdate
+          ? numAmount > 0 && numAmount !== matchedPosition.amount
+          : !!amount && numAmount > 0 && numAmount !== matchedPosition.amount;
+        const costBasisChanged = !isCashUpdate
+          && editCostBasis !== ''
+          && !isNaN(numEditCostBasis)
+          && numEditCostBasis !== (matchedPosition.costBasis ?? null);
+        const purchaseDateChanged = !isCashUpdate
+          && !!editPurchaseDate
+          && editPurchaseDate !== (matchedPosition.purchaseDate || '');
+        const accountChanged = resolvedAccountId !== matchedPosition.accountId;
+        const hasNonOverrideChanges = amountChanged || costBasisChanged || purchaseDateChanged || accountChanged;
+
         if (matchedPosition.accountId) {
-          // Check if this is a wallet-synced position (can't edit those)
+          // Check if this is a wallet-synced position (can't edit those fields)
           const account = store.accounts.find(a => a.id === matchedPosition.accountId);
-          if (account && (account.connection.dataSource === 'debank' || account.connection.dataSource === 'helius')) {
+          if (account && (account.connection.dataSource === 'debank' || account.connection.dataSource === 'helius') && hasNonOverrideChanges) {
             setError('Cannot edit wallet-synced positions');
             return;
           }
         }
-        const numEditCostBasis = parseFloat(editCostBasis);
-        const updated = isCashUpdate
-          ? commitPositionUpdate(matchedPosition, {
-            amount: numAmount > 0 ? numAmount : undefined,
-            accountId: selectedAccountId || matchedPosition.accountId,
-            forceCashCostBasis: true,
-          })
-          : commitPositionUpdate(matchedPosition, {
-            amount: amount && numAmount > 0 ? numAmount : undefined,
-            costBasis: editCostBasis && !isNaN(numEditCostBasis) ? numEditCostBasis : undefined,
-            purchaseDate: editPurchaseDate || undefined,
-            accountId: selectedAccountId || matchedPosition.accountId,
-          });
-        if (!updated) return;
+
+        let updated = false;
+        if (hasNonOverrideChanges) {
+          updated = isCashUpdate
+            ? commitPositionUpdate(matchedPosition, {
+              amount: numAmount > 0 ? numAmount : undefined,
+              accountId: resolvedAccountId,
+              forceCashCostBasis: true,
+              allowNoChanges: overrideChanged,
+            })
+            : commitPositionUpdate(matchedPosition, {
+              amount: amount && numAmount > 0 ? numAmount : undefined,
+              costBasis: editCostBasis && !isNaN(numEditCostBasis) ? numEditCostBasis : undefined,
+              purchaseDate: editPurchaseDate || undefined,
+              accountId: resolvedAccountId,
+              allowNoChanges: overrideChanged,
+            });
+          if (!updated && !overrideChanged) return;
+        }
+
+        if (overrideChanged) {
+          setAssetClassOverride(matchedPosition.symbol, desiredOverride);
+          updated = true;
+        }
+
+        if (!updated) {
+          setError('No fields changed');
+          return;
+        }
       }
 
       onClose();
@@ -1566,6 +1624,29 @@ export default function ConfirmPositionActionModal({
 
               {matchedPosition && (
                 <>
+                  {!isCashUpdate && (
+                    <div>
+                      <label className="block modal-field-label mb-1">
+                        Category
+                      </label>
+                      <select
+                        value={categoryOverride}
+                        onChange={(e) => setCategoryOverride(e.target.value as AssetClass | 'auto')}
+                        className="w-full"
+                        aria-label="Category override"
+                      >
+                        <option value="auto">Auto (default)</option>
+                        <option value="crypto">Crypto</option>
+                        <option value="equity">Equities</option>
+                        <option value="metals">Metals</option>
+                        <option value="cash">Cash</option>
+                        <option value="other">Other</option>
+                      </select>
+                      <p className="text-xs text-[var(--foreground-muted)] mt-1">
+                        Current: {ASSET_CLASS_LABELS[getEffectiveAssetClass(matchedPosition)]}
+                      </p>
+                    </div>
+                  )}
                   <div>
                     <label className="block modal-field-label mb-1">
                       {isCashUpdate ? 'New Balance' : 'Amount'}

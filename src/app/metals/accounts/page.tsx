@@ -5,8 +5,16 @@ import { Plus, Trash2, Eye, EyeOff, X } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import { calculateAllPositionsWithPrices, filterPositionsByAccountAndAssetClass } from '@/services';
 import { formatCurrency, formatNumber } from '@/lib/utils';
+import type { Account, CexExchange } from '@/types';
 
-export default function BrokerageAccountsPage() {
+const EXCHANGE_INFO: Record<CexExchange, { name: string; logo: string }> = {
+  binance: { name: 'Binance', logo: 'B' },
+  coinbase: { name: 'Coinbase', logo: 'C' },
+  kraken: { name: 'Kraken', logo: 'K' },
+  okx: { name: 'OKX', logo: 'O' },
+};
+
+export default function MetalsAccountsPage() {
   const store = usePortfolioStore();
   const {
     positions,
@@ -18,38 +26,34 @@ export default function BrokerageAccountsPage() {
     hideBalances,
     toggleHideBalances,
   } = store;
-  const brokerageAccounts = store.brokerageAccounts();
+  const metalAccounts = store.metalAccounts();
   const [showAddModal, setShowAddModal] = useState(false);
 
-  // Calculate brokerage positions with prices
-  const brokerageAccountIds = useMemo(() => new Set(brokerageAccounts.map(a => a.id)), [brokerageAccounts]);
-  const brokeragePositions = useMemo(() => {
-    const filtered = filterPositionsByAccountAndAssetClass(positions, brokerageAccountIds, 'equity');
+  const metalAccountIds = useMemo(() => new Set(metalAccounts.map(a => a.id)), [metalAccounts]);
+  const metalPositions = useMemo(() => {
+    const filtered = filterPositionsByAccountAndAssetClass(positions, metalAccountIds, 'metals');
     return calculateAllPositionsWithPrices(filtered, prices, customPrices, fxRates);
-  }, [positions, prices, customPrices, fxRates, brokerageAccountIds]);
+  }, [positions, prices, customPrices, fxRates, metalAccountIds]);
 
-  // Group positions by account
   const positionsByAccount = useMemo(() => {
-    const grouped: Record<string, typeof brokeragePositions> = {};
-    brokeragePositions.forEach((p) => {
+    const grouped: Record<string, typeof metalPositions> = {};
+    metalPositions.forEach((p) => {
       if (p.accountId) {
         if (!grouped[p.accountId]) grouped[p.accountId] = [];
         grouped[p.accountId].push(p);
       }
     });
     return grouped;
-  }, [brokeragePositions]);
+  }, [metalPositions]);
 
-  // Only show accounts that actually hold equities
-  const equityAccounts = useMemo(
-    () => brokerageAccounts.filter((account) => (positionsByAccount[account.id] || []).length > 0),
-    [brokerageAccounts, positionsByAccount]
+  const accountsWithPositions = useMemo(
+    () => metalAccounts.filter((account) => (positionsByAccount[account.id] || []).length > 0),
+    [metalAccounts, positionsByAccount]
   );
 
-  // Calculate total brokerage value
-  const totalBrokerageValue = useMemo(() => {
-    return brokeragePositions.reduce((sum, p) => sum + p.value, 0);
-  }, [brokeragePositions]);
+  const totalMetalsValue = useMemo(() => {
+    return metalPositions.reduce((sum, p) => sum + p.value, 0);
+  }, [metalPositions]);
 
   const handleRemoveAccount = (id: string) => {
     if (confirm('Are you sure you want to remove this account? All positions from this account will be removed.')) {
@@ -57,15 +61,24 @@ export default function BrokerageAccountsPage() {
     }
   };
 
+  const getAccountMeta = (account: Account) => {
+    const ds = account.connection.dataSource;
+    if (ds === 'manual') return { label: 'Brokerage', badge: account.name.slice(0, 1).toUpperCase() };
+    if (ds === 'debank' || ds === 'helius') return { label: 'Wallet', badge: 'W' };
+    const info = EXCHANGE_INFO[ds as CexExchange];
+    if (info) return { label: info.name, badge: info.logo };
+    return { label: ds, badge: account.name.slice(0, 1).toUpperCase() };
+  };
+
   return (
     <div>
       {/* Summary */}
       <div className="flex items-start justify-between mb-6">
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">TOTAL BROKERAGE HOLDINGS</p>
-          <h2 className="text-2xl font-semibold">{hideBalances ? '••••••••' : formatCurrency(totalBrokerageValue)}</h2>
+          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">TOTAL METALS HOLDINGS</p>
+          <h2 className="text-2xl font-semibold">{hideBalances ? '••••••••' : formatCurrency(totalMetalsValue)}</h2>
           <p className="text-[13px] text-[var(--foreground-muted)] mt-1">
-            {equityAccounts.length} account{equityAccounts.length !== 1 ? 's' : ''}
+            {accountsWithPositions.length} account{accountsWithPositions.length !== 1 ? 's' : ''}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -88,15 +101,14 @@ export default function BrokerageAccountsPage() {
 
       <hr className="border-[var(--border)] mb-6" />
 
-      {/* Accounts List */}
-      {equityAccounts.length === 0 ? (
+      {accountsWithPositions.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16">
           <div className="w-14 h-14 bg-[var(--background-secondary)] flex items-center justify-center mb-4">
             <Plus className="w-6 h-6 text-[var(--foreground-muted)]" />
           </div>
-          <p className="text-[15px] font-semibold mb-2">No brokerage accounts</p>
+          <p className="text-[15px] font-semibold mb-2">No metal accounts</p>
           <p className="text-[13px] text-[var(--foreground-muted)] mb-4 text-center">
-            Add a brokerage account to organize your equity positions.
+            Connect a wallet or add a brokerage account to track metal holdings.
           </p>
           <button onClick={() => setShowAddModal(true)} className="btn btn-primary">
             <Plus className="w-4 h-4" /> Add Account
@@ -104,20 +116,21 @@ export default function BrokerageAccountsPage() {
         </div>
       ) : (
         <div className="space-y-4">
-          {equityAccounts.map((account) => {
+          {accountsWithPositions.map((account) => {
             const accountPositions = positionsByAccount[account.id] || [];
             const accountValue = accountPositions.reduce((sum, p) => sum + p.value, 0);
+            const meta = getAccountMeta(account);
 
             return (
               <div key={account.id} className="border-b border-[var(--border)] last:border-0 pb-6 mb-6 last:pb-0 last:mb-0">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 bg-[var(--accent-primary)] flex items-center justify-center text-white text-[13px] font-semibold">
-                      {account.name.slice(0, 1).toUpperCase()}
+                      {meta.badge}
                     </div>
                     <div>
                       <h3 className="text-[13px] font-medium">{account.name}</h3>
-                      <p className="text-[11px] text-[var(--foreground-muted)]">Brokerage</p>
+                      <p className="text-[11px] text-[var(--foreground-muted)]">{meta.label}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
@@ -137,7 +150,6 @@ export default function BrokerageAccountsPage() {
                   </div>
                 </div>
 
-                {/* Account positions */}
                 {accountPositions.length > 0 && (
                   <div className="border-t border-[var(--border)] pt-4">
                     <div className="table-scroll">
@@ -161,14 +173,11 @@ export default function BrokerageAccountsPage() {
                                     </div>
                                     <div>
                                       <span className="font-medium">{position.symbol.toUpperCase()}</span>
-                                      {position.type === 'cash' && (
-                                        <span className="ml-1 text-[10px] text-[var(--foreground-muted)]">Cash</span>
-                                      )}
                                     </div>
                                   </div>
                                 </td>
                                 <td className="py-2 text-right font-mono text-sm">
-                                  {hideBalances ? '***' : position.type === 'cash' ? formatCurrency(position.amount) : formatNumber(position.amount)}
+                                  {hideBalances ? '***' : formatNumber(position.amount)}
                                 </td>
                                 <td className="py-2 text-right font-semibold">
                                   {hideBalances ? '****' : formatCurrency(position.value)}
@@ -186,17 +195,21 @@ export default function BrokerageAccountsPage() {
         </div>
       )}
 
-      {/* Add Account Modal */}
       {showAddModal && (
-        <AddBrokerageAccountModal onClose={() => setShowAddModal(false)} />
+        <AddBrokerageAccountModal onClose={() => setShowAddModal(false)} addAccount={addAccount} />
       )}
     </div>
   );
 }
 
-function AddBrokerageAccountModal({ onClose }: { onClose: () => void }) {
+function AddBrokerageAccountModal({
+  onClose,
+  addAccount,
+}: {
+  onClose: () => void;
+  addAccount: ReturnType<typeof usePortfolioStore>['addAccount'];
+}) {
   const brokerageStore = usePortfolioStore();
-  const { addAccount } = brokerageStore;
   const brokerageAccounts = brokerageStore.brokerageAccounts();
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);

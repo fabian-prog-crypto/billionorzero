@@ -177,7 +177,7 @@ const queryTools: ToolDefinition[] = [
     type: 'query',
     description: 'List positions filtered by asset type',
     fields: [
-      { name: 'assetType', type: 'string', required: true, description: 'Asset type to filter by', enum: ['crypto', 'stock', 'etf', 'cash', 'manual'] },
+      { name: 'assetType', type: 'string', required: true, description: 'Asset type to filter by', enum: ['crypto', 'stock', 'etf', 'metals', 'cash', 'manual'] },
     ],
     examples: ['show all my stocks', 'list crypto positions'],
   },
@@ -214,7 +214,7 @@ const queryTools: ToolDefinition[] = [
     type: 'query',
     description: 'Get value for a specific category',
     fields: [
-      { name: 'category', type: 'string', required: true, description: 'Category to query', enum: ['crypto', 'stock', 'etf', 'cash', 'manual'] },
+      { name: 'category', type: 'string', required: true, description: 'Category to query', enum: ['crypto', 'stock', 'etf', 'metals', 'cash', 'manual'] },
     ],
     examples: ['how much crypto do I have?', 'total stock value'],
   },
@@ -268,7 +268,7 @@ const navigationTools: ToolDefinition[] = [
         type: 'string',
         required: true,
         description: 'Page to navigate to',
-        enum: ['dashboard', 'positions', 'crypto', 'equities', 'cash', 'exposure', 'performance', 'settings', 'wallets', 'perps', 'other'],
+        enum: ['dashboard', 'positions', 'crypto', 'equities', 'metals', 'cash', 'exposure', 'performance', 'settings', 'wallets', 'perps', 'other'],
       },
     ],
     examples: ['go to performance', 'open settings', 'show wallets'],

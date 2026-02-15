@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withDb } from '../../db-store';
-import { assetClassFromType, typeFromAssetClass } from '@/types';
+import { typeFromAssetClass } from '@/types';
+import { getCategoryService } from '@/services/domain/category-service';
 import type { Position } from '@/types';
 
 export async function POST(request: NextRequest) {
@@ -13,12 +14,14 @@ export async function POST(request: NextRequest) {
     }
 
     const now = new Date().toISOString();
+    const categoryService = getCategoryService();
     const newPositions: Position[] = inputPositions.map((p: Record<string, unknown>) => ({
       id: crypto.randomUUID(),
       symbol: (String(p.symbol || '')).toUpperCase(),
       name: String(p.name || p.symbol || ''),
       amount: Number(p.amount || 0),
-      assetClass: (p.assetClass as Position['assetClass']) || (p.type ? assetClassFromType(p.type as Position['type']) : 'crypto'),
+      assetClass: (p.assetClass as Position['assetClass']) || (p.type ? categoryService.getAssetClass(String(p.symbol || ''), p.type as Position['type']) : 'crypto'),
+      assetClassOverride: p.assetClassOverride as Position['assetClassOverride'],
       type: (p.type as Position['type']) || typeFromAssetClass((p.assetClass as Position['assetClass']) || 'crypto'),
       costBasis: p.costBasis ? Number(p.costBasis) : undefined,
       accountId: p.accountId as string | undefined,

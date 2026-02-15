@@ -3,7 +3,7 @@
 /** @deprecated Use AssetClass instead */
 export type AssetType = 'crypto' | 'stock' | 'etf' | 'cash' | 'manual';
 
-export type AssetClass = 'crypto' | 'equity' | 'cash' | 'other';
+export type AssetClass = 'crypto' | 'equity' | 'metals' | 'cash' | 'other';
 
 // Supported perpetual futures exchanges (type only - use PerpExchangeService for metadata)
 export type PerpExchange = 'hyperliquid' | 'lighter' | 'ethereal';
@@ -96,7 +96,12 @@ export type Wallet = WalletAccount;
 
 export interface Position {
   id: string;
-  assetClass: AssetClass;           // 'crypto' | 'equity' | 'cash' | 'other'
+  assetClass: AssetClass;           // 'crypto' | 'equity' | 'metals' | 'cash' | 'other'
+  /**
+   * Optional per-asset category override.
+   * When set, this supersedes assetClass for classification and grouping.
+   */
+  assetClassOverride?: AssetClass;
   /** @deprecated Use assetClass instead. Kept during transition for backward compat. */
   type: AssetType;
   symbol: string;
@@ -141,6 +146,7 @@ export interface NetWorthSnapshot {
   totalValue: number;
   cryptoValue: number;
   equityValue: number;
+  metalsValue: number;
   cashValue: number;
   otherValue: number;
   /** @deprecated Use equityValue */
@@ -157,6 +163,7 @@ export interface PortfolioSummary {
   changePercent24h: number;
   cryptoValue: number;
   equityValue: number;
+  metalsValue: number;
   cashValue: number;
   otherValue: number;
   /** @deprecated Use equityValue */
@@ -271,6 +278,7 @@ export function typeFromAssetClass(assetClass: AssetClass, equityType?: 'stock' 
   switch (assetClass) {
     case 'crypto': return 'crypto';
     case 'equity': return equityType || 'stock';
+    case 'metals': return 'manual';
     case 'cash': return 'cash';
     case 'other': return 'manual';
     default: return 'manual';
