@@ -375,14 +375,24 @@ async function submitMutationAndExpectModal(
 }
 
 test.describe('CMD-K Commands — Queries', () => {
-  // 1. Net worth
-  test('query: net worth', async ({ seededPage: page }) => {
+  // 1. Performance
+  test('query: performance', async ({ seededPage: page }) => {
     await mockChatSuccess(page, {
-      response: 'Your net worth is $120,500. Gross assets: $135,000, debts: $14,500.',
-      toolCalls: [{ tool: 'query_net_worth', args: {}, result: { netWorth: 120500, grossAssets: 135000, totalDebts: 14500 }, isMutation: false }],
+      response: 'Performance: +12.5% total return, Sharpe 1.24, max drawdown -18.2%.',
+      toolCalls: [{ tool: 'query_performance', args: {}, result: {
+        totalReturn: 12.5,
+        totalReturnAbsolute: 12500,
+        cagr: 8.1,
+        sharpeRatio: 1.24,
+        volatility: 24.6,
+        maxDrawdown: -18.2,
+        maxDrawdownAbsolute: -12000,
+        currentDrawdown: -4.1,
+        periodDays: 365,
+      }, isMutation: false }],
       mutations: false,
     });
-    await submitAndExpectQuery(page, "What's my net worth?", ['Net Worth', '$120,500']);
+    await submitAndExpectQuery(page, "How's my performance?", ['Performance', 'Total Return', '+12.50%']);
   });
 
   // 2. Portfolio summary
@@ -909,8 +919,15 @@ test.describe('CMD-K Complex Journeys', () => {
     await expect(buyItem.locator('.cmdk-category-tag')).toHaveText('TRADE');
 
     // Verify QUERY category tag
-    const netWorthItem = page.locator('[cmdk-item]', { hasText: 'Net Worth' });
-    await expect(netWorthItem.locator('.cmdk-category-tag')).toHaveText('QUERY');
+    const topPositionsItem = page.locator('[cmdk-item]', { hasText: 'Top Positions' });
+    await expect(topPositionsItem.locator('.cmdk-category-tag')).toHaveText('QUERY');
+  });
+
+  test('example prompts appear on open', async ({ seededPage: page }) => {
+    await page.keyboard.press(CMD_K);
+    const examples = page.locator('.cmdk-examples');
+    await expect(examples).toBeVisible({ timeout: 3000 });
+    await expect(examples.locator('text=Exposure % USD')).toBeVisible();
   });
 
   test('loading state: shimmer + command echo while waiting', async ({ seededPage: page }) => {
@@ -1658,19 +1675,6 @@ test.describe('CMD-K — Click Every Suggestion', () => {
   });
 
   // ─── QUERY suggestions (click → auto-submit → response) ────────────────
-
-  test('click "Net Worth" → response', async ({ seededPage: page }) => {
-    await mockChatSuccess(page, {
-      response: 'Your net worth is $120,500.',
-      toolCalls: [],
-      mutations: false,
-    });
-
-    await page.keyboard.press(CMD_K);
-    const item = page.locator('[cmdk-item]', { hasText: 'Net Worth' });
-    await item.click();
-    await expect(page.locator('text=Your net worth is $120,500.')).toBeVisible({ timeout: 10000 });
-  });
 
   test('click "Top Positions" → response', async ({ seededPage: page }) => {
     await mockChatSuccess(page, {

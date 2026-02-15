@@ -7,13 +7,7 @@ import { calculateAllPositionsWithPrices, filterPositionsByAccountAndAssetClass 
 import { fetchAllCexPositions } from '@/services/providers/cex-provider';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import { CexExchange, CexConnection } from '@/types';
-
-const EXCHANGE_INFO: Record<CexExchange, { name: string; logo: string; supported: boolean }> = {
-  binance: { name: 'Binance', logo: 'B', supported: true },
-  coinbase: { name: 'Coinbase', logo: 'C', supported: false },
-  kraken: { name: 'Kraken', logo: 'K', supported: false },
-  okx: { name: 'OKX', logo: 'O', supported: false },
-};
+import { CEX_EXCHANGE_CONFIG } from '@/lib/cex-exchanges';
 
 export default function AccountsPage() {
   const store = usePortfolioStore();
@@ -141,7 +135,7 @@ export default function AccountsPage() {
           </div>
           <p className="text-[15px] font-semibold mb-2">No CEX accounts connected</p>
           <p className="text-[13px] text-[var(--foreground-muted)] mb-4 text-center">
-            Connect your Binance account to automatically track your holdings.
+            Connect your exchange account to automatically track your holdings.
           </p>
           <button onClick={() => setShowAddModal(true)} className="btn btn-primary">
             <Plus className="w-4 h-4" /> Add Account
@@ -153,7 +147,7 @@ export default function AccountsPage() {
             const accountPositions = positionsByAccount[account.id] || [];
             const accountValue = accountPositions.reduce((sum, p) => sum + p.value, 0);
             const conn = account.connection as CexConnection;
-            const exchangeInfo = EXCHANGE_INFO[conn.dataSource as CexExchange];
+            const exchangeInfo = CEX_EXCHANGE_CONFIG[conn.dataSource as CexExchange];
 
             return (
               <div key={account.id} className="border-b border-[var(--border)] last:border-0 pb-6 mb-6 last:pb-0 last:mb-0">
@@ -263,11 +257,23 @@ function AddAccountModal({ onClose }: { onClose: () => void }) {
   const accounts = addAccountStore.cexAccounts();
   const [exchange, setExchange] = useState<CexExchange>('binance');
   const [name, setName] = useState('');
-  const [apiKey, setApiKey] = useState('');
-  const [apiSecret, setApiSecret] = useState('');
-  const [showSecret, setShowSecret] = useState(false);
+  const [credentials, setCredentials] = useState({
+    apiKey: '',
+    apiSecret: '',
+    apiPassphrase: '',
+  });
+  const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const exchangeConfig = CEX_EXCHANGE_CONFIG[exchange];
+
+  const updateCredential = (field: keyof typeof credentials, value: string) => {
+    setCredentials((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const toggleSecret = (fieldId: string) => {
+    setShowSecrets((prev) => ({ ...prev, [fieldId]: !prev[fieldId] }));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -278,8 +284,18 @@ function AddAccountModal({ onClose }: { onClose: () => void }) {
       return;
     }
 
-    if (!apiKey.trim() || !apiSecret.trim()) {
-      setError('Please enter both API Key and Secret');
+    if (!exchangeConfig.supported) {
+      setError(`${exchangeConfig.name} integration is not available yet`);
+      return;
+    }
+
+    const missingField = exchangeConfig.credentialFields.find((field) => {
+      const value = credentials[field.id as keyof typeof credentials];
+      return !value?.trim();
+    });
+
+    if (missingField) {
+      setError(`Please enter ${missingField.label}`);
       return;
     }
 
@@ -293,14 +309,19 @@ function AddAccountModal({ onClose }: { onClose: () => void }) {
 
     try {
       // Test the credentials by fetching account info
-      const response = await fetch('/api/cex/binance', {
+      const body: Record<string, string> = {
+        apiKey: credentials.apiKey.trim(),
+        apiSecret: credentials.apiSecret.trim(),
+        endpoint: exchangeConfig.validateEndpoint,
+      };
+      if (exchangeConfig.credentialFields.some((field) => field.id === 'apiPassphrase')) {
+        body.apiPassphrase = credentials.apiPassphrase.trim();
+      }
+
+      const response = await fetch(`/api/cex/${exchange}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          apiKey,
-          apiSecret,
-          endpoint: 'account',
-        }),
+        body: JSON.stringify(body),
       });
 
       if (!response.ok) {
@@ -309,11 +330,16 @@ function AddAccountModal({ onClose }: { onClose: () => void }) {
       }
 
       // Credentials are valid, add the account
-      addAccount({
-        name: name.trim(),
-        isActive: true,
-        connection: { dataSource: exchange, apiKey, apiSecret },
-      });
+      const connection: CexConnection = {
+        dataSource: exchange,
+        apiKey: credentials.apiKey.trim(),
+        apiSecret: credentials.apiSecret.trim(),
+      };
+      if (exchangeConfig.credentialFields.some((field) => field.id === 'apiPassphrase')) {
+        connection.apiPassphrase = credentials.apiPassphrase.trim();
+      }
+
+      addAccount({ name: name.trim(), isActive: true, connection });
 
       onClose();
     } catch (err) {
@@ -333,7 +359,7 @@ function AddAccountModal({ onClose }: { onClose: () => void }) {
           <div className="mb-4">
             <label className="block text-sm font-medium mb-2">Exchange</label>
             <div className="grid grid-cols-2 gap-2">
-              {Object.entries(EXCHANGE_INFO).map(([key, info]) => (
+              {Object.entries(CEX_EXCHANGE_CONFIG).map(([key, info]) => (
                 <button
                   key={key}
                   type="button"
@@ -377,38 +403,36 @@ function AddAccountModal({ onClose }: { onClose: () => void }) {
             />
           </div>
 
-          {/* API Key */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-2">API Key</label>
-            <input
-              type="text"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="Enter your API key"
-              className="w-full font-mono text-sm"
-            />
-          </div>
+          {exchangeConfig.credentialFields.map((field) => {
+            const isSecret = field.type === 'password';
+            const showSecret = !!showSecrets[field.id];
+            const inputType = isSecret ? (showSecret ? 'text' : 'password') : 'text';
+            const value = credentials[field.id as keyof typeof credentials] || '';
 
-          {/* API Secret */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-2">API Secret</label>
-            <div className="relative">
-              <input
-                type={showSecret ? 'text' : 'password'}
-                value={apiSecret}
-                onChange={(e) => setApiSecret(e.target.value)}
-                placeholder="Enter your API secret"
-                className="w-full font-mono text-sm pr-10"
-              />
-              <button
-                type="button"
-                onClick={() => setShowSecret(!showSecret)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--foreground-muted)]"
-              >
-                {showSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
-          </div>
+            return (
+              <div className="mb-4" key={field.id}>
+                <label className="block text-sm font-medium mb-2">{field.label}</label>
+                <div className="relative">
+                  <input
+                    type={inputType}
+                    value={value}
+                    onChange={(e) => updateCredential(field.id as keyof typeof credentials, e.target.value)}
+                    placeholder={field.placeholder}
+                    className="w-full font-mono text-sm pr-10"
+                  />
+                  {isSecret && (
+                    <button
+                      type="button"
+                      onClick={() => toggleSecret(field.id)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--foreground-muted)]"
+                    >
+                      {showSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
 
           {/* Security note */}
           <div className="mb-4 p-3 bg-[var(--background-secondary)]  text-sm text-[var(--foreground-muted)]">
@@ -416,7 +440,7 @@ function AddAccountModal({ onClose }: { onClose: () => void }) {
             <ul className="list-disc list-inside space-y-1">
               <li>Use read-only API keys (no trading/withdrawal permissions)</li>
               <li>API keys are stored locally in your browser</li>
-              <li>We never send your keys to any server except Binance</li>
+              <li>We never send your keys to any server except {exchangeConfig.name}</li>
             </ul>
           </div>
 

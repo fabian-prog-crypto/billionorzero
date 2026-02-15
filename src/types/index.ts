@@ -27,6 +27,7 @@ export interface CexConnection {
   dataSource: 'binance' | 'coinbase' | 'kraken' | 'okx';
   apiKey: string;
   apiSecret: string;
+  apiPassphrase?: string;
   lastSync?: string;
 }
 

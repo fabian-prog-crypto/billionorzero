@@ -68,14 +68,6 @@ const SUGGESTIONS: CommandSuggestion[] = [
 
   // ─── QUERY ──────────────────────────────────────────────────────────────────
   {
-    id: 'net-worth',
-    text: "What's my net worth?",
-    label: 'Net Worth',
-    category: 'QUERY',
-    icon: DollarSign,
-    keywords: ['total', 'balance', 'value', 'portfolio'],
-  },
-  {
     id: 'top-positions',
     text: 'Top 5 positions',
     label: 'Top Positions',
@@ -137,7 +129,7 @@ const CATEGORY_ORDER = ['TRADE', 'QUERY'];
  * Map pages to suggestion IDs that should be boosted when on that page.
  */
 const PAGE_BOOSTS: Record<string, string[]> = {
-  '/cash': ['add-cash', 'net-worth'],
+  '/cash': ['add-cash'],
   '/equities': ['top-positions'],
   '/exposure': ['exposure', 'leverage'],
   '/performance': ['24h-change'],

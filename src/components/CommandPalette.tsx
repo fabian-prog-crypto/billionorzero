@@ -18,6 +18,12 @@ interface CommandPaletteProps {
   onClose: () => void;
 }
 
+const EXAMPLE_PROMPTS = [
+  { label: 'Exposure % USD', text: "What's my % exposure to USD?" },
+  { label: 'Buy $10k AAPL', text: 'Buy $10k AAPL' },
+  { label: 'Add $2k cash', text: 'Add $2k cash' },
+];
+
 export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
   const {
     setText,
@@ -58,6 +64,7 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
   const [search, setSearch] = useState('');
 
   const suggestionGroups = useMemo(() => getSuggestions(pathname), [pathname]);
+  const recentEntries = useMemo(() => recentCommands.slice(0, 3), [recentCommands]);
 
   const animateClose = useCallback(() => {
     if (closingRef.current) return;
@@ -185,6 +192,7 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
   };
 
   const showSuggestions = mode === 'commands' || mode === 'error';
+  const showExamples = showSuggestions && !search && !isLoading && !queryResult && !llmResponse;
   const inputDisabled = isLoading || !!queryResult || !!llmResponse;
 
   // When palette is closed but pendingAction exists, render only the modal
@@ -282,6 +290,22 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
                 ) : null}
               </div>
 
+              {showExamples && (
+                <div className="cmdk-examples">
+                  <span className="cmdk-examples-label">Try</span>
+                  {EXAMPLE_PROMPTS.map((example) => (
+                    <button
+                      key={example.label}
+                      type="button"
+                      className="cmdk-example-chip"
+                      onClick={() => handleSuggestionSelect(example.text)}
+                    >
+                      {example.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {/* Loading shimmer + command echo */}
               {isLoading && (
                 <>
@@ -366,9 +390,9 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
               {showSuggestions && (
                 <Command.List>
                   {/* Recent commands */}
-                  {recentCommands.length > 0 && (
+                  {recentEntries.length > 0 && (
                     <Command.Group heading="RECENT">
-                      {recentCommands.map((entry) => (
+                      {recentEntries.map((entry) => (
                         <Command.Item
                           key={`recent-${entry.timestamp}`}
                           value={`recent: ${entry.text}`}
