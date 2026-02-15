@@ -149,6 +149,15 @@ async function seedCustomStorage(page: Page) {
     }
   });
 
+  // Prevent tests from writing to the real db.json via /api/portfolio/sync
+  await page.route('**/api/portfolio/sync', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: '{}',
+    });
+  });
+
   // Also seed localStorage for initial render before async hydration
   await page.addInitScript((data) => {
     localStorage.setItem('portfolio-storage', data.portfolio);

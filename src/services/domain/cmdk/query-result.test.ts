@@ -24,4 +24,22 @@ describe('mapQueryToolResult', () => {
     const result = mapQueryToolResult('query_position_details', { error: 'No position found' });
     expect(result?.title).toBe('Query Error');
   });
+
+  it('maps currency exposure metric', () => {
+    const result = mapQueryToolResult('query_currency_exposure', {
+      currency: 'USD',
+      value: 25000,
+      percentage: 25,
+    });
+    expect(result?.format).toBe('metric');
+    expect(result?.title).toBe('USD Exposure');
+  });
+
+  it('maps top gainers table', () => {
+    const result = mapQueryToolResult('query_top_gainers_24h', [
+      { symbol: 'BTC', value: 50000, change24h: 1000, changePercent24h: 2 },
+    ]);
+    expect(result?.format).toBe('table');
+    expect(result?.title).toBe('Top Gainers (24h)');
+  });
 });

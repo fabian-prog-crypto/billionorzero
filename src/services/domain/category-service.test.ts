@@ -212,10 +212,6 @@ describe('isPerpProtocol', () => {
     expect(service.isPerpProtocol('Ethereal')).toBe(true)
   })
 
-  it('returns true for Vertex', () => {
-    expect(service.isPerpProtocol('Vertex')).toBe(true)
-  })
-
   it('returns false for Aave (lending protocol, not perp)', () => {
     expect(service.isPerpProtocol('Aave')).toBe(false)
   })

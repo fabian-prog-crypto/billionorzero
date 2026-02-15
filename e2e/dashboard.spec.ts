@@ -12,7 +12,7 @@ test.describe('Dashboard', () => {
     await expect(page.locator('button', { hasText: 'Cash' })).toBeVisible();
 
     // NET WORTH label should appear (we seeded positions)
-    await expect(page.locator('text=NET WORTH')).toBeVisible();
+    await expect(page.getByText(/^NET WORTH$/)).toBeVisible();
   });
 
   test('category tabs navigate correctly', async ({ seededPage: page }) => {
@@ -35,7 +35,7 @@ test.describe('Dashboard', () => {
 
   test('hide balances toggle replaces values with bullet characters', async ({ seededPage: page }) => {
     // Verify balances are visible initially
-    await expect(page.locator('text=NET WORTH')).toBeVisible();
+    await expect(page.getByText(/^NET WORTH$/)).toBeVisible();
 
     // The page should NOT have masked values initially
     const maskedBefore = await page.locator('text=••••••••').count();

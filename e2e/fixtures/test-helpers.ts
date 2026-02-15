@@ -172,6 +172,14 @@ function buildPortfolioStorage() {
 async function mockDbStorage(page: Page, initialState: string) {
   let currentState = initialState;
 
+  await page.route('**/api/portfolio/sync', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: '{}',
+    });
+  });
+
   await page.route('**/api/db', async (route, request) => {
     const method = request.method();
 

@@ -9,8 +9,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { readDb, withDb, type PortfolioData } from '../portfolio/db-store';
 import { toOllamaTools, getToolById } from '@/services/domain/tool-registry';
 import { classifyIntent } from '@/services/domain/intent-router';
-import { calculatePortfolioSummary, calculateAllPositionsWithPrices, calculateExposureData, calculateRiskProfile, calculatePerpPageData, extractCurrencyCode } from '@/services/domain/portfolio-calculator';
-import { calculatePerformanceMetrics } from '@/services/domain/performance-metrics';
+import { calculatePortfolioSummary, calculateAllPositionsWithPrices, calculateExposureData, calculateRiskProfile, calculatePerpPageData, extractCurrencyCode, calculateCurrencyExposure, calculateCustodyBreakdown, calculateChainBreakdown, calculateAllocationBreakdown, calculateCashBreakdown } from '@/services/domain/portfolio-calculator';
+import { calculatePerformanceMetrics, calculateUnrealizedPnL } from '@/services/domain/performance-metrics';
 import { isPositionInAssetClass } from '@/services/domain/account-role-service';
 import { getCategoryService } from '@/services/domain/category-service';
 import type { Position, Transaction, Account } from '@/types';
@@ -685,6 +685,35 @@ function enrichQueryToolArgs(
   return { ...args, symbol };
 }
 
+function getCountArg(args: Record<string, unknown>, fallback: number): number {
+  const raw = typeof args.count === 'number' ? args.count : Number(args.count);
+  if (!Number.isFinite(raw) || raw <= 0) return fallback;
+  return Math.min(Math.max(1, Math.round(raw)), 50);
+}
+
+function getCategoryInputForAsset(asset: { assetClass?: string; assetClassOverride?: string; type?: string }): string {
+  return asset.assetClassOverride || asset.assetClass || asset.type || '';
+}
+
+function parseRebalanceTargets(input: string): Array<{ key: string; percent: number }> {
+  const cleaned = input
+    .replace(/\s+/g, ' ')
+    .replace(/;/g, ',')
+    .trim();
+  if (!cleaned) return [];
+
+  return cleaned
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => {
+      const match = part.match(/^([A-Za-z0-9.\- &_]+?)\s*(?:=|:|\s)\s*([0-9]+(?:\.[0-9]+)?)\s*%?$/);
+      if (!match) return null;
+      return { key: match[1].trim(), percent: Number(match[2]) };
+    })
+    .filter((item): item is { key: string; percent: number } => !!item && Number.isFinite(item.percent));
+}
+
 // ─── Portfolio Context Builder ────────────────────────────────────────────────
 
 function buildSystemContext(db: PortfolioData, opts?: { includePositions?: boolean; includeSymbolCatalog?: boolean; includeAccounts?: boolean }): string {
@@ -838,6 +867,349 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
       const exposure = calculateExposureData(target);
       const m = exposure.exposureMetrics;
       return { result: { longExposure: m.longExposure, shortExposure: m.shortExposure, grossExposure: m.grossExposure, netExposure: m.netExposure, leverage: m.leverage, cashPosition: m.cashPosition }, isMutation: false };
+    }
+
+    case 'query_currency_exposure': {
+      const db = readDb();
+      const currencyInput = String(args.currency || '').trim();
+      if (!currencyInput) {
+        return { result: { error: 'Currency is required' }, isMutation: false };
+      }
+      const assets = calculateAllPositionsWithPrices(db.positions, db.prices, db.customPrices, db.fxRates);
+      const exposure = calculateCurrencyExposure(assets, currencyInput);
+      return { result: exposure, isMutation: false };
+    }
+
+    case 'query_stablecoin_exposure': {
+      const db = readDb();
+      const assets = calculateAllPositionsWithPrices(db.positions, db.prices, db.customPrices, db.fxRates);
+      const categoryService = getCategoryService();
+      let value = 0;
+      let positions = 0;
+
+      assets.forEach((asset) => {
+        const subCat = categoryService.getSubCategory(asset.symbol, getCategoryInputForAsset(asset));
+        if (subCat !== 'stablecoins') return;
+        value += asset.value;
+        if (asset.value > 0) positions += 1;
+      });
+
+      const exposure = calculateExposureData(assets);
+      const netWorth = exposure.exposureMetrics.netWorth;
+      const percentage = netWorth !== 0 ? (value / netWorth) * 100 : 0;
+
+      return { result: { value, percentage, netWorth, positions }, isMutation: false };
+    }
+
+    case 'query_cash_vs_invested': {
+      const db = readDb();
+      const assets = calculateAllPositionsWithPrices(db.positions, db.prices, db.customPrices, db.fxRates);
+      const exposure = calculateExposureData(assets);
+      const netWorth = exposure.exposureMetrics.netWorth;
+      const cash = exposure.exposureMetrics.cashPosition;
+      const invested = netWorth - cash;
+      const cashPercent = netWorth !== 0 ? (cash / netWorth) * 100 : 0;
+      const investedPercent = netWorth !== 0 ? (invested / netWorth) * 100 : 0;
+      return { result: { cash, invested, cashPercent, investedPercent, netWorth }, isMutation: false };
+    }
+
+    case 'query_top_gainers_24h':
+    case 'query_top_losers_24h': {
+      const db = readDb();
+      const count = getCountArg(args, 5);
+      const assets = calculateAllPositionsWithPrices(db.positions, db.prices, db.customPrices, db.fxRates)
+        .filter((a) => !a.isPerpNotional && a.value > 0 && Number.isFinite(a.changePercent24h));
+
+      const sorted = [...assets].sort((a, b) => {
+        const diff = a.changePercent24h - b.changePercent24h;
+        return name === 'query_top_gainers_24h' ? -diff : diff;
+      });
+
+      const rows = sorted.slice(0, count).map((a) => ({
+        symbol: a.symbol.toUpperCase(),
+        value: Math.round(a.value),
+        change24h: a.change24h,
+        changePercent24h: a.changePercent24h,
+      }));
+
+      return { result: rows, isMutation: false };
+    }
+
+    case 'query_missing_prices': {
+      const db = readDb();
+      const assets = calculateAllPositionsWithPrices(db.positions, db.prices, db.customPrices, db.fxRates);
+      const missing = assets.filter((a) => {
+        if (a.isPerpNotional) return false;
+        const badPrice = !Number.isFinite(a.currentPrice) || a.currentPrice <= 0;
+        const zeroValue = a.amount > 0 && a.value === 0;
+        return badPrice || zeroValue;
+      });
+      return {
+        result: missing.map((a) => ({
+          symbol: a.symbol.toUpperCase(),
+          type: a.type,
+          amount: a.amount,
+          price: a.currentPrice,
+        })),
+        isMutation: false,
+      };
+    }
+
+    case 'query_largest_debts': {
+      const db = readDb();
+      const count = getCountArg(args, 5);
+      const assets = calculateAllPositionsWithPrices(db.positions, db.prices, db.customPrices, db.fxRates)
+        .filter((a) => a.value < 0 || a.isDebt);
+      const rows = assets
+        .map((a) => ({
+          symbol: a.symbol.toUpperCase(),
+          value: a.value,
+          protocol: a.protocol || '',
+        }))
+        .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
+        .slice(0, count);
+      return { result: rows, isMutation: false };
+    }
+
+    case 'query_exposure_by_chain': {
+      const db = readDb();
+      const assets = calculateAllPositionsWithPrices(db.positions, db.prices, db.customPrices, db.fxRates);
+      const rows = calculateChainBreakdown(assets, db.accounts).map((item) => ({
+        chain: item.label,
+        value: item.value,
+        percentage: item.percentage,
+      }));
+      return { result: rows, isMutation: false };
+    }
+
+    case 'query_exposure_by_custody': {
+      const db = readDb();
+      const assets = calculateAllPositionsWithPrices(db.positions, db.prices, db.customPrices, db.fxRates);
+      const rows = calculateCustodyBreakdown(assets, db.accounts).map((item) => ({
+        custody: item.label,
+        value: item.value,
+        percentage: item.percentage,
+      }));
+      return { result: rows, isMutation: false };
+    }
+
+    case 'query_allocation_by_category': {
+      const db = readDb();
+      const assets = calculateAllPositionsWithPrices(db.positions, db.prices, db.customPrices, db.fxRates);
+      const rows = calculateAllocationBreakdown(assets).map((item) => ({
+        category: item.label,
+        value: item.value,
+        percentage: item.percentage,
+      }));
+      return { result: rows, isMutation: false };
+    }
+
+    case 'query_perps_utilization': {
+      const db = readDb();
+      const assets = calculateAllPositionsWithPrices(db.positions, db.prices, db.customPrices, db.fxRates);
+      const exposure = calculateExposureData(assets);
+      const m = exposure.perpsMetrics;
+      return {
+        result: {
+          collateral: m.collateral,
+          marginUsed: m.marginUsed,
+          marginAvailable: m.marginAvailable,
+          utilizationRate: m.utilizationRate,
+          grossNotional: m.grossNotional,
+          netNotional: m.netNotional,
+        },
+        isMutation: false,
+      };
+    }
+
+    case 'query_unrealized_pnl': {
+      const db = readDb();
+      const count = getCountArg(args, 10);
+      const assets = calculateAllPositionsWithPrices(db.positions, db.prices, db.customPrices, db.fxRates)
+        .filter((a) => a.costBasis && a.costBasis > 0 && !a.isPerpNotional);
+
+      const rows = assets.map((asset) => {
+        const pnl = calculateUnrealizedPnL(asset.value, asset.costBasis, asset.purchaseDate);
+        return {
+          symbol: asset.symbol.toUpperCase(),
+          value: asset.value,
+          costBasis: asset.costBasis,
+          pnl: pnl.pnl,
+          pnlPercent: pnl.pnlPercent,
+        };
+      }).sort((a, b) => Math.abs(b.pnl) - Math.abs(a.pnl)).slice(0, count);
+
+      return { result: rows, isMutation: false };
+    }
+
+    case 'query_risk_concentration': {
+      const db = readDb();
+      const assets = calculateAllPositionsWithPrices(db.positions, db.prices, db.customPrices, db.fxRates);
+      const exposure = calculateExposureData(assets);
+      const m = exposure.concentrationMetrics;
+      return {
+        result: {
+          top1Percentage: m.top1Percentage,
+          top5Percentage: m.top5Percentage,
+          top10Percentage: m.top10Percentage,
+          herfindahlIndex: m.herfindahlIndex,
+          positionCount: m.positionCount,
+          assetCount: m.assetCount,
+        },
+        isMutation: false,
+      };
+    }
+
+    case 'query_cash_breakdown': {
+      const db = readDb();
+      const assets = calculateAllPositionsWithPrices(db.positions, db.prices, db.customPrices, db.fxRates);
+      const breakdown = calculateCashBreakdown(assets, true, db.accounts);
+      const total = breakdown.total || 0;
+      const rows = breakdown.chartData.map((item) => ({
+        currency: item.label,
+        value: item.value,
+        percentage: total > 0 ? (item.value / total) * 100 : 0,
+      }));
+      return { result: rows, isMutation: false };
+    }
+
+    case 'query_equities_exposure': {
+      const db = readDb();
+      const summary = calculatePortfolioSummary(db.positions, db.prices, db.customPrices, db.fxRates);
+      const netWorth = summary.totalValue;
+      const equityValue = summary.equityValue;
+      const percentage = netWorth !== 0 ? (equityValue / netWorth) * 100 : 0;
+      return { result: { equityValue, percentage, netWorth }, isMutation: false };
+    }
+
+    case 'query_account_health': {
+      const db = readDb();
+      const assets = calculateAllPositionsWithPrices(db.positions, db.prices, db.customPrices, db.fxRates);
+      const accountMap = new Map(db.accounts.map((a) => [a.id, a]));
+      const summaryMap = new Map<string, { name: string; netValue: number; debtValue: number; positions: number }>();
+
+      assets.forEach((asset) => {
+        const id = asset.accountId || 'manual';
+        const name = asset.accountId
+          ? (accountMap.get(asset.accountId)?.name || asset.accountId)
+          : 'Manual';
+        if (!summaryMap.has(id)) {
+          summaryMap.set(id, { name, netValue: 0, debtValue: 0, positions: 0 });
+        }
+        const entry = summaryMap.get(id)!;
+        entry.netValue += asset.value;
+        if (asset.value < 0 || asset.isDebt) {
+          entry.debtValue += Math.abs(asset.value);
+        }
+        entry.positions += 1;
+      });
+
+      const rows = Array.from(summaryMap.values())
+        .filter((a) => a.netValue < 0 || a.debtValue > 0)
+        .sort((a, b) => b.debtValue - a.debtValue);
+
+      return { result: rows, isMutation: false };
+    }
+
+    case 'query_rebalance_targets': {
+      const db = readDb();
+      const rawTargets = String(args.targets || '').trim();
+      if (!rawTargets) {
+        return { result: { error: 'Targets are required' }, isMutation: false };
+      }
+
+      const targets = parseRebalanceTargets(rawTargets);
+      if (targets.length === 0) {
+        return { result: { error: 'Could not parse targets' }, isMutation: false };
+      }
+
+      const assets = calculateAllPositionsWithPrices(db.positions, db.prices, db.customPrices, db.fxRates);
+      const summary = calculatePortfolioSummary(db.positions, db.prices, db.customPrices, db.fxRates);
+      const netWorth = summary.totalValue;
+      const categoryMap: Record<string, number> = {
+        crypto: summary.cryptoValue,
+        equities: summary.equityValue,
+        equity: summary.equityValue,
+        metals: summary.metalsValue,
+        cash: summary.cashValue,
+        other: summary.otherValue,
+      };
+
+      const rows = targets.map((target) => {
+        const key = target.key.toLowerCase();
+        let currentValue = 0;
+        if (key in categoryMap) {
+          currentValue = categoryMap[key];
+        } else {
+          currentValue = assets
+            .filter((a) => a.symbol.toLowerCase() === key)
+            .reduce((sum, a) => sum + a.value, 0);
+        }
+        const targetValue = netWorth * (target.percent / 100);
+        const delta = targetValue - currentValue;
+        return {
+          target: target.key,
+          percent: target.percent,
+          currentValue,
+          targetValue,
+          delta,
+        };
+      });
+
+      const totalTargetPercent = targets.reduce((sum, t) => sum + t.percent, 0);
+      return { result: { netWorth, totalTargetPercent, targets: rows }, isMutation: false };
+    }
+
+    case 'query_largest_price_overrides': {
+      const db = readDb();
+      const count = getCountArg(args, 10);
+      const overrides = Object.entries(db.customPrices || {}).map(([symbol, data]) => {
+        const market = db.prices?.[symbol]?.price;
+        const delta = market && Number.isFinite(market) ? data.price - market : null;
+        const deltaPercent = market && Number.isFinite(market) && market !== 0
+          ? (data.price - market) / market * 100
+          : null;
+        return {
+          symbol: symbol.toUpperCase(),
+          customPrice: data.price,
+          marketPrice: market ?? null,
+          delta,
+          deltaPercent,
+          setAt: data.setAt,
+        };
+      });
+
+      const rows = overrides
+        .sort((a, b) => Math.abs(b.delta ?? 0) - Math.abs(a.delta ?? 0))
+        .slice(0, count);
+
+      return { result: rows, isMutation: false };
+    }
+
+    case 'query_recent_changes': {
+      const db = readDb();
+      const snapshots = [...db.snapshots].sort((a, b) => a.date.localeCompare(b.date));
+      if (snapshots.length < 2) {
+        return { result: { error: 'Insufficient snapshot data' }, isMutation: false };
+      }
+      const latest = snapshots[snapshots.length - 1];
+      const prev = snapshots[snapshots.length - 2];
+      const diff = {
+        totalValue: latest.totalValue - prev.totalValue,
+        cryptoValue: latest.cryptoValue - prev.cryptoValue,
+        equityValue: latest.equityValue - prev.equityValue,
+        metalsValue: latest.metalsValue - prev.metalsValue,
+        cashValue: latest.cashValue - prev.cashValue,
+        otherValue: latest.otherValue - prev.otherValue,
+      };
+      return {
+        result: {
+          from: prev.date,
+          to: latest.date,
+          ...diff,
+        },
+        isMutation: false,
+      };
     }
 
     case 'query_performance': {

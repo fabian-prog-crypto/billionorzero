@@ -29,7 +29,6 @@ export class HyperliquidProvider {
     const positions: Position[] = [];
     const prices: Record<string, { price: number; symbol: string }> = {};
     let accountValue = 0;
-    const categoryService = getCategoryService();
 
     try {
       // Fetch perp state, spot state, and prices in parallel
@@ -77,6 +76,7 @@ export class HyperliquidProvider {
   ): { positions: Position[]; prices: Record<string, { price: number; symbol: string }> } {
     const positions: Position[] = [];
     const prices: Record<string, { price: number; symbol: string }> = {};
+    const categoryService = getCategoryService();
 
     for (const assetPos of state.assetPositions) {
       const pos = assetPos.position;

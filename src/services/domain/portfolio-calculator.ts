@@ -2437,6 +2437,68 @@ export interface MetalsBreakdownResult {
 }
 
 /**
+ * Currency exposure result
+ */
+export interface CurrencyExposureResult {
+  currency: string;
+  value: number;
+  percentage: number; // % of net worth
+  netWorth: number;
+  positions: number;
+}
+
+/**
+ * Calculate exposure to a fiat currency (includes stablecoins pegged to that currency).
+ * Uses NET values and returns % of net worth.
+ */
+export function calculateCurrencyExposure(
+  assets: AssetWithPrice[],
+  currencyInput: string
+): CurrencyExposureResult {
+  const categoryService = getCategoryService();
+  const normalizedCurrency = (categoryService.getUnderlyingFiatCurrency(currencyInput) || currencyInput || '')
+    .toUpperCase()
+    .trim();
+
+  let value = 0;
+  let positions = 0;
+
+  assets.forEach((asset) => {
+    const categoryInput = getCategoryInput(asset);
+    const mainCat = categoryService.getMainCategory(asset.symbol, categoryInput);
+    const subCat = categoryService.getSubCategory(asset.symbol, categoryInput);
+
+    let assetCurrency: string | null = null;
+
+    if (mainCat === 'cash') {
+      assetCurrency = extractCurrencyCode(asset.symbol);
+    } else if (subCat === 'stablecoins') {
+      assetCurrency = categoryService.getUnderlyingFiatCurrency(asset.symbol) || extractCurrencyCode(asset.symbol);
+    }
+
+    if (!assetCurrency) return;
+    if (assetCurrency.toUpperCase() !== normalizedCurrency) return;
+
+    value += asset.value;
+    if (asset.value > 0) {
+      positions += 1;
+    }
+  });
+
+  const exposure = calculateExposureData(assets);
+  const netWorth = exposure.totalValue;
+  const percentage = netWorth !== 0 ? (value / netWorth) * 100 : 0;
+
+  return {
+    currency: normalizedCurrency || currencyInput.toUpperCase(),
+    value,
+    percentage,
+    netWorth,
+    positions,
+  };
+}
+
+/**
  * Calculate metals breakdown - SINGLE SOURCE OF TRUTH
  * Separates gold/silver/platinum/palladium/miners
  * Uses NET values - debt subtracts from category

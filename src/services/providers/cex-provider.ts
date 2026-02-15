@@ -185,11 +185,12 @@ async function fetchCoinbaseBalances(account: Account): Promise<Position[]> {
       const symbol = accountBalance.currency?.toUpperCase();
       if (!symbol) continue;
       const symbolLower = symbol.toLowerCase();
-      const availableValue = accountBalance.available_balance?.value || accountBalance.balance?.value || '0';
-      const holdValue = accountBalance.hold?.value || '0';
-      const balanceValue = parseFloat(availableValue) + parseFloat(holdValue);
+      const availableValue = parseFloat(accountBalance.available_balance?.value ?? '0');
+      const holdValue = parseFloat(accountBalance.hold?.value ?? '0');
+      const balanceValue = parseFloat(accountBalance.balance?.value ?? '0');
+      const totalValue = Math.max(availableValue + holdValue, balanceValue);
 
-      if (!balanceValue || balanceValue <= 0) continue;
+      if (!totalValue || totalValue <= 0) continue;
 
       const name = ASSET_NAME_MAP[symbol] || symbol;
 
@@ -199,7 +200,7 @@ async function fetchCoinbaseBalances(account: Account): Promise<Position[]> {
         type: 'crypto' as const,
         symbol: symbolLower,
         name,
-        amount: balanceValue,
+        amount: totalValue,
         accountId: account.id,
         chain: 'coinbase',
         addedAt: now,

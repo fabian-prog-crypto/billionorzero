@@ -91,6 +91,60 @@ export function classifyIntent(text: string): ClassifiedIntent {
     if (symbolMatch && /\b(position|holding|details|amount|value)\b/.test(t)) {
       return { intent: 'query', toolIds: ['query_position_details'] };
     }
+    if (/\b(rebalance|target\s+allocation|targets?)\b/.test(t)) {
+      return { intent: 'query', toolIds: ['query_rebalance_targets'] };
+    }
+    if (/\b(stablecoin|stable\s+coin)\b.*\bexposure\b/.test(t)) {
+      return { intent: 'query', toolIds: ['query_stablecoin_exposure'] };
+    }
+    if (/\bcash\b.*\bvs\b.*\b(invested|investment)\b/.test(t)) {
+      return { intent: 'query', toolIds: ['query_cash_vs_invested'] };
+    }
+    if (/\b(gainers|winners|top\s+movers)\b/.test(t)) {
+      return { intent: 'query', toolIds: ['query_top_gainers_24h'] };
+    }
+    if (/\b(losers|worst|biggest\s+losers)\b/.test(t)) {
+      return { intent: 'query', toolIds: ['query_top_losers_24h'] };
+    }
+    if (/\b(missing|unpriced|no)\b.*\bprice\b/.test(t) || /\bmissing\s+prices?\b/.test(t)) {
+      return { intent: 'query', toolIds: ['query_missing_prices'] };
+    }
+    if (/\b(debt|liabilit)\w*\b/.test(t) && /\b(top|largest|biggest)\b/.test(t)) {
+      return { intent: 'query', toolIds: ['query_largest_debts'] };
+    }
+    if (/\b(exposure|allocation)\b.*\b(chain|chains)\b/.test(t)) {
+      return { intent: 'query', toolIds: ['query_exposure_by_chain'] };
+    }
+    if (/\b(exposure|allocation)\b.*\b(custody|custodian)\b/.test(t)) {
+      return { intent: 'query', toolIds: ['query_exposure_by_custody'] };
+    }
+    if (/\ballocation\b.*\b(category|categories|breakdown)\b/.test(t)) {
+      return { intent: 'query', toolIds: ['query_allocation_by_category'] };
+    }
+    if (/\b(perps?|margin)\b.*\b(utilization|usage)\b/.test(t)) {
+      return { intent: 'query', toolIds: ['query_perps_utilization'] };
+    }
+    if (/\bunrealized\b.*\b(pnl|p&l|profit|loss)\b/.test(t) || /\bpnl\b.*\bcost\s+basis\b/.test(t)) {
+      return { intent: 'query', toolIds: ['query_unrealized_pnl'] };
+    }
+    if (/\b(concentration|concentrated)\b/.test(t)) {
+      return { intent: 'query', toolIds: ['query_risk_concentration'] };
+    }
+    if (/\bcash\b.*\b(breakdown|by\s+currency|currencies)\b/.test(t)) {
+      return { intent: 'query', toolIds: ['query_cash_breakdown'] };
+    }
+    if (/\b(equity|equities|stocks)\b.*\bexposure\b/.test(t)) {
+      return { intent: 'query', toolIds: ['query_equities_exposure'] };
+    }
+    if (/\b(account\s+health|accounts?\s+with\s+debt|negative\s+cash)\b/.test(t)) {
+      return { intent: 'query', toolIds: ['query_account_health'] };
+    }
+    if (/\b(price\s+overrides?|custom\s+prices?)\b/.test(t)) {
+      return { intent: 'query', toolIds: ['query_largest_price_overrides'] };
+    }
+    if (/\b(recent\s+changes|last\s+snapshot)\b/.test(t)) {
+      return { intent: 'query', toolIds: ['query_recent_changes'] };
+    }
     if (/\bnet\s+worth|total\s+value\b/.test(t)) {
       return { intent: 'query', toolIds: ['query_net_worth'] };
     }
@@ -105,6 +159,9 @@ export function classifyIntent(text: string): ClassifiedIntent {
     }
     if (/\bperformance|return|sharpe|cagr\b/.test(t)) {
       return { intent: 'query', toolIds: ['query_performance'] };
+    }
+    if (/\bexposure\b/.test(t) && /\b(usd|eur|gbp|chf|jpy|cad|aud|nzd|sek|nok|dkk|pln|czk|huf|ron|bgn|hrk|isk|try|brl|mxn|inr|cny|krw|sgd|hkd|twd|thb|myr|idr|php|usdc|usdt|dai|usde|fdusd|busd|tusd|usdp|usdd|frax|lusd|gusd|susd|rai|pyusd|usdm|gho|crvusd|mkusd|usds|usd0|usd0\\+\\+|euroc|eurt|ceur|ageur|jeur|eurc|eure|eura|gbpt|gbpc)\b/.test(t)) {
+      return { intent: 'query', toolIds: ['query_currency_exposure'] };
     }
     if (/\bexposure\b/.test(t)) {
       if (/\bcrypto\b/.test(t)) return { intent: 'query', toolIds: ['query_crypto_exposure'] };

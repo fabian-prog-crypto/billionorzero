@@ -1024,6 +1024,196 @@ input::placeholder {
   transform: translateY(0);
 }
 
+.cmdk-autocomplete {
+  position: absolute;
+  left: 44px;
+  right: 72px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.cmdk-autocomplete-prefix {
+  color: transparent;
+}
+
+.cmdk-autocomplete-suffix {
+  color: var(--foreground-subtle);
+}
+
+.cmdk-autocomplete-hint {
+  margin-left: auto;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--foreground-subtle);
+  background: var(--background-secondary);
+}
+
+.cmdk-smart-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 12px 6px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent);
+}
+
+.cmdk-smart-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--foreground-subtle);
+  margin-right: 4px;
+}
+
+.cmdk-smart-chip {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--background-secondary);
+  color: var(--foreground);
+  transition: transform 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+}
+
+.cmdk-smart-chip:hover {
+  background: var(--background-tertiary);
+  border-color: var(--accent-primary);
+  transform: translateY(-1px);
+}
+
+.cmdk-discovery {
+  padding: 12px 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: radial-gradient(160px 60px at 20% 0%, rgba(255, 255, 255, 0.05), transparent 70%),
+              linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 60%);
+}
+
+.cmdk-discovery-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.cmdk-discovery-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--foreground-subtle);
+  margin: 0 0 2px;
+}
+
+.cmdk-discovery-subtitle {
+  font-size: 13px;
+  color: var(--foreground-muted);
+  margin: 0;
+}
+
+.cmdk-discovery-hint {
+  font-size: 11px;
+  color: var(--foreground-subtle);
+  border: 1px dashed var(--border);
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--background-secondary);
+}
+
+.cmdk-discovery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+}
+
+.cmdk-discovery-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 14px;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--border);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01));
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.cmdk-discovery-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120px 80px at 100% -20%, var(--cmdk-accent), transparent 70%);
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.cmdk-discovery-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--cmdk-accent);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.2);
+}
+
+.cmdk-discovery-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.cmdk-discovery-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.cmdk-discovery-card-tag {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--foreground-subtle);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.cmdk-discovery-card-desc {
+  font-size: 12px;
+  color: var(--foreground-muted);
+  margin: 0 0 8px;
+}
+
+.cmdk-discovery-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cmdk-discovery-chip {
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.2);
+  color: var(--foreground);
+  transition: transform 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+}
+
+.cmdk-discovery-chip:hover {
+  border-color: var(--cmdk-accent);
+  background: rgba(0, 0, 0, 0.28);
+  transform: translateY(-1px);
+}
+
 /* cmdk suggestion items */
 [cmdk-item] {
   display: flex;

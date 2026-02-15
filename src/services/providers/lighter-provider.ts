@@ -26,7 +26,6 @@ export class LighterProvider {
     const positions: Position[] = [];
     const prices: Record<string, { price: number; symbol: string }> = {};
     let accountValue = 0;
-    const categoryService = getCategoryService();
     // Lighter API is case-sensitive — requires EIP-55 checksummed addresses
     const checksummed = toChecksumAddress(walletAddress);
 
@@ -81,6 +80,7 @@ export class LighterProvider {
   ): Promise<LighterPositionsResult> {
     const positions: Position[] = [];
     const prices: Record<string, { price: number; symbol: string }> = {};
+    const categoryService = getCategoryService();
     // Use total_asset_value from Lighter as the account value
     const accountValue = parseFloat(account.total_asset_value) || 0;
     const collateralValue = parseFloat(account.collateral) || 0;

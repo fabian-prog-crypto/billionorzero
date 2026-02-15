@@ -7,6 +7,7 @@ import { usePortfolioStore } from '@/store/portfolioStore';
 import {
   calculateAllPositionsWithPrices,
   calculateEquitiesBreakdown,
+  calculateExposureData,
   getCategoryService,
 } from '@/services';
 import { formatCurrency, formatNumber, formatPercent, getChangeColor } from '@/lib/utils';
@@ -61,6 +62,14 @@ export default function EquitiesPage() {
   const breakdownData = useMemo(() => {
     return calculateEquitiesBreakdown(allPositions);
   }, [allPositions]);
+
+  const exposureData = useMemo(() => {
+    return calculateExposureData(breakdownData.equityPositions);
+  }, [breakdownData.equityPositions]);
+
+  const netExposure = exposureData.exposureMetrics.netExposure;
+  const netWorth = exposureData.exposureMetrics.netWorth;
+  const netExposurePercent = netWorth !== 0 ? (netExposure / netWorth) * 100 : 0;
 
   // Filter and sort positions (UI-only logic)
   const filteredPositions = useMemo(() => {
@@ -168,7 +177,15 @@ export default function EquitiesPage() {
             Stocks and ETFs in your portfolio
           </p>
         </div>
-
+        <div className="text-right">
+          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">NET EXPOSURE</p>
+          <p className="text-[13px] font-medium">
+            {hideBalances ? '••••' : formatCurrency(netExposure)}
+          </p>
+          <p className="text-[11px] text-[var(--foreground-muted)]">
+            {hideBalances ? '••••' : `${formatPercent(netExposurePercent, 1)} of net worth`}
+          </p>
+        </div>
       </div>
 
       <hr className="border-[var(--border)] mb-6" />

@@ -215,6 +215,30 @@ describe('classifyIntent', () => {
       expect(r.toolIds).toEqual(['query_exposure']);
     });
 
+    it('classifies "exposure to USD"', () => {
+      const r = classifyIntent('what is my exposure to USD');
+      expect(r.intent).toBe('query');
+      expect(r.toolIds).toEqual(['query_currency_exposure']);
+    });
+
+    it('classifies "stablecoin exposure"', () => {
+      const r = classifyIntent('stablecoin exposure');
+      expect(r.intent).toBe('query');
+      expect(r.toolIds).toEqual(['query_stablecoin_exposure']);
+    });
+
+    it('classifies "top gainers"', () => {
+      const r = classifyIntent('top gainers 24h');
+      expect(r.intent).toBe('query');
+      expect(r.toolIds).toEqual(['query_top_gainers_24h']);
+    });
+
+    it('classifies "rebalance targets"', () => {
+      const r = classifyIntent('rebalance to crypto=50, cash=50');
+      expect(r.intent).toBe('query');
+      expect(r.toolIds).toEqual(['query_rebalance_targets']);
+    });
+
     it('classifies "how much crypto"', () => {
       const r = classifyIntent('how much crypto do I have?');
       expect(r.intent).toBe('query');

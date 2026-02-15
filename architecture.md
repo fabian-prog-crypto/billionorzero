@@ -821,6 +821,21 @@ Response: { response, toolCalls[], mutations, pendingAction? }
   └── Query result? -> display in palette
 ```
 
+### Adding CMD-K Commands (Checklist)
+
+1. **Define the tool** in `src/services/domain/tool-registry.ts`  
+   - Add a new tool entry with `id`, `description`, `fields`, and `examples`.
+2. **Implement execution** in `src/app/api/chat/route.ts`  
+   - Add a `case` in `executeTool()` that returns a structured result.
+3. **Wire intent slicing** in `src/services/domain/intent-router.ts`  
+   - Ensure the new tool is included for matching queries so Ollama can call it.
+4. **Map the result for CMD-K UI** in `src/services/domain/cmdk/query-result.ts`  
+   - Convert the tool response into a `QueryResult` (metric/table/list).
+5. **Optional: Add a suggestion** in `src/commands/suggestions.ts`  
+   - Adds a visible CMD-K item and boosts discoverability.
+6. **Add/Update tests**  
+   - `intent-router.test.ts` for routing, `query-result` mapping, and any domain calculations.
+
 ---
 
 ## 10. Authentication Flow

@@ -7,6 +7,7 @@ import { usePortfolioStore } from '@/store/portfolioStore';
 import {
   calculateAllPositionsWithPrices,
   calculateMetalsBreakdown,
+  calculateExposureData,
   getCategoryService,
 } from '@/services';
 import { formatCurrency, formatNumber, formatPercent, getChangeColor } from '@/lib/utils';
@@ -58,6 +59,14 @@ export default function MetalsPage() {
   const breakdownData = useMemo(() => {
     return calculateMetalsBreakdown(allPositions);
   }, [allPositions]);
+
+  const exposureData = useMemo(() => {
+    return calculateExposureData(breakdownData.metalPositions);
+  }, [breakdownData.metalPositions]);
+
+  const netExposure = exposureData.exposureMetrics.netExposure;
+  const netWorth = exposureData.exposureMetrics.netWorth;
+  const netExposurePercent = netWorth !== 0 ? (netExposure / netWorth) * 100 : 0;
 
   const filteredPositions = useMemo(() => {
     let filtered = breakdownData.metalPositions;
@@ -168,6 +177,15 @@ export default function MetalsPage() {
           </h2>
           <p className="text-[13px] text-[var(--foreground-muted)]">
             Gold, silver, and metal exposure across accounts
+          </p>
+        </div>
+        <div className="text-right">
+          <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-1">NET EXPOSURE</p>
+          <p className="text-[13px] font-medium">
+            {hideBalances ? '••••' : formatCurrency(netExposure)}
+          </p>
+          <p className="text-[11px] text-[var(--foreground-muted)]">
+            {hideBalances ? '••••' : `${formatPercent(netExposurePercent, 1)} of net worth`}
           </p>
         </div>
       </div>

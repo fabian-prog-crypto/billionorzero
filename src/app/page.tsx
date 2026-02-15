@@ -57,6 +57,9 @@ export default function OverviewPage() {
   const debtRatio = exposureMetrics.debtRatio;
   const uniqueAssetCount = concentrationMetrics.assetCount;
   const hhiIndex = concentrationMetrics.herfindahlIndex;
+  const netExposurePercent = exposureMetrics.netWorth !== 0
+    ? (exposureMetrics.netExposure / exposureMetrics.netWorth) * 100
+    : 0;
 
   const hasData = positions.length > 0;
 
@@ -150,6 +153,9 @@ export default function OverviewPage() {
             <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-2">NET EXPOSURE</p>
             <p className="text-xl font-semibold">
               {hideBalances ? '••••' : formatCurrency(exposureMetrics.netExposure)}
+            </p>
+            <p className="text-xs text-[var(--foreground-muted)]">
+              {hideBalances ? '••••' : `${formatPercent(netExposurePercent, 1)} of net worth`}
             </p>
           </div>
           <div>

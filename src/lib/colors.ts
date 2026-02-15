@@ -146,8 +146,6 @@ export const EXPOSURE_CATEGORY_CONFIG = {
 // Exchange colors
 export const EXCHANGE_COLORS: Record<string, string> = {
   hyperliquid: '#00D1FF',
-  vertex: '#7B61FF',
-  drift: '#FF6B6B',
 };
 
 // Exposure breakdown colors

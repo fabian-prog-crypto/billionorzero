@@ -120,11 +120,9 @@ export class CategoryService {
 
   // Perpetual futures / derivatives protocols
   private perpProtocols = new Set([
-    'hyperliquid', 'lighter', 'ethereal', 'vertex', 'drift',
+    'hyperliquid', 'lighter', 'ethereal',
     'hyperliquid perp', 'hyperliquid perpetual',
     'lighter exchange', 'ethereal exchange',
-    'vertex protocol', 'vertex exchange',
-    'drift protocol', 'drift exchange',
   ]);
 
   // DeFi protocol tokens
@@ -347,9 +345,7 @@ export class CategoryService {
     return this.perpProtocols.has(normalized) ||
            normalized.includes('hyperliquid') ||
            normalized.includes('lighter') ||
-           normalized.includes('ethereal') ||
-           normalized.includes('vertex') ||
-           normalized.includes('drift');
+           normalized.includes('ethereal');
   }
 
   /**

@@ -197,6 +197,31 @@ describe('CEX Provider', () => {
       expect(ethPos!.amount).toBeCloseTo(1.5, 6);
     });
 
+    it('uses balance total when available/hold are zero', async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          accounts: [
+            {
+              uuid: 'acct-1',
+              currency: 'USDC',
+              available_balance: { value: '0', currency: 'USDC' },
+              hold: { value: '0', currency: 'USDC' },
+              balance: { value: '42.5', currency: 'USDC' },
+            },
+          ],
+        }),
+      } as Response);
+
+      const result = await fetchCexAccountPositions(makeAccount({
+        exchange: 'coinbase',
+      }));
+
+      expect(result).toHaveLength(1);
+      expect(result[0].symbol).toBe('usdc');
+      expect(result[0].amount).toBe(42.5);
+    });
+
     it('throws when Coinbase private key is missing', async () => {
       await expect(fetchCexAccountPositions(makeAccount({
         exchange: 'coinbase',

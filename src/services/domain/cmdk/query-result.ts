@@ -162,6 +162,292 @@ export function mapQueryToolResult(tool: string, result: unknown): QueryResult |
         ],
       };
     }
+    case 'query_currency_exposure': {
+      const currency = String(data.currency || 'Currency');
+      return {
+        format: 'metric',
+        title: `${currency} Exposure`,
+        value: formatMaybeCurrency(data.value),
+        subtitle: isNumber(data.percentage) ? `${formatPercent(data.percentage, 1)} of net worth` : undefined,
+      };
+    }
+    case 'query_stablecoin_exposure': {
+      return {
+        format: 'metric',
+        title: 'Stablecoin Exposure',
+        value: formatMaybeCurrency(data.value),
+        subtitle: isNumber(data.percentage) ? `${formatPercent(data.percentage, 1)} of net worth` : undefined,
+      };
+    }
+    case 'query_cash_vs_invested': {
+      return {
+        format: 'table',
+        title: 'Cash vs Invested',
+        rows: [
+          row('Cash', [formatMaybeCurrency(data.cash), formatMaybePercent(data.cashPercent)]),
+          row('Invested', [formatMaybeCurrency(data.invested), formatMaybePercent(data.investedPercent)]),
+          row('Net Worth', [formatMaybeCurrency(data.netWorth)]),
+        ],
+      };
+    }
+    case 'query_top_gainers_24h':
+    case 'query_top_losers_24h': {
+      const rows = Array.isArray(result)
+        ? result.map((item) => {
+            const r = item as Record<string, unknown>;
+            const change = isNumber(r.changePercent24h) ? r.changePercent24h : null;
+            return row(
+              String(r.symbol || '—'),
+              [
+                formatMaybeCurrency(r.value),
+                formatMaybeCurrency(r.change24h),
+                isNumber(r.changePercent24h) ? formatPercent(r.changePercent24h) : '—',
+              ],
+              change == null ? undefined : change < 0 ? 'negative' : 'positive'
+            );
+          })
+        : [];
+      return {
+        format: 'table',
+        title: tool === 'query_top_gainers_24h' ? 'Top Gainers (24h)' : 'Top Losers (24h)',
+        columns: ['Value', 'Δ$', 'Δ%'],
+        rows,
+      };
+    }
+    case 'query_missing_prices': {
+      const rows = Array.isArray(result)
+        ? result.map((item) => {
+            const r = item as Record<string, unknown>;
+            return row(
+              String(r.symbol || '—'),
+              [formatMaybeNumber(r.amount), formatMaybeCurrency(r.price)]
+            );
+          })
+        : [];
+      return {
+        format: 'table',
+        title: 'Missing Prices',
+        columns: ['Amount', 'Price'],
+        rows,
+      };
+    }
+    case 'query_largest_debts': {
+      const rows = Array.isArray(result)
+        ? result.map((item) => {
+            const r = item as Record<string, unknown>;
+            return row(
+              String(r.symbol || '—'),
+              [formatMaybeCurrency(r.value), formatGenericValue(r.protocol)]
+            );
+          })
+        : [];
+      return {
+        format: 'table',
+        title: 'Largest Debts',
+        columns: ['Value', 'Protocol'],
+        rows,
+      };
+    }
+    case 'query_exposure_by_chain': {
+      const rows = Array.isArray(result)
+        ? result.map((item) => {
+            const r = item as Record<string, unknown>;
+            return row(
+              String(r.chain || '—'),
+              [formatMaybeCurrency(r.value), formatMaybePercent(r.percentage)]
+            );
+          })
+        : [];
+      return {
+        format: 'table',
+        title: 'Exposure by Chain',
+        columns: ['Value', 'Percent'],
+        rows,
+      };
+    }
+    case 'query_exposure_by_custody': {
+      const rows = Array.isArray(result)
+        ? result.map((item) => {
+            const r = item as Record<string, unknown>;
+            return row(
+              String(r.custody || '—'),
+              [formatMaybeCurrency(r.value), formatMaybePercent(r.percentage)]
+            );
+          })
+        : [];
+      return {
+        format: 'table',
+        title: 'Exposure by Custody',
+        columns: ['Value', 'Percent'],
+        rows,
+      };
+    }
+    case 'query_allocation_by_category': {
+      const rows = Array.isArray(result)
+        ? result.map((item) => {
+            const r = item as Record<string, unknown>;
+            return row(
+              String(r.category || '—'),
+              [formatMaybeCurrency(r.value), formatMaybePercent(r.percentage)]
+            );
+          })
+        : [];
+      return {
+        format: 'table',
+        title: 'Allocation by Category',
+        columns: ['Value', 'Percent'],
+        rows,
+      };
+    }
+    case 'query_perps_utilization': {
+      return {
+        format: 'table',
+        title: 'Perps Utilization',
+        rows: [
+          row('Collateral', [formatMaybeCurrency(data.collateral)]),
+          row('Margin Used', [formatMaybeCurrency(data.marginUsed)]),
+          row('Available', [formatMaybeCurrency(data.marginAvailable)]),
+          row('Utilization', [formatMaybePercent(data.utilizationRate)]),
+          row('Gross Notional', [formatMaybeCurrency(data.grossNotional)]),
+          row('Net Notional', [formatMaybeCurrency(data.netNotional)]),
+        ],
+      };
+    }
+    case 'query_unrealized_pnl': {
+      const rows = Array.isArray(result)
+        ? result.map((item) => {
+            const r = item as Record<string, unknown>;
+            const pnl = isNumber(r.pnl) ? r.pnl : null;
+            return row(
+              String(r.symbol || '—'),
+              [
+                formatMaybeCurrency(r.pnl),
+                isNumber(r.pnlPercent) ? formatPercent(r.pnlPercent) : '—',
+                formatMaybeCurrency(r.value),
+              ],
+              pnl == null ? undefined : pnl < 0 ? 'negative' : 'positive'
+            );
+          })
+        : [];
+      return {
+        format: 'table',
+        title: 'Unrealized PnL',
+        columns: ['PnL', 'PnL %', 'Value'],
+        rows,
+      };
+    }
+    case 'query_risk_concentration': {
+      return {
+        format: 'table',
+        title: 'Risk Concentration',
+        rows: [
+          row('Top 1', [formatMaybePercent(data.top1Percentage)]),
+          row('Top 5', [formatMaybePercent(data.top5Percentage)]),
+          row('Top 10', [formatMaybePercent(data.top10Percentage)]),
+          row('HHI', [formatMaybeNumber(data.herfindahlIndex)]),
+          row('Positions', [formatMaybeNumber(data.positionCount)]),
+          row('Assets', [formatMaybeNumber(data.assetCount)]),
+        ],
+      };
+    }
+    case 'query_cash_breakdown': {
+      const rows = Array.isArray(result)
+        ? result.map((item) => {
+            const r = item as Record<string, unknown>;
+            return row(
+              String(r.currency || '—'),
+              [formatMaybeCurrency(r.value), formatMaybePercent(r.percentage)]
+            );
+          })
+        : [];
+      return {
+        format: 'table',
+        title: 'Cash Breakdown',
+        columns: ['Value', 'Percent'],
+        rows,
+      };
+    }
+    case 'query_equities_exposure': {
+      return {
+        format: 'metric',
+        title: 'Equities Exposure',
+        value: formatMaybeCurrency(data.equityValue),
+        subtitle: isNumber(data.percentage) ? `${formatPercent(data.percentage, 1)} of net worth` : undefined,
+      };
+    }
+    case 'query_account_health': {
+      const rows = Array.isArray(result)
+        ? result.map((item) => {
+            const r = item as Record<string, unknown>;
+            return row(
+              String(r.name || '—'),
+              [formatMaybeCurrency(r.netValue), formatMaybeCurrency(r.debtValue), formatMaybeNumber(r.positions)]
+            );
+          })
+        : [];
+      return {
+        format: 'table',
+        title: 'Account Health',
+        columns: ['Net', 'Debt', 'Positions'],
+        rows,
+      };
+    }
+    case 'query_rebalance_targets': {
+      const rows = Array.isArray(data.targets)
+        ? (data.targets as Array<Record<string, unknown>>).map((item) => row(
+            String(item.target || '—'),
+            [
+              isNumber(item.percent) ? `${item.percent.toFixed(1)}%` : '—',
+              formatMaybeCurrency(item.currentValue),
+              formatMaybeCurrency(item.targetValue),
+              formatMaybeCurrency(item.delta),
+            ]
+          ))
+        : [];
+      return {
+        format: 'table',
+        title: 'Rebalance Targets',
+        subtitle: isNumber(data.totalTargetPercent) ? `Target total ${data.totalTargetPercent.toFixed(1)}%` : undefined,
+        columns: ['Target %', 'Current', 'Target', 'Delta'],
+        rows,
+      };
+    }
+    case 'query_largest_price_overrides': {
+      const rows = Array.isArray(result)
+        ? result.map((item) => {
+            const r = item as Record<string, unknown>;
+            return row(
+              String(r.symbol || '—'),
+              [
+                formatMaybeCurrency(r.customPrice),
+                formatMaybeCurrency(r.marketPrice),
+                isNumber(r.deltaPercent) ? formatPercent(r.deltaPercent) : '—',
+              ]
+            );
+          })
+        : [];
+      return {
+        format: 'table',
+        title: 'Price Overrides',
+        columns: ['Custom', 'Market', 'Δ%'],
+        rows,
+      };
+    }
+    case 'query_recent_changes': {
+      return {
+        format: 'table',
+        title: 'Recent Changes',
+        subtitle: data.from && data.to ? `${String(data.from)} → ${String(data.to)}` : undefined,
+        rows: [
+          row('Total', [formatMaybeCurrency(data.totalValue)]),
+          row('Crypto', [formatMaybeCurrency(data.cryptoValue)]),
+          row('Equities', [formatMaybeCurrency(data.equityValue)]),
+          row('Metals', [formatMaybeCurrency(data.metalsValue)]),
+          row('Cash', [formatMaybeCurrency(data.cashValue)]),
+          row('Other', [formatMaybeCurrency(data.otherValue)]),
+        ],
+      };
+    }
     case 'query_performance': {
       return {
         format: 'table',

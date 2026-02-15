@@ -137,7 +137,7 @@ const mutationTools: ToolDefinition[] = [
   },
 ];
 
-// ─── Query Tools (15) ───────────────────────────────────────────────────────
+// ─── Query Tools (34) ───────────────────────────────────────────────────────
 
 const queryTools: ToolDefinition[] = [
   {
@@ -194,6 +194,153 @@ const queryTools: ToolDefinition[] = [
     description: 'Get crypto-specific exposure',
     fields: [],
     examples: ['crypto exposure', "what's my crypto breakdown?"],
+  },
+  {
+    id: 'query_currency_exposure',
+    type: 'query',
+    description: 'Get exposure to a specific fiat currency (includes stablecoins)',
+    fields: [
+      { name: 'currency', type: 'string', required: true, description: 'Currency code (e.g. USD, EUR, GBP)' },
+    ],
+    examples: ['usd exposure', "what's my % exposure to USD?", 'eur exposure'],
+  },
+  {
+    id: 'query_stablecoin_exposure',
+    type: 'query',
+    description: 'Get exposure to stablecoins (value and % of net worth)',
+    fields: [],
+    examples: ['stablecoin exposure', 'how much stablecoins do I have?'],
+  },
+  {
+    id: 'query_cash_vs_invested',
+    type: 'query',
+    description: 'Compare cash vs invested portion of the portfolio',
+    fields: [],
+    examples: ['cash vs invested', 'what percent is cash?'],
+  },
+  {
+    id: 'query_top_gainers_24h',
+    type: 'query',
+    description: 'Top gainers by 24h change',
+    fields: [
+      { name: 'count', type: 'number', required: false, description: 'Number of positions to return (default 5)' },
+    ],
+    examples: ['top gainers 24h', 'biggest winners today'],
+  },
+  {
+    id: 'query_top_losers_24h',
+    type: 'query',
+    description: 'Top losers by 24h change',
+    fields: [
+      { name: 'count', type: 'number', required: false, description: 'Number of positions to return (default 5)' },
+    ],
+    examples: ['top losers 24h', 'biggest losers today'],
+  },
+  {
+    id: 'query_missing_prices',
+    type: 'query',
+    description: 'List positions missing price data',
+    fields: [],
+    examples: ['positions missing prices', 'unpriced assets'],
+  },
+  {
+    id: 'query_largest_debts',
+    type: 'query',
+    description: 'Largest debt positions by absolute value',
+    fields: [
+      { name: 'count', type: 'number', required: false, description: 'Number of positions to return (default 5)' },
+    ],
+    examples: ['largest debts', 'biggest liabilities'],
+  },
+  {
+    id: 'query_exposure_by_chain',
+    type: 'query',
+    description: 'Exposure breakdown by chain or exchange',
+    fields: [],
+    examples: ['exposure by chain', 'chain exposure'],
+  },
+  {
+    id: 'query_exposure_by_custody',
+    type: 'query',
+    description: 'Exposure breakdown by custody type',
+    fields: [],
+    examples: ['exposure by custody', 'custody breakdown'],
+  },
+  {
+    id: 'query_allocation_by_category',
+    type: 'query',
+    description: 'Allocation by major category (cash/crypto/equities/metals/other)',
+    fields: [],
+    examples: ['allocation by category', 'portfolio allocation'],
+  },
+  {
+    id: 'query_perps_utilization',
+    type: 'query',
+    description: 'Perps utilization and margin usage',
+    fields: [],
+    examples: ['perps utilization', 'margin usage'],
+  },
+  {
+    id: 'query_unrealized_pnl',
+    type: 'query',
+    description: 'Unrealized PnL by position (from cost basis)',
+    fields: [
+      { name: 'count', type: 'number', required: false, description: 'Number of positions to return (default 10)' },
+    ],
+    examples: ['unrealized pnl', 'pnl since cost basis'],
+  },
+  {
+    id: 'query_risk_concentration',
+    type: 'query',
+    description: 'Risk concentration metrics (top positions, HHI)',
+    fields: [],
+    examples: ['concentration risk', 'top 3 concentration'],
+  },
+  {
+    id: 'query_cash_breakdown',
+    type: 'query',
+    description: 'Cash breakdown by currency (fiat + stablecoins)',
+    fields: [],
+    examples: ['cash breakdown', 'cash by currency'],
+  },
+  {
+    id: 'query_equities_exposure',
+    type: 'query',
+    description: 'Equities exposure as % of net worth',
+    fields: [],
+    examples: ['equity exposure', 'stocks exposure'],
+  },
+  {
+    id: 'query_account_health',
+    type: 'query',
+    description: 'Accounts with negative net value or debts',
+    fields: [],
+    examples: ['account health', 'accounts with debt'],
+  },
+  {
+    id: 'query_rebalance_targets',
+    type: 'query',
+    description: 'Rebalance to target allocations (categories or symbols)',
+    fields: [
+      { name: 'targets', type: 'string', required: true, description: 'Targets like "crypto=40, equities=30, cash=30" or "BTC=50, ETH=30, cash=20"' },
+    ],
+    examples: ['rebalance to crypto=50, equities=30, cash=20', 'target BTC=60, ETH=20, cash=20'],
+  },
+  {
+    id: 'query_largest_price_overrides',
+    type: 'query',
+    description: 'Show custom price overrides and deltas',
+    fields: [
+      { name: 'count', type: 'number', required: false, description: 'Number of overrides to return (default 10)' },
+    ],
+    examples: ['price overrides', 'custom prices'],
+  },
+  {
+    id: 'query_recent_changes',
+    type: 'query',
+    description: 'Recent changes since last snapshot',
+    fields: [],
+    examples: ['recent changes', 'change since last snapshot'],
   },
   {
     id: 'query_performance',

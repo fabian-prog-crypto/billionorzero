@@ -16,7 +16,7 @@ import {
   getCategoryService,
 } from '@/services';
 import { MainCategory } from '@/services/domain/category-service';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, formatPercent } from '@/lib/utils';
 import { CRYPTO_COLORS, TOKEN_CATEGORY_COLORS } from '@/lib/colors';
 import EmptyState from '@/components/ui/EmptyState';
 
@@ -84,6 +84,9 @@ export default function CategoryView({
   const totalGrossAssets = exposureData.grossAssets;
   const totalDebt = exposureData.totalDebts;
   const totalValue = totalGrossAssets - totalDebt; // Net value
+  const netExposure = exposureData.exposureMetrics.netExposure;
+  const netWorth = exposureData.exposureMetrics.netWorth;
+  const netExposurePercent = netWorth !== 0 ? (netExposure / netWorth) * 100 : 0;
 
   if (categoryPositions.length === 0) {
     return (
@@ -111,6 +114,15 @@ export default function CategoryView({
         </div>
 
         <div className="flex gap-6 text-right">
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-0.5">Net Exposure</p>
+            <p className="text-[13px] font-medium">
+              {hideBalances ? '••••' : formatCurrency(netExposure)}
+            </p>
+            <p className="text-[11px] text-[var(--foreground-muted)]">
+              {hideBalances ? '••••' : `${formatPercent(netExposurePercent, 1)} of net worth`}
+            </p>
+          </div>
           <div>
             <p className="text-[10px] uppercase tracking-wider text-[var(--foreground-muted)] mb-0.5">Gross Assets</p>
             <p className="text-[13px] font-medium">
