@@ -6,13 +6,7 @@ import { usePortfolioStore } from '@/store/portfolioStore';
 import { calculateAllPositionsWithPrices, filterPositionsByAccountAndAssetClass } from '@/services';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import type { Account, CexExchange } from '@/types';
-
-const EXCHANGE_INFO: Record<CexExchange, { name: string; logo: string }> = {
-  binance: { name: 'Binance', logo: 'B' },
-  coinbase: { name: 'Coinbase', logo: 'C' },
-  kraken: { name: 'Kraken', logo: 'K' },
-  okx: { name: 'OKX', logo: 'O' },
-};
+import { CEX_EXCHANGE_CONFIG } from '@/lib/cex-exchanges';
 
 export default function MetalsAccountsPage() {
   const store = usePortfolioStore();
@@ -65,7 +59,7 @@ export default function MetalsAccountsPage() {
     const ds = account.connection.dataSource;
     if (ds === 'manual') return { label: 'Brokerage', badge: account.name.slice(0, 1).toUpperCase() };
     if (ds === 'debank' || ds === 'helius') return { label: 'Wallet', badge: 'W' };
-    const info = EXCHANGE_INFO[ds as CexExchange];
+    const info = CEX_EXCHANGE_CONFIG[ds as CexExchange];
     if (info) return { label: info.name, badge: info.logo };
     return { label: ds, badge: account.name.slice(0, 1).toUpperCase() };
   };

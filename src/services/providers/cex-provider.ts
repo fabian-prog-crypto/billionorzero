@@ -20,6 +20,19 @@ interface BinanceAccountResponse {
   accountType: string;
 }
 
+interface CoinbaseAdvancedTradeAccount {
+  uuid?: string;
+  name?: string;
+  currency: string;
+  available_balance?: { value: string; currency: string };
+  hold?: { value: string; currency: string };
+  balance?: { value: string; currency: string };
+}
+
+interface CoinbaseAdvancedTradeAccountsResponse {
+  accounts: CoinbaseAdvancedTradeAccount[];
+}
+
 // Common asset name mappings
 const ASSET_NAME_MAP: Record<string, string> = {
   BTC: 'Bitcoin',
@@ -137,6 +150,71 @@ async function fetchBinanceBalances(account: Account): Promise<Position[]> {
 }
 
 /**
+ * Fetch balances from Coinbase Exchange account
+ */
+async function fetchCoinbaseBalances(account: Account): Promise<Position[]> {
+  const conn = account.connection as CexConnection;
+  if (!conn.apiSecret) {
+    throw new Error('Missing Coinbase private key');
+  }
+  try {
+    const response = await fetch('/api/cex/coinbase', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        apiKey: conn.apiKey,
+        apiSecret: conn.apiSecret,
+        endpoint: 'accounts',
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      console.error('Coinbase API error:', error);
+      throw new Error(error.error || 'Failed to fetch Coinbase balances');
+    }
+
+    const data: CoinbaseAdvancedTradeAccountsResponse = await response.json();
+    const positions: Position[] = [];
+    const now = new Date().toISOString();
+    const categoryService = getCategoryService();
+
+    const accounts = Array.isArray(data.accounts) ? data.accounts : [];
+
+    for (const accountBalance of accounts) {
+      const symbol = accountBalance.currency?.toUpperCase();
+      if (!symbol) continue;
+      const symbolLower = symbol.toLowerCase();
+      const availableValue = accountBalance.available_balance?.value || accountBalance.balance?.value || '0';
+      const holdValue = accountBalance.hold?.value || '0';
+      const balanceValue = parseFloat(availableValue) + parseFloat(holdValue);
+
+      if (!balanceValue || balanceValue <= 0) continue;
+
+      const name = ASSET_NAME_MAP[symbol] || symbol;
+
+      positions.push({
+        id: uuidv4(),
+        assetClass: categoryService.getAssetClass(symbolLower, 'crypto'),
+        type: 'crypto' as const,
+        symbol: symbolLower,
+        name,
+        amount: balanceValue,
+        accountId: account.id,
+        chain: 'coinbase',
+        addedAt: now,
+        updatedAt: now,
+      });
+    }
+
+    return positions;
+  } catch (error) {
+    console.error('Failed to fetch Coinbase balances:', error);
+    throw error;
+  }
+}
+
+/**
  * Fetch all positions from a CEX account
  */
 export async function fetchCexAccountPositions(account: Account): Promise<Position[]> {
@@ -149,6 +227,7 @@ export async function fetchCexAccountPositions(account: Account): Promise<Positi
     case 'binance':
       return fetchBinanceBalances(account);
     case 'coinbase':
+      return fetchCoinbaseBalances(account);
     case 'kraken':
     case 'okx':
       // Not yet implemented

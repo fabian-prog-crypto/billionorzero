@@ -1,6 +1,6 @@
 import { WalletProvider } from './wallet-provider';
 import type { DebankTokenResponse, DebankProtocolResponse } from '../api/types';
-import type { Account } from '@/types';
+import type { Account, Position } from '@/types';
 
 // Mock the DeBank API module
 vi.mock('../api', () => {
@@ -35,11 +35,13 @@ vi.mock('./demo-data', () => ({
 }));
 
 // Mock perp-exchange-service
+const mockPerpService = {
+  hasEnabledExchanges: vi.fn(() => false),
+  fetchPositions: vi.fn(() => ({ positions: [], prices: {}, errors: [] })),
+};
+
 vi.mock('../domain/perp-exchange-service', () => ({
-  getPerpExchangeService: () => ({
-    hasEnabledExchanges: vi.fn(() => false),
-    fetchPositions: vi.fn(() => ({ positions: [], prices: {} })),
-  }),
+  getPerpExchangeService: () => mockPerpService,
 }));
 
 // Mock cache module
@@ -95,7 +97,7 @@ function makeProtocol(overrides: Partial<DebankProtocolResponse> = {}): DebankPr
   };
 }
 
-function makeWalletAccount(overrides: { id?: string; address: string; name?: string; chains?: string[] }): Account {
+function makeWalletAccount(overrides: { id?: string; address: string; name?: string; chains?: string[]; perpExchanges?: ('hyperliquid' | 'lighter' | 'ethereal')[] }): Account {
   return {
     id: overrides.id || 'w1',
     name: overrides.name || 'Wallet',
@@ -104,6 +106,7 @@ function makeWalletAccount(overrides: { id?: string; address: string; name?: str
       dataSource: 'debank',
       address: overrides.address,
       chains: overrides.chains || ['eth'],
+      perpExchanges: overrides.perpExchanges,
     },
     addedAt: new Date().toISOString(),
   };
@@ -122,6 +125,11 @@ describe('WalletProvider', () => {
     const cacheMod = await import('../utils/cache');
     vi.mocked(cacheMod.getCached).mockReturnValue(null);
     vi.mocked(cacheMod.setCache).mockClear();
+
+    mockPerpService.hasEnabledExchanges.mockReset();
+    mockPerpService.hasEnabledExchanges.mockReturnValue(false);
+    mockPerpService.fetchPositions.mockReset();
+    mockPerpService.fetchPositions.mockResolvedValue({ positions: [], prices: {}, errors: [] });
   });
 
   // ─── getWalletTokens ──────────────────────────────────────────────
@@ -655,6 +663,50 @@ describe('WalletProvider', () => {
       const supplyPos = result.positions.find(p => p.symbol === 'WETH');
       expect(supplyPos).toBeDefined();
       expect(supplyPos!.isDebt).toBeUndefined();
+    });
+
+    it('includes perp exchange positions when enabled', async () => {
+      mockClient.getWalletProtocols.mockResolvedValue([]);
+      mockClient.getWalletTokens.mockResolvedValue([]);
+
+      const perpPosition: Position = {
+        id: 'w1-hl-btc',
+        assetClass: 'crypto',
+        type: 'crypto',
+        symbol: 'BTC',
+        name: 'BTC Long (Hyperliquid)',
+        amount: 1,
+        accountId: 'w1',
+        chain: 'hyperliquid',
+        protocol: 'Hyperliquid',
+        addedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      mockPerpService.hasEnabledExchanges.mockReturnValue(true);
+      mockPerpService.fetchPositions.mockResolvedValue({
+        positions: [perpPosition],
+        prices: { 'hl-btc': { price: 50000, symbol: 'BTC' } },
+        errors: [],
+      });
+
+      const accounts: Account[] = [
+        makeWalletAccount({
+          id: 'w1',
+          address: '0xABCD',
+          name: 'Main',
+          chains: ['eth'],
+          perpExchanges: ['hyperliquid'],
+        }),
+      ];
+
+      const result = await provider.fetchAllWalletPositions(accounts);
+
+      expect(mockPerpService.hasEnabledExchanges).toHaveBeenCalledWith(accounts[0]);
+      expect(mockPerpService.fetchPositions).toHaveBeenCalledWith(accounts[0]);
+      expect(result.positions).toHaveLength(1);
+      expect(result.positions[0].id).toBe('w1-hl-btc');
+      expect(result.prices['hl-btc']).toEqual({ price: 50000, symbol: 'BTC' });
     });
   });
 
