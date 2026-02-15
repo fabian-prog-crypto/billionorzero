@@ -4,7 +4,7 @@
  */
 
 import fs from 'fs';
-import type { Position, Account, PriceData, NetWorthSnapshot, Transaction } from '@/types';
+import type { Position, Account, PriceData, NetWorthSnapshot, Transaction, AccountConnection } from '@/types';
 import type { CustomPrice } from '@/store/portfolioStore';
 import { getDataDir, getDbPath } from '@/lib/server-data-path';
 
@@ -34,6 +34,29 @@ interface ZustandPersistWrapper {
 const DATA_DIR = getDataDir();
 const DB_PATH = getDbPath();
 const STORE_VERSION = 13;
+
+const CEX_SOURCES = new Set(['binance', 'coinbase', 'kraken', 'okx']);
+
+function normalizeAccountConnection(account: Account): Account {
+  if (account.connection) return account;
+
+  const exchange = (account as Account & { exchange?: string }).exchange?.toLowerCase();
+  if (exchange && CEX_SOURCES.has(exchange)) {
+    const connection: AccountConnection = {
+      dataSource: exchange as AccountConnection['dataSource'],
+      apiKey: (account as Account & { apiKey?: string }).apiKey || '',
+      apiSecret: (account as Account & { apiSecret?: string }).apiSecret || '',
+      lastSync: (account as Account & { lastSync?: string }).lastSync,
+    };
+    return { ...account, connection };
+  }
+
+  return { ...account, connection: { dataSource: 'manual' } };
+}
+
+function normalizeAccounts(accounts: Account[]): Account[] {
+  return accounts.map(normalizeAccountConnection);
+}
 
 const EMPTY_DATA: PortfolioData = {
   positions: [],
@@ -95,7 +118,7 @@ export function readDb(): PortfolioData {
       const state = parsed.state as Partial<PortfolioData>;
       return {
         positions: state.positions ?? [],
-        accounts: state.accounts ?? [],
+        accounts: normalizeAccounts(state.accounts ?? []),
         prices: state.prices ?? {},
         customPrices: state.customPrices ?? {},
         fxRates: state.fxRates ?? {},
@@ -112,7 +135,7 @@ export function readDb(): PortfolioData {
     if (parsed.positions || parsed.accounts) {
       return {
         positions: parsed.positions ?? [],
-        accounts: parsed.accounts ?? [],
+        accounts: normalizeAccounts(parsed.accounts ?? []),
         prices: parsed.prices ?? {},
         customPrices: parsed.customPrices ?? {},
         fxRates: parsed.fxRates ?? {},

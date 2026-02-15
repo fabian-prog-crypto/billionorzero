@@ -172,7 +172,7 @@ export default function LoginScreen() {
                 </div>
                 <h2 className="font-poppins text-xl font-semibold mb-2">Passkeys not supported</h2>
                 <p className="text-[var(--foreground-muted)] mb-8 text-sm">
-                  Your browser doesn't support passkeys. You can still use the app.
+                  Your browser doesn&apos;t support passkeys. You can still use the app.
                 </p>
                 <button onClick={handleSkip} className="btn btn-primary w-full">
                   Continue to App

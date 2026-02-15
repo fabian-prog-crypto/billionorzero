@@ -4,6 +4,8 @@ import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useCommandHistory } from '@/hooks/useCommandHistory';
 import { getOrRefreshToken, refreshToken } from '@/lib/api-token';
+import { mapQueryToolResult } from '@/services/domain/cmdk/query-result';
+import type { QueryResult } from '@/services/domain/command-types';
 import type { ParsedPositionAction } from '@/types';
 
 // ─── Navigation Routes ──────────────────────────────────────────────────────
@@ -44,7 +46,7 @@ export function useCommandPalette() {
   const [text, setText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [loadingText, setLoadingText] = useState('');
-  const [queryResult, setQueryResult] = useState<null>(null);
+  const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
   const [llmResponse, setLlmResponse] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -158,6 +160,20 @@ export function useCommandPalette() {
       if (chatResponse.pendingAction) {
         setPendingAction(chatResponse.pendingAction);
         return;
+      }
+
+      // Prefer structured query results when available
+      if (chatResponse.toolCalls && chatResponse.toolCalls.length > 0) {
+        const queryCall = chatResponse.toolCalls.find(
+          (call) => !call.isMutation && call.tool.startsWith('query_')
+        );
+        if (queryCall) {
+          const mapped = mapQueryToolResult(queryCall.tool, queryCall.result);
+          if (mapped) {
+            setQueryResult(mapped);
+            return;
+          }
+        }
       }
 
       // If mutations were made (non-confirmable like toggles), show success

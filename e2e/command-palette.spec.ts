@@ -340,19 +340,22 @@ test.describe('Command Palette', () => {
 // through the full pipeline: input → submit → response display.
 
 /**
- * Helper: open CMD-K, type a command, submit, and verify the response text appears.
+ * Helper: open CMD-K, type a command, submit, and verify query result text appears.
  */
-async function submitAndExpect(
+async function submitAndExpectQuery(
   page: import('@playwright/test').Page,
   command: string,
-  expectedText: string,
+  expectedTexts: string[],
 ) {
   await page.keyboard.press(CMD_K);
+  const panel = page.locator('.command-palette-panel');
   const input = page.locator('[cmdk-input]');
   await expect(input).toBeVisible({ timeout: 5000 });
   await input.fill(command);
   await page.keyboard.press('Enter');
-  await expect(page.locator(`text=${expectedText}`)).toBeVisible({ timeout: 10000 });
+  for (const expectedText of expectedTexts) {
+    await expect(panel.locator(`text=${expectedText}`).first()).toBeVisible({ timeout: 10000 });
+  }
 }
 
 /**
@@ -379,7 +382,7 @@ test.describe('CMD-K Commands — Queries', () => {
       toolCalls: [{ tool: 'query_net_worth', args: {}, result: { netWorth: 120500, grossAssets: 135000, totalDebts: 14500 }, isMutation: false }],
       mutations: false,
     });
-    await submitAndExpect(page, "What's my net worth?", 'Your net worth is $120,500');
+    await submitAndExpectQuery(page, "What's my net worth?", ['Net Worth', '$120,500']);
   });
 
   // 2. Portfolio summary
@@ -389,7 +392,7 @@ test.describe('CMD-K Commands — Queries', () => {
       toolCalls: [{ tool: 'query_portfolio_summary', args: {}, result: { netWorth: 120500, cryptoValue: 97500, equityValue: 9500, cashValue: 10000, otherValue: 11500, positionCount: 5, assetCount: 5 }, isMutation: false }],
       mutations: false,
     });
-    await submitAndExpect(page, 'Show me my portfolio', 'Portfolio: $120,500 net worth');
+    await submitAndExpectQuery(page, 'Show me my portfolio', ['Portfolio Summary', 'Net Worth', '$120,500']);
   });
 
   // 3. Top positions
@@ -405,7 +408,7 @@ test.describe('CMD-K Commands — Queries', () => {
       ], isMutation: false }],
       mutations: false,
     });
-    await submitAndExpect(page, 'Top 5 positions', 'Top 5 positions');
+    await submitAndExpectQuery(page, 'Top 5 positions', ['Top Positions']);
   });
 
   // 4. Position details
@@ -415,7 +418,7 @@ test.describe('CMD-K Commands — Queries', () => {
       toolCalls: [{ tool: 'query_position_details', args: { symbol: 'bitcoin' }, result: { symbol: 'BTC', totalAmount: 1.5, totalValue: 97500, price: 65000, positions: 1 }, isMutation: false }],
       mutations: false,
     });
-    await submitAndExpect(page, 'How much BTC do I have?', 'You hold 1.5 BTC worth $97,500');
+    await submitAndExpectQuery(page, 'How much BTC do I have?', ['BTC', '$97,500']);
   });
 
   // 5. 24h change
@@ -425,7 +428,7 @@ test.describe('CMD-K Commands — Queries', () => {
       toolCalls: [{ tool: 'query_24h_change', args: {}, result: { change24h: 1425, changePercent24h: 1.18 }, isMutation: false }],
       mutations: false,
     });
-    await submitAndExpect(page, 'How much did I gain today?', '+$1,425');
+    await submitAndExpectQuery(page, 'How much did I gain today?', ['24h Change', '$1,425']);
   });
 
   // 6. Exposure
@@ -435,7 +438,7 @@ test.describe('CMD-K Commands — Queries', () => {
       toolCalls: [{ tool: 'query_exposure', args: {}, result: { longExposure: 110500, shortExposure: 0, grossExposure: 110500, netExposure: 110500, leverage: 1.0, cashPosition: 10000 }, isMutation: false }],
       mutations: false,
     });
-    await submitAndExpect(page, "What's my exposure?", 'Long $110,500');
+    await submitAndExpectQuery(page, "What's my exposure?", ['Exposure', 'Long', '$110,500']);
   });
 
   // 7. Leverage
@@ -445,7 +448,7 @@ test.describe('CMD-K Commands — Queries', () => {
       toolCalls: [{ tool: 'query_leverage', args: {}, result: { leverage: 1.0 }, isMutation: false }],
       mutations: false,
     });
-    await submitAndExpect(page, "What's my leverage?", 'leverage ratio is 1.0x');
+    await submitAndExpectQuery(page, "What's my leverage?", ['Leverage', '1.00']);
   });
 
   // 8. Debt summary
@@ -455,7 +458,7 @@ test.describe('CMD-K Commands — Queries', () => {
       toolCalls: [{ tool: 'query_debt_summary', args: {}, result: { totalDebt: 14500, positions: [{ symbol: 'USDC', value: -10000, protocol: 'Morpho' }, { symbol: 'DAI', value: -4500, protocol: 'Aave' }] }, isMutation: false }],
       mutations: false,
     });
-    await submitAndExpect(page, 'What are my debts?', '$14,500 in total debts');
+    await submitAndExpectQuery(page, 'What are my debts?', ['Debt Summary', 'Total $14,500']);
   });
 
   // 9. Perps summary
@@ -465,7 +468,7 @@ test.describe('CMD-K Commands — Queries', () => {
       toolCalls: [{ tool: 'query_perps_summary', args: {}, result: { hasPerps: false, exchanges: [] }, isMutation: false }],
       mutations: false,
     });
-    await submitAndExpect(page, 'Show my futures', 'No perpetual futures');
+    await submitAndExpectQuery(page, 'Show my futures', ['Perps Summary', 'No data']);
   });
 
   // 10. Risk profile
@@ -475,7 +478,7 @@ test.describe('CMD-K Commands — Queries', () => {
       toolCalls: [{ tool: 'query_risk_profile', args: {}, result: { concentrationRisk: 'high', topPosition: { symbol: 'BTC', allocation: 80.7 }, leverage: 1.0 }, isMutation: false }],
       mutations: false,
     });
-    await submitAndExpect(page, 'How risky is my portfolio?', 'Concentration risk is HIGH');
+    await submitAndExpectQuery(page, 'How risky is my portfolio?', ['Risk Profile', 'Concentration Risk', 'high']);
   });
 
   // 11. Position count
@@ -485,7 +488,7 @@ test.describe('CMD-K Commands — Queries', () => {
       toolCalls: [{ tool: 'query_position_count', args: {}, result: { count: 5 }, isMutation: false }],
       mutations: false,
     });
-    await submitAndExpect(page, 'How many positions do I have?', 'You have 5 positions');
+    await submitAndExpectQuery(page, 'How many positions do I have?', ['Positions', '5.00']);
   });
 
   // 12. Category value
@@ -495,7 +498,7 @@ test.describe('CMD-K Commands — Queries', () => {
       toolCalls: [{ tool: 'query_category_value', args: { category: 'crypto' }, result: { type: 'crypto', value: 129500, count: 2 }, isMutation: false }],
       mutations: false,
     });
-    await submitAndExpect(page, 'How much crypto do I have?', '$129,500');
+    await submitAndExpectQuery(page, 'How much crypto do I have?', ['Crypto Value', '$129,500']);
   });
 });
 

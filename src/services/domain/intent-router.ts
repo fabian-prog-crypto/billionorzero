@@ -84,16 +84,54 @@ export function classifyIntent(text: string): ClassifiedIntent {
     return { intent: 'navigate', toolIds: ['navigate'] };
   }
 
-  // Query patterns (questions, lookups)
+  // Query patterns (questions, lookups) -> keep tool budget tight (1-3)
   if (/\b(what|how\s+much|how\s+many|show|list|top|summary|exposure|performance|leverage|debt|risk|perp)\b/.test(t) ||
       t.endsWith('?')) {
-    return { intent: 'query', toolIds: [
-      'query_net_worth', 'query_portfolio_summary', 'query_top_positions',
-      'query_position_details', 'query_positions_by_type', 'query_exposure',
-      'query_crypto_exposure', 'query_performance', 'query_24h_change',
-      'query_category_value', 'query_position_count', 'query_debt_summary',
-      'query_leverage', 'query_perps_summary', 'query_risk_profile',
-    ]};
+    const symbolMatch = t.toUpperCase().match(/\b[A-Z][A-Z0-9.\-]{1,9}\b/);
+    if (symbolMatch && /\b(position|holding|details|amount|value)\b/.test(t)) {
+      return { intent: 'query', toolIds: ['query_position_details'] };
+    }
+    if (/\bnet\s+worth|total\s+value\b/.test(t)) {
+      return { intent: 'query', toolIds: ['query_net_worth'] };
+    }
+    if (/\bsummary|overview\b/.test(t)) {
+      return { intent: 'query', toolIds: ['query_portfolio_summary'] };
+    }
+    if (/\btop|biggest|largest\b/.test(t)) {
+      return { intent: 'query', toolIds: ['query_top_positions'] };
+    }
+    if (/\b24h|today|daily\b/.test(t)) {
+      return { intent: 'query', toolIds: ['query_24h_change'] };
+    }
+    if (/\bperformance|return|sharpe|cagr\b/.test(t)) {
+      return { intent: 'query', toolIds: ['query_performance'] };
+    }
+    if (/\bexposure\b/.test(t)) {
+      if (/\bcrypto\b/.test(t)) return { intent: 'query', toolIds: ['query_crypto_exposure'] };
+      return { intent: 'query', toolIds: ['query_exposure'] };
+    }
+    if (/\bdebt|borrow\b/.test(t)) {
+      return { intent: 'query', toolIds: ['query_debt_summary'] };
+    }
+    if (/\bleverage\b/.test(t)) {
+      return { intent: 'query', toolIds: ['query_leverage'] };
+    }
+    if (/\bperp|futures\b/.test(t)) {
+      return { intent: 'query', toolIds: ['query_perps_summary'] };
+    }
+    if (/\brisk\b/.test(t)) {
+      return { intent: 'query', toolIds: ['query_risk_profile'] };
+    }
+    if (/\bcount|how\s+many\b/.test(t)) {
+      return { intent: 'query', toolIds: ['query_position_count'] };
+    }
+    if (/\b(list|show)\b.*\b(crypto|stock|etf|cash|manual)\b/.test(t)) {
+      return { intent: 'query', toolIds: ['query_positions_by_type'] };
+    }
+    if (/\b(how\s+much|total)\b.*\b(crypto|stock|etf|cash|manual)\b/.test(t)) {
+      return { intent: 'query', toolIds: ['query_category_value'] };
+    }
+    return { intent: 'query', toolIds: ['query_net_worth', 'query_portfolio_summary', 'query_top_positions'] };
   }
 
   // Unknown — fall back to all tools

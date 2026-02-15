@@ -4,8 +4,16 @@ import path from 'path';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
+function resolveSeedDbPath(): string {
+  const primary = path.join(process.cwd(), 'data', 'db.json');
+  if (fs.existsSync(primary)) return primary;
+  const fallback = path.join(process.cwd(), 'portfolio-backup-11022026.json');
+  if (fs.existsSync(fallback)) return fallback;
+  throw new Error('Missing seed db.json and portfolio-backup-11022026.json for real-db QA tests.');
+}
+
 function cloneRealDbToTemp(): string {
-  const src = path.join(process.cwd(), 'data', 'db.json');
+  const src = resolveSeedDbPath();
   const tmpPath = path.join(
     os.tmpdir(),
     `db.positions-id-real-qa.${Date.now()}.${Math.random().toString(36).slice(2)}.json`

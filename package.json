@@ -2,6 +2,9 @@
   "name": "billion-or-zero",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "scripts": {
     "predev": "rm -rf .next",
     "dev": "next dev",

@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
 
     // Build the query parameters
     const timestamp = Date.now();
-    let queryParams: Record<string, string | number | boolean> = {
+    const queryParams: Record<string, string | number | boolean> = {
       timestamp,
       recvWindow: 5000,
     };

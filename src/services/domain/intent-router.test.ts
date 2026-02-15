@@ -200,35 +200,49 @@ describe('classifyIntent', () => {
     it('classifies questions', () => {
       const r = classifyIntent("what's my net worth?");
       expect(r.intent).toBe('query');
-      expect(r.toolIds.length).toBeGreaterThan(5);
+      expect(r.toolIds).toEqual(['query_net_worth']);
     });
 
     it('classifies "top 5 positions"', () => {
-      expect(classifyIntent('top 5 positions').intent).toBe('query');
+      const r = classifyIntent('top 5 positions');
+      expect(r.intent).toBe('query');
+      expect(r.toolIds).toEqual(['query_top_positions']);
     });
 
     it('classifies "show exposure"', () => {
-      expect(classifyIntent('show exposure').intent).toBe('query');
+      const r = classifyIntent('show exposure');
+      expect(r.intent).toBe('query');
+      expect(r.toolIds).toEqual(['query_exposure']);
     });
 
     it('classifies "how much crypto"', () => {
-      expect(classifyIntent('how much crypto do I have?').intent).toBe('query');
+      const r = classifyIntent('how much crypto do I have?');
+      expect(r.intent).toBe('query');
+      expect(r.toolIds).toEqual(['query_category_value']);
     });
 
     it('classifies "performance"', () => {
-      expect(classifyIntent('performance').intent).toBe('query');
+      const r = classifyIntent('performance');
+      expect(r.intent).toBe('query');
+      expect(r.toolIds).toEqual(['query_performance']);
     });
 
     it('classifies any question ending with ?', () => {
-      expect(classifyIntent('what is BTC allocation?').intent).toBe('query');
+      const r = classifyIntent('what is BTC allocation?');
+      expect(r.intent).toBe('query');
+      expect(r.toolIds.length).toBeLessThanOrEqual(3);
     });
 
     it('classifies "leverage"', () => {
-      expect(classifyIntent('leverage').intent).toBe('query');
+      const r = classifyIntent('leverage');
+      expect(r.intent).toBe('query');
+      expect(r.toolIds).toEqual(['query_leverage']);
     });
 
     it('classifies "debt"', () => {
-      expect(classifyIntent('debt').intent).toBe('query');
+      const r = classifyIntent('debt');
+      expect(r.intent).toBe('query');
+      expect(r.toolIds).toEqual(['query_debt_summary']);
     });
   });
 

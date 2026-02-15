@@ -18,6 +18,7 @@ import { extractAccountInput, resolveAccountFromArgs } from '@/services/domain/c
 import { toolCallToAction, findPositionBySymbol, CONFIRM_MUTATION_TOOLS } from '@/services/domain/action-mapper';
 import { getCoinGeckoApiClient, getStockApiClient } from '@/services/api';
 import { getCryptoPriceService } from '@/services/providers/crypto-price-service';
+import { buildCmdkPipelineResult } from '@/services/domain/cmdk/pipeline';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -103,6 +104,25 @@ function resolveCommandDate(argDate: unknown, userText: string): string {
 }
 
 function asPositiveNumber(value: unknown): number | null {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const normalized = trimmed
+      .replace(/[, ]+/g, '')
+      .replace(/^\$/, '');
+    const num = Number(normalized);
+    if (Number.isFinite(num) && num > 0) return num;
+    const suffixMatch = normalized.match(/^(\d+(?:\.\d+)?)([kmb])$/i);
+    if (suffixMatch) {
+      const base = Number(suffixMatch[1]);
+      if (!Number.isFinite(base)) return null;
+      const suffix = suffixMatch[2].toLowerCase();
+      const multiplier = suffix === 'k' ? 1e3 : suffix === 'm' ? 1e6 : 1e9;
+      const scaled = base * multiplier;
+      return scaled > 0 ? scaled : null;
+    }
+    return null;
+  }
   const num = Number(value);
   return Number.isFinite(num) && num > 0 ? num : null;
 }
@@ -258,6 +278,14 @@ function resolvePositionUpdateTarget(
         extractCurrencyCode(position.symbol).toUpperCase() === currency
     );
 
+    const explicitAccountId = typeof args.accountId === 'string' ? args.accountId.trim() : '';
+    if (explicitAccountId) {
+      const inAccount = currencyMatches.filter((p) => p.accountId === explicitAccountId);
+      if (inAccount.length === 0) return { error: `No ${currency} cash position found for account ${explicitAccountId}` };
+      if (inAccount.length > 1) return { error: `Multiple ${currency} cash positions found for account ${explicitAccountId}` };
+      return { position: inAccount[0] };
+    }
+
     const accountResolution = resolveAccountFromArgs(data.accounts, args, { manualOnly: true });
     const accountArg = accountResolution.input || '';
     if (accountArg) {
@@ -284,6 +312,12 @@ function resolvePositionUpdateTarget(
   const symbol = resolveClosestPortfolioSymbol(data, rawSymbol);
   let matches = data.positions.filter((p) => p.symbol.toUpperCase() === symbol);
   if (matches.length === 0) return { error: `No position found for ${rawSymbol}` };
+
+  const explicitAccountId = typeof args.accountId === 'string' ? args.accountId.trim() : '';
+  if (explicitAccountId) {
+    matches = matches.filter((p) => p.accountId === explicitAccountId);
+    if (matches.length === 0) return { error: `No ${symbol} position found for account ${explicitAccountId}` };
+  }
 
   const accountResolution = resolveAccountFromArgs(data.accounts, args);
   const accountArg = accountResolution.input || '';
@@ -567,6 +601,12 @@ async function enrichBuyToolArgs(
     const quote = await resolveQuotePrice(db, symbol, assetType, date);
     if (!price && quote.price) price = quote.price;
     if (!assetType && quote.resolvedType) assetType = quote.resolvedType;
+    // If we still don't have a price for equities, try a lightweight Yahoo fallback
+    if (!price && (assetType === 'stock' || assetType === 'etf' || looksLikeEquityTicker(symbol))) {
+      const yahooPrice = await fetchYahooStockCloseForDate(symbol, date);
+      if (yahooPrice) price = yahooPrice;
+      if (!assetType) assetType = 'stock';
+    }
     if (!amount && totalCost && price) amount = Number((totalCost / price).toFixed(8));
   }
 
@@ -741,8 +781,6 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
   const toolDef = getToolById(name);
   if (!toolDef) return { result: { error: `Unknown tool: ${name}` }, isMutation: false };
 
-  const isMutation = toolDef.type === 'mutation';
-
   switch (name) {
     // ─── Query tools ──────────────────────────────────────────────────
     case 'query_net_worth':
@@ -873,6 +911,7 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
       const assetType = String(args.assetType || 'crypto');
       const name = String(args.name || symbol);
       const accountInput = extractAccountInput(args);
+      const explicitAccountId = typeof args.accountId === 'string' ? args.accountId.trim() : '';
 
       if (!symbol) return { result: { error: 'Symbol is required' }, isMutation: true };
       if ((!amount || amount <= 0) && (!totalCost || totalCost <= 0)) return { result: { error: 'Amount or totalCost must be > 0' }, isMutation: true };
@@ -886,12 +925,20 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
       const result = await withDb(data => {
         // Resolve account by name
         let accountId: string | undefined;
-        const accountResolution = resolveAccountFromArgs(
-          data.accounts,
-          accountInput ? { account: accountInput } : {},
-        );
-        if (accountResolution.account) {
-          accountId = accountResolution.account.id;
+        if (explicitAccountId) {
+          const account = data.accounts.find((a) => a.id === explicitAccountId);
+          if (account) {
+            accountId = account.id;
+          }
+        }
+        if (!accountId) {
+          const accountResolution = resolveAccountFromArgs(
+            data.accounts,
+            accountInput ? { account: accountInput } : {},
+          );
+          if (accountResolution.account) {
+            accountId = accountResolution.account.id;
+          }
         }
 
         // Check for existing position
@@ -1038,6 +1085,7 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
       const currency = String(args.currency || 'USD').toUpperCase();
       const amount = Number(args.amount || 0);
       const accountInput = extractAccountInput(args);
+      const explicitAccountId = typeof args.accountId === 'string' ? args.accountId.trim() : '';
       type AddCashResult =
         | { error: string }
         | { added: string; updated?: string; newBalance?: number; account?: string };
@@ -1047,12 +1095,21 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
       const result = await withDb<AddCashResult>(data => {
         let accountId: string | undefined;
         let accountLabel: string | undefined = accountInput?.trim();
+
+        if (explicitAccountId) {
+          const account = data.accounts.find((a) => a.id === explicitAccountId);
+          if (account) {
+            accountId = account.id;
+            accountLabel = account.name;
+          }
+        }
+
         const accountResolution = resolveAccountFromArgs(
           data.accounts,
           accountInput ? { account: accountInput } : {},
           { manualOnly: true },
         );
-        if (accountInput) {
+        if (accountInput && !accountId) {
           if (!accountResolution.account) {
             const reason = accountResolution.status === 'ambiguous'
               ? `Multiple accounts match "${accountInput}"`
@@ -1296,11 +1353,12 @@ export async function POST(request: NextRequest) {
         }
 
         // Final text response
-        return NextResponse.json({
+        const responseBody = {
           response: assistantMsg.content || '',
           toolCalls: allToolCalls,
           mutations: hasMutations,
-        });
+        };
+        return NextResponse.json(responseBody);
       }
 
       // Execute tool calls
@@ -1319,23 +1377,27 @@ export async function POST(request: NextRequest) {
           toolArgs = enrichQueryToolArgs(toolName, rawToolArgs, currentDb);
         }
 
+        const pipeline = buildCmdkPipelineResult(toolName, toolArgs || {}, userText, currentDb);
+        const plannedArgs = pipeline.plan.resolvedArgs;
+
         // Check if this is a confirmable mutation — return pendingAction instead of executing
         if (CONFIRM_MUTATION_TOOLS.has(toolName) || toolName === 'update_cash') {
-          const pendingAction = toolCallToAction(toolName, toolArgs || {}, currentDb);
+          const pendingAction = toolCallToAction(toolName, plannedArgs || {}, currentDb);
           if (pendingAction) {
-            return NextResponse.json({
+            const responseBody = {
               response: assistantMsg.content || '',
               toolCalls: allToolCalls,
               mutations: false,
               pendingAction,
-            });
+            };
+            return NextResponse.json(responseBody);
           }
         }
 
-        const { result, isMutation } = await executeTool(toolName, toolArgs || {});
+        const { result, isMutation } = await executeTool(toolName, plannedArgs || {});
 
         if (isMutation) hasMutations = true;
-        allToolCalls.push({ tool: toolName, args: toolArgs || {}, result, isMutation });
+        allToolCalls.push({ tool: toolName, args: plannedArgs || {}, result, isMutation });
 
         // Add tool result to messages
         messages.push({
@@ -1347,11 +1409,12 @@ export async function POST(request: NextRequest) {
 
     // Max rounds reached
     const lastAssistant = messages.filter(m => m.role === 'assistant').pop();
-    return NextResponse.json({
+    const responseBody = {
       response: lastAssistant?.content || 'I performed the requested actions.',
       toolCalls: allToolCalls,
       mutations: hasMutations,
-    });
+    };
+    return NextResponse.json(responseBody);
   } catch (error) {
     if (error instanceof TypeError && (error.message.includes('fetch') || error.message.includes('ECONNREFUSED'))) {
       return NextResponse.json({ error: 'Ollama not reachable. Make sure Ollama is running (ollama serve).' }, { status: 503 });

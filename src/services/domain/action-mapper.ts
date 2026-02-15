@@ -232,20 +232,36 @@ export function toolCallToAction(toolName: string, args: Record<string, unknown>
   const amount = args.amount ? Number(args.amount) : undefined;
   const price = args.price ? Number(args.price) : undefined;
 
-  // Resolve position by symbol for sell/update/remove actions
-  const matchedPosition = symbol ? findPositionBySymbol(db.positions, symbol) : undefined;
+  const explicitPositionId = typeof args.matchedPositionId === 'string'
+    ? args.matchedPositionId
+    : typeof args.positionId === 'string'
+      ? args.positionId
+      : '';
+  const matchedPosition = explicitPositionId
+    ? db.positions.find((p) => p.id === explicitPositionId)
+    : (symbol ? findPositionBySymbol(db.positions, symbol) : undefined);
   const resolvedSymbol = matchedPosition?.symbol.toUpperCase() || symbol;
 
   // Resolve account by name
-  const accountResolution = resolveAccountFromArgs(db.accounts, args);
-  const accountArg = accountResolution.input;
   let matchedAccountId: string | undefined;
   let accountName: string | undefined;
-  if (accountResolution.status === 'matched' && accountResolution.account) {
-    matchedAccountId = accountResolution.account.id;
-    accountName = accountResolution.account.name;
-  } else if (accountArg) {
-    accountName = accountArg;
+  const explicitAccountId = typeof args.accountId === 'string' ? args.accountId : '';
+  if (explicitAccountId) {
+    const account = db.accounts.find((a) => a.id === explicitAccountId);
+    if (account) {
+      matchedAccountId = account.id;
+      accountName = account.name;
+    }
+  }
+  if (!matchedAccountId) {
+    const accountResolution = resolveAccountFromArgs(db.accounts, args);
+    const accountArg = accountResolution.input;
+    if (accountResolution.status === 'matched' && accountResolution.account) {
+      matchedAccountId = accountResolution.account.id;
+      accountName = accountResolution.account.name;
+    } else if (accountArg) {
+      accountName = accountArg;
+    }
   }
 
   switch (toolName) {
@@ -360,9 +376,8 @@ export function toolCallToAction(toolName: string, args: Record<string, unknown>
       const updateSymbolMatches = updatePositionMatch
         ? [updatePositionMatch]
         : db.positions.filter((p) => p.symbol.toUpperCase() === resolvedSymbol);
-      const updateMatchedPositionId = updateSymbolMatches.length === 1
-        ? updateSymbolMatches[0].id
-        : undefined;
+      const updateMatchedPositionId = explicitPositionId
+        || (updateSymbolMatches.length === 1 ? updateSymbolMatches[0].id : undefined);
       const isCashUpdate = !!updatePositionMatch || (typeof args.assetType === 'string' && args.assetType.toLowerCase() === 'cash');
       return {
         action: 'update_position',
