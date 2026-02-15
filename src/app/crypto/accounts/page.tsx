@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, type CSSProperties } from 'react';
 import { Plus, Trash2, RefreshCw, Eye, EyeOff, AlertCircle, CheckCircle } from 'lucide-react';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import { calculateAllPositionsWithPrices, filterPositionsByAccountAndAssetClass } from '@/services';
@@ -408,18 +408,30 @@ function AddAccountModal({ onClose }: { onClose: () => void }) {
             const showSecret = !!showSecrets[field.id];
             const inputType = isSecret ? (showSecret ? 'text' : 'password') : 'text';
             const value = credentials[field.id as keyof typeof credentials] || '';
+            const shouldMask = isSecret && !showSecret;
 
             return (
               <div className="mb-4" key={field.id}>
                 <label className="block text-sm font-medium mb-2">{field.label}</label>
                 <div className="relative">
-                  <input
-                    type={inputType}
-                    value={value}
-                    onChange={(e) => updateCredential(field.id as keyof typeof credentials, e.target.value)}
-                    placeholder={field.placeholder}
-                    className="w-full font-mono text-sm pr-10"
-                  />
+                  {field.multiline ? (
+                    <textarea
+                      value={value}
+                      onChange={(e) => updateCredential(field.id as keyof typeof credentials, e.target.value)}
+                      placeholder={field.placeholder}
+                      rows={6}
+                      className="w-full font-mono text-sm pr-10"
+                      style={shouldMask ? ({ WebkitTextSecurity: 'disc' } as CSSProperties) : undefined}
+                    />
+                  ) : (
+                    <input
+                      type={inputType}
+                      value={value}
+                      onChange={(e) => updateCredential(field.id as keyof typeof credentials, e.target.value)}
+                      placeholder={field.placeholder}
+                      className="w-full font-mono text-sm pr-10"
+                    />
+                  )}
                   {isSecret && (
                     <button
                       type="button"
@@ -430,6 +442,11 @@ function AddAccountModal({ onClose }: { onClose: () => void }) {
                     </button>
                   )}
                 </div>
+                {exchange === 'coinbase' && field.id === 'apiSecret' && (
+                  <p className="text-[11px] text-[var(--foreground-muted)] mt-2">
+                    Paste the full EC private key block, including the BEGIN/END lines.
+                  </p>
+                )}
               </div>
             );
           })}

@@ -7,6 +7,7 @@ export interface CexCredentialField {
   label: string;
   placeholder: string;
   type?: 'text' | 'password';
+  multiline?: boolean;
 }
 
 export interface CexExchangeConfig {
@@ -35,8 +36,7 @@ export const CEX_EXCHANGE_CONFIG: Record<CexExchange, CexExchangeConfig> = {
     validateEndpoint: 'accounts',
     credentialFields: [
       { id: 'apiKey', label: 'API Key', placeholder: 'Enter your API key', type: 'text' },
-      { id: 'apiSecret', label: 'API Secret', placeholder: 'Enter your API secret', type: 'password' },
-      { id: 'apiPassphrase', label: 'API Passphrase', placeholder: 'Enter your API passphrase', type: 'password' },
+      { id: 'apiSecret', label: 'Private Key (PEM)', placeholder: '-----BEGIN EC PRIVATE KEY-----', type: 'password', multiline: true },
     ],
   },
   kraken: {

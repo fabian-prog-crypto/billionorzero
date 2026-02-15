@@ -20,15 +20,18 @@ interface BinanceAccountResponse {
   accountType: string;
 }
 
-interface CoinbaseAccount {
-  id: string;
+interface CoinbaseAdvancedTradeAccount {
+  uuid?: string;
+  name?: string;
   currency: string;
-  balance?: string;
-  available?: string;
-  hold?: string;
+  available_balance?: { value: string; currency: string };
+  hold?: { value: string; currency: string };
+  balance?: { value: string; currency: string };
 }
 
-type CoinbaseAccountsResponse = CoinbaseAccount[];
+interface CoinbaseAdvancedTradeAccountsResponse {
+  accounts: CoinbaseAdvancedTradeAccount[];
+}
 
 // Common asset name mappings
 const ASSET_NAME_MAP: Record<string, string> = {
@@ -151,8 +154,8 @@ async function fetchBinanceBalances(account: Account): Promise<Position[]> {
  */
 async function fetchCoinbaseBalances(account: Account): Promise<Position[]> {
   const conn = account.connection as CexConnection;
-  if (!conn.apiPassphrase) {
-    throw new Error('Missing Coinbase API passphrase');
+  if (!conn.apiSecret) {
+    throw new Error('Missing Coinbase private key');
   }
   try {
     const response = await fetch('/api/cex/coinbase', {
@@ -161,7 +164,6 @@ async function fetchCoinbaseBalances(account: Account): Promise<Position[]> {
       body: JSON.stringify({
         apiKey: conn.apiKey,
         apiSecret: conn.apiSecret,
-        apiPassphrase: conn.apiPassphrase,
         endpoint: 'accounts',
       }),
     });
@@ -172,18 +174,20 @@ async function fetchCoinbaseBalances(account: Account): Promise<Position[]> {
       throw new Error(error.error || 'Failed to fetch Coinbase balances');
     }
 
-    const data: CoinbaseAccountsResponse = await response.json();
+    const data: CoinbaseAdvancedTradeAccountsResponse = await response.json();
     const positions: Position[] = [];
     const now = new Date().toISOString();
     const categoryService = getCategoryService();
 
-    for (const accountBalance of data) {
+    const accounts = Array.isArray(data.accounts) ? data.accounts : [];
+
+    for (const accountBalance of accounts) {
       const symbol = accountBalance.currency?.toUpperCase();
       if (!symbol) continue;
       const symbolLower = symbol.toLowerCase();
-      const balanceValue = accountBalance.balance !== undefined
-        ? parseFloat(accountBalance.balance)
-        : parseFloat(accountBalance.available || '0') + parseFloat(accountBalance.hold || '0');
+      const availableValue = accountBalance.available_balance?.value || accountBalance.balance?.value || '0';
+      const holdValue = accountBalance.hold?.value || '0';
+      const balanceValue = parseFloat(availableValue) + parseFloat(holdValue);
 
       if (!balanceValue || balanceValue <= 0) continue;
 

@@ -13,8 +13,8 @@ function makeAccount(overrides: Partial<Account> & { exchange?: CexExchange; api
     isActive: overrides.isActive ?? true,
     connection: {
       dataSource: (overrides.exchange || 'binance') as CexExchange,
-      apiKey: overrides.apiKey || 'api-key-123',
-      apiSecret: overrides.apiSecret || 'api-secret-456',
+      apiKey: overrides.apiKey ?? 'api-key-123',
+      apiSecret: overrides.apiSecret ?? 'api-secret-456',
       apiPassphrase: overrides.apiPassphrase,
     },
     addedAt: new Date().toISOString(),
@@ -30,13 +30,20 @@ function makeBinanceResponse(balances: { asset: string; free: string; locked: st
 }
 
 function makeCoinbaseResponse(accounts: { currency: string; balance?: string; available?: string; hold?: string }[]) {
-  return accounts.map((account, idx) => ({
-    id: `acct-${idx + 1}`,
-    currency: account.currency,
-    balance: account.balance,
-    available: account.available,
-    hold: account.hold,
-  }));
+  return {
+    accounts: accounts.map((account, idx) => ({
+      uuid: `acct-${idx + 1}`,
+      currency: account.currency,
+      available_balance: {
+        value: account.available ?? account.balance ?? '0',
+        currency: account.currency,
+      },
+      hold: {
+        value: account.hold ?? '0',
+        currency: account.currency,
+      },
+    })),
+  };
 }
 
 describe('CEX Provider', () => {
@@ -177,7 +184,6 @@ describe('CEX Provider', () => {
 
       const result = await fetchCexAccountPositions(makeAccount({
         exchange: 'coinbase',
-        apiPassphrase: 'pass-123',
       }));
 
       expect(result).toHaveLength(2);
@@ -191,11 +197,11 @@ describe('CEX Provider', () => {
       expect(ethPos!.amount).toBeCloseTo(1.5, 6);
     });
 
-    it('throws when Coinbase passphrase is missing', async () => {
+    it('throws when Coinbase private key is missing', async () => {
       await expect(fetchCexAccountPositions(makeAccount({
         exchange: 'coinbase',
-        apiPassphrase: undefined,
-      }))).rejects.toThrow('Missing Coinbase API passphrase');
+        apiSecret: '',
+      }))).rejects.toThrow('Missing Coinbase private key');
     });
 
     it('sends POST request with correct Coinbase body', async () => {
@@ -207,8 +213,7 @@ describe('CEX Provider', () => {
       await fetchCexAccountPositions(makeAccount({
         exchange: 'coinbase',
         apiKey: 'cb-key',
-        apiSecret: 'cb-secret',
-        apiPassphrase: 'cb-pass',
+        apiSecret: 'cb-private-key',
       }));
 
       expect(fetch).toHaveBeenCalledWith('/api/cex/coinbase', {
@@ -216,8 +221,7 @@ describe('CEX Provider', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           apiKey: 'cb-key',
-          apiSecret: 'cb-secret',
-          apiPassphrase: 'cb-pass',
+          apiSecret: 'cb-private-key',
           endpoint: 'accounts',
         }),
       });
@@ -231,7 +235,6 @@ describe('CEX Provider', () => {
 
       await expect(fetchCexAccountPositions(makeAccount({
         exchange: 'coinbase',
-        apiPassphrase: 'pass-123',
       }))).rejects.toThrow('Unauthorized');
     });
 
@@ -320,6 +323,25 @@ describe('CEX Provider', () => {
       // Second account still returns its positions
       expect(result).toHaveLength(1);
       expect(result[0].symbol).toBe('sol');
+    });
+
+    it('continues when a Coinbase account is missing private key', async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(makeBinanceResponse([
+          { asset: 'BTC', free: '1', locked: '0' },
+        ])),
+      } as Response);
+
+      const result = await fetchAllCexPositions([
+        makeAccount({ id: 'cb-1', exchange: 'coinbase', apiSecret: '' }),
+        makeAccount({ id: 'bn-1', exchange: 'binance', apiKey: 'key-1' }),
+      ]);
+
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(result).toHaveLength(1);
+      expect(result[0].accountId).toBe('bn-1');
+      expect(result[0].symbol).toBe('btc');
     });
   });
 });

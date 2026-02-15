@@ -21,11 +21,11 @@ Add Coinbase CEX syncing with the same UX and architectural pattern as the exist
 
 ## Coinbase Integration Scope
 1. **API proxy** (new)
-   - Add `src/app/api/cex/coinbase/route.ts` mirroring the Binance route structure:
-     - `POST` accepts `{ apiKey, apiSecret, endpoint }`.
-     - Calls Coinbase REST endpoint(s) for account balances.
-     - Handles auth signing server-side (Coinbase-specific scheme).
-   - Define endpoint mapping (e.g., `endpoint: 'accounts'`) that returns balances.
+   - Add `src/app/api/cex/coinbase/route.ts` using Coinbase Advanced Trade:
+     - `POST` accepts `{ apiKey, apiSecret, endpoint }` where `apiSecret` is the EC private key (PEM).
+     - Calls Coinbase Advanced Trade endpoints for account balances.
+     - Generates JWT server-side (`iss: "cdp"`, `sub: apiKey`, `uri: "<METHOD> <HOST><PATH>"`).
+   - Define endpoint mapping (e.g., `endpoint: 'accounts'`) → `/api/v3/brokerage/accounts`.
    - Error handling and JSON passthrough consistent with Binance.
 
 2. **CEX provider updates**
@@ -55,7 +55,7 @@ Add Coinbase CEX syncing with the same UX and architectural pattern as the exist
        - Zero-balance filtering.
        - Credential validation error propagation.
      - Ensure `fetchAllCexPositions()` handles Coinbase accounts.
-   - If Coinbase requires a third credential (e.g., passphrase), add tests for required validation.
+   - If Coinbase requires extra credentials (e.g., private key), add tests for required validation.
 
 ## Auth & Data Contract Decisions (Need Confirmation)
 Coinbase has multiple API products with different auth:
@@ -63,8 +63,8 @@ Coinbase has multiple API products with different auth:
 - **Legacy Coinbase Pro** (API key + secret + passphrase).
 - **Retail OAuth** (token-based).
 
-The current model only supports `apiKey` + `apiSecret`.
-We need to confirm **which Coinbase API** we’ll target and whether we must extend `CexConnection` to include a `passphrase` or `privateKey`.
+The current model supports `apiKey` + `apiSecret`.
+We need to confirm **which Coinbase API** we’ll target and whether a passphrase or private key is required.
 
 **Decision needed before implementation**:
 1. Which Coinbase API product are we integrating (Advanced Trade vs legacy Pro)?
@@ -74,7 +74,7 @@ We need to confirm **which Coinbase API** we’ll target and whether we must ext
    - Option A: Keep as crypto positions (matches Binance pattern).
    - Option B: Map fiat balances to `cash` positions (requires extra logic).
 
-Decision taken for implementation: **Coinbase Exchange (api.exchange.coinbase.com)** using API key + secret + passphrase. This requires adding `apiPassphrase` to `CexConnection` and wiring it through the UI + provider + API proxy.
+Decision taken for implementation: **Coinbase Advanced Trade (api.coinbase.com)** using API key + **EC private key (JWT)**. No passphrase required. This uses JWT signing with `iss: "cdp"`, `sub: <API key>`, and a `uri` claim matching the request.
 
 ## Proposed File Touch List
 - `src/app/api/cex/coinbase/route.ts` (new)

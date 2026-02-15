@@ -1,32 +1,68 @@
 /**
- * Coinbase Exchange API Proxy
- * Proxies authenticated requests to Coinbase Exchange API
- * Handles HMAC-SHA256 signing on server-side for security
+ * Coinbase Advanced Trade API Proxy
+ * Proxies authenticated requests to Coinbase Advanced Trade API
+ * Generates JWT signatures on server-side for security
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 
-const COINBASE_API_URL = 'https://api.exchange.coinbase.com';
+const COINBASE_API_URL = 'https://api.coinbase.com';
+const COINBASE_API_HOST = 'api.coinbase.com';
 
-function createSignature(
-  timestamp: string,
-  method: string,
-  requestPath: string,
-  body: string,
-  apiSecret: string
-): string {
-  const prehash = `${timestamp}${method}${requestPath}${body}`;
-  const key = Buffer.from(apiSecret, 'base64');
-  return crypto.createHmac('sha256', key).update(prehash).digest('base64');
+function base64UrlEncode(input: Buffer | string): string {
+  const buffer = typeof input === 'string' ? Buffer.from(input) : input;
+  return buffer
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '');
+}
+
+function normalizePrivateKey(privateKey: string): string {
+  if (privateKey.includes('\\n')) {
+    return privateKey.replace(/\\n/g, '\n');
+  }
+  return privateKey;
+}
+
+function createJwt(apiKey: string, privateKey: string, method: string, requestPath: string): string {
+  const now = Math.floor(Date.now() / 1000);
+  const payload = {
+    sub: apiKey,
+    iss: 'cdp',
+    nbf: now,
+    exp: now + 120,
+    uri: `${method} ${COINBASE_API_HOST}${requestPath}`,
+  };
+
+  const header = {
+    alg: 'ES256',
+    typ: 'JWT',
+    kid: apiKey,
+    nonce: crypto.randomUUID().replace(/-/g, ''),
+  };
+
+  const encodedHeader = base64UrlEncode(JSON.stringify(header));
+  const encodedPayload = base64UrlEncode(JSON.stringify(payload));
+  const message = `${encodedHeader}.${encodedPayload}`;
+
+  const signature = crypto.sign('SHA256', Buffer.from(message), {
+    key: normalizePrivateKey(privateKey),
+    dsaEncoding: 'ieee-p1363',
+  });
+
+  const encodedSignature = base64UrlEncode(signature);
+  return `${message}.${encodedSignature}`;
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { apiKey, apiSecret, apiPassphrase, endpoint } = body;
+    const { apiKey, apiSecret, apiPrivateKey, endpoint } = body;
+    const privateKey = apiPrivateKey || apiSecret;
 
-    if (!apiKey || !apiSecret || !apiPassphrase) {
+    if (!apiKey || !privateKey) {
       return NextResponse.json(
         { error: 'Missing API credentials' },
         { status: 400 }
@@ -46,7 +82,7 @@ export async function POST(request: NextRequest) {
 
     switch (endpoint) {
       case 'accounts':
-        requestPath = '/accounts';
+        requestPath = '/api/v3/brokerage/accounts';
         method = 'GET';
         break;
       default:
@@ -56,17 +92,13 @@ export async function POST(request: NextRequest) {
         );
     }
 
-    const timestamp = Math.floor(Date.now() / 1000).toString();
-    const signature = createSignature(timestamp, method, requestPath, requestBody, apiSecret);
+    const token = createJwt(apiKey, privateKey, method, requestPath);
 
     const url = `${COINBASE_API_URL}${requestPath}`;
     const response = await fetch(url, {
       method,
       headers: {
-        'CB-ACCESS-KEY': apiKey,
-        'CB-ACCESS-SIGN': signature,
-        'CB-ACCESS-TIMESTAMP': timestamp,
-        'CB-ACCESS-PASSPHRASE': apiPassphrase,
+        Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
       body: method === 'GET' ? undefined : requestBody,
